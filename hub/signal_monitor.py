@@ -481,8 +481,7 @@ class SignalMonitor:
         parts = []
         f_lower = formula.lower()
         for k, v in side_data.get('criteria_state', {}).items():
-            # Always show R1 and S1, otherwise only if in formula
-            if not re.search(rf'\b{k}\b', f_lower) and k not in ['r1_high', 's1_low']:
+            if not re.search(rf'\b{k}\b', f_lower):
                 continue
 
             if k == 'r1_high':

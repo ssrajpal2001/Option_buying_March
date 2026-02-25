@@ -63,55 +63,56 @@ class ExitEvaluator:
         if eval_results['r1_high'] and 'r1_high' in f_lower: reasons.append(f"R1 Breached ({primary_tf}m)")
 
         if 'vwap_slope' in f_lower:
-            s_mode = self._get_user_setting('check_mode', mode, 'exit_indicators/vwap_slope', fallback='TICK').upper()
-            s_tf = self._get_user_setting('tf', mode, 'exit_indicators/vwap_slope', type_func=int, fallback=1)
-            s_occ = self._get_user_setting('occurrences', mode, 'exit_indicators/vwap_slope', type_func=int, fallback=1)
-            s_op = self._get_user_setting('operator', mode, 'exit_indicators/vwap_slope', fallback='<')
-            s_thr = self._get_user_setting('threshold', mode, 'exit_indicators/vwap_slope', type_func=float, fallback=0.0)
+            try:
+                s_mode = self._get_user_setting('check_mode', mode, 'exit_indicators/vwap_slope', fallback='TICK').upper()
+                s_tf = self._get_user_setting('tf', mode, 'exit_indicators/vwap_slope', type_func=int, fallback=1)
+                s_occ = self._get_user_setting('occurrences', mode, 'exit_indicators/vwap_slope', type_func=int, fallback=1)
+                s_op = self._get_user_setting('operator', mode, 'exit_indicators/vwap_slope', fallback='<')
+                s_thr = self._get_user_setting('threshold', mode, 'exit_indicators/vwap_slope', type_func=float, fallback=0.0)
 
-            can_eval, eval_ts, live_v = True, timestamp, None
-            if s_mode == 'CLOSE':
-                if not ((timestamp.second >= 5 or self.orchestrator.is_backtest) and (timestamp.minute % s_tf == 0)): can_eval = False
-                else: eval_ts = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
-            else: # TICK mode: evaluate on every tick
-                live_v = position_data.get('monitoring_vwap')
-                if live_v is None:
-                    live_v = await self.indicator_manager.calculate_vwap(signal_inst_key, timestamp)
-
-            if can_eval:
-                res = await self.indicator_manager.get_vwap_slope_status(signal_inst_key, eval_ts, s_tf, s_occ, live_vwap=live_v)
-                v_curr, v_prev = res[2], res[3]
-                
-                # Use vwap_peak/trough as reference if available for Regression analysis
-                v_ref = position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough')
-                if v_ref is None or v_ref == 0: v_ref = v_prev
-                
-                if v_curr is not None and v_ref:
-                    diff = (v_curr - v_ref) / v_ref
-                    if self.orchestrator.is_backtest:
-                         logger.info(f"V2 MGMT: [{direction}] VWAP EXIT CHECK: Current {v_curr:.2f} vs Peak {v_ref:.2f} | Drawdown: {diff*100:.2f}% | Threshold: {s_thr*100:.2f}%")
-                    
-                    passed = False
-                    if s_op == '>': passed = diff > s_thr
-                    elif s_op == '<': passed = diff < s_thr
-                    elif s_op == '>=': passed = diff >= s_thr
-                    elif s_op == '<=': passed = diff <= s_thr
-                    
-                    # If using regression from peak, we might want to relax the 'consecutive' requirement
-                    # but for now we keep it compatible with occurrences if v_ref was v_prev.
-                    # If v_ref is a true peak, we allow exit on first breach of threshold.
-                    is_peak_ref = (v_ref == position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough'))
-                    if is_peak_ref:
-                        eval_results['vwap_slope'] = passed
-                    else:
-                        eval_results['vwap_slope'] = passed and (res[4] if s_op in ('>', '>=') else res[5]) >= s_occ
-                        
-                    position_data['slope_info'] = f"V1:{v_curr:.2f} {s_op} Ref:{v_ref:.2f} (Pct:{diff*100:.2f}%)"
-                    if eval_results['vwap_slope']: 
-                        reasons.append(f"VWAP Slope {s_op} ({s_mode})")
-                        logger.info(f"V2 MGMT: [{direction}] EXIT CRITERIA MET (VWAP Slope): Current VWAP {v_curr:.2f} vs Ref {v_ref:.2f} (Drawdown: {diff*100:.2f}%, Threshold: {s_thr*100:.2f}%)")
+                can_eval, eval_ts, live_v = True, timestamp, None
+                if s_mode == 'CLOSE':
+                    if not ((timestamp.second >= 5 or self.orchestrator.is_backtest) and (timestamp.minute % s_tf == 0)): can_eval = False
+                    else: eval_ts = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
                 else:
-                    position_data['slope_info'] = f"Waiting for data (V:{v_curr}, Ref:{v_ref})"
+                    live_v = position_data.get('monitoring_vwap')
+                    if live_v is None:
+                        live_v = await self.indicator_manager.calculate_vwap(signal_inst_key, timestamp)
+
+                if can_eval:
+                    res = await self.indicator_manager.get_vwap_slope_status(signal_inst_key, eval_ts, s_tf, s_occ, live_vwap=live_v)
+                    v_curr, v_prev = res[2], res[3]
+
+                    v_ref = position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough')
+                    if v_ref is None or v_ref == 0: v_ref = v_prev
+
+                    if v_curr is not None and v_ref:
+                        diff = (v_curr - v_ref) / v_ref
+                        if self.orchestrator.is_backtest:
+                             logger.info(f"V2 MGMT: [{direction}] VWAP EXIT CHECK: Current {v_curr:.2f} vs Peak {v_ref:.2f} | Drawdown: {diff*100:.2f}% | Threshold: {s_thr*100:.2f}%")
+
+                        passed = False
+                        if s_op == '>': passed = diff > s_thr
+                        elif s_op == '<': passed = diff < s_thr
+                        elif s_op == '>=': passed = diff >= s_thr
+                        elif s_op == '<=': passed = diff <= s_thr
+
+                        is_peak_ref = (v_ref == position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough'))
+                        if is_peak_ref:
+                            eval_results['vwap_slope'] = passed
+                        else:
+                            eval_results['vwap_slope'] = passed and (res[4] if s_op in ('>', '>=') else res[5]) >= s_occ
+
+                        position_data['slope_info'] = f"V1:{v_curr:.2f} {s_op} Ref:{v_ref:.2f} (Pct:{diff*100:.2f}%)"
+                        if eval_results['vwap_slope']:
+                            reasons.append(f"VWAP Slope {s_op} ({s_mode})")
+                            logger.info(f"V2 MGMT: [{direction}] EXIT CRITERIA MET (VWAP Slope): Current VWAP {v_curr:.2f} vs Ref {v_ref:.2f} (Drawdown: {diff*100:.2f}%, Threshold: {s_thr*100:.2f}%)")
+                    else:
+                        position_data['slope_info'] = f"Waiting for data (V:{v_curr}, Ref:{v_ref})"
+            except Exception as e:
+                position_data['slope_info'] = f"Error: {str(e)}"
+                eval_results['vwap_slope'] = False
+                logger.warning(f"V2 MGMT: [{direction}] Exit slope evaluation error: {e}", exc_info=True)
 
         if 's1_confirm' in f_lower:
             mon_ltp = position_data.get('monitoring_ltp', current_ltp)

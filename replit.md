@@ -31,6 +31,12 @@ A Python-based algorithmic trading bot for Indian markets (NSE/BSE). Supports mu
 - Single workflow: `python main.py` (console output)
 - No frontend, no web server
 
+## Formula-Aware Indicator Evaluation
+- `hub/signal_evaluator.py`: Only evaluates indicators (VWAP, slope, R1, S1) that appear in the entry_formula from strategy_logic.json. Slope evaluation wrapped in try/except with descriptive error logging.
+- `hub/exit_evaluator.py`: Exit slope evaluation wrapped in try/except with descriptive error logging.
+- `hub/signal_monitor.py`: `format_state()` only displays indicators present in the formula (no hardcoded R1/S1 exceptions).
+- Status log only shows formula-relevant indicators (e.g., with entry_formula="vwap_slope", only slope info is displayed).
+
 ## Dependencies
 All dependencies from requirements.txt:
 numpy, scipy, pandas, upstox-python-sdk, websockets, requests, pytest, pytest-asyncio, pytest-mock, aiohttp, pytz, protobuf, sqlalchemy, aiopg, asyncpg, cryptography, redis, hiredis, smartapi-python, pyotp, kiteconnect, dhanhq
