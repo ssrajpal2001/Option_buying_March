@@ -1,0 +1,14 @@
+2026-02-25 19:59:21,124 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks): None -> 25550 (User: backtest_user)
+2026-02-25 19:59:21,305 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25550]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 142.15 | Formula: vwap_slope
+2026-02-25 19:59:21,308 - UpstoxApp - INFO - V2: [PE] [BUY] Status [25550]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 211.35 | Formula: vwap_slope
+2026-02-25 19:59:21,308 - UpstoxApp - INFO - V2 MONITORING Status [backtest_user]: Strike 25550 (SWITCHED) | Index: 25460.25 | CE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 142.15) | PE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 211.35)
+2026-02-25 19:59:21,309 - UpstoxApp - INFO - [TRADE_SUMMARY] Timestamp: 2026-02-25 09:16:00+05:30 | ATM: 25600 | Status: IDLE | P&L: 0.00
+2026-02-25 19:59:21,321 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25550]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 142.15 | Formula: vwap_slope
+2026-02-25 19:59:21,323 - UpstoxApp - INFO - V2: [PE] [BUY] Status [25550]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 211.35 | Formula: vwap_slope
+2026-02-25 19:59:21,324 - UpstoxApp - INFO - [TRADE_SUMMARY] Timestamp: 2026-02-25 09:17:00+05:30 | ATM: 25600 | Status: IDLE | P&L: 0.00
+2026-02-25 19:59:21,336 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25550]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 142.15 | Formula: vwap_slope
+2026-02-25 19:59:21,338 - UpstoxApp - INFO - V2: [PE] [BUY] Status [25550]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 211.35 | Formula: vwap_slope
+2026-02-25 19:59:21,338 - UpstoxApp - INFO - V2 MONITORING Status [backtest_user]: Strike 25550 | Index: 25460.25 | CE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 142.15) | PE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 211.35)
+2026-02-25 19:59:21,339 - UpstoxApp - INFO - [TRADE_SUMMARY] Timestamp: 2026-02-25 09:18:00+05:30 | ATM: 25600 | Status: IDLE | P&L: 0.00
+2026-02-25 19:59:21,351 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25550]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 142.15 | Formula: vwap_slope
+2026-02-25 19:59:21,353 - UpstoxApp - INFO - V2: [PE] [BUY] Status [25550]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 211.35 | Formula: vwap_slope
