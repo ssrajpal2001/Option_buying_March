@@ -114,6 +114,12 @@ class StateManager:
         if not position_to_close:
             return # Nothing to do
 
+        # Reset entry_confirmed in monitoring data so re-entry is allowed after this trade exits
+        side_key = 'ce_data' if direction == 'CALL' else 'pe_data'
+        if self.dual_sr_monitoring_data and side_key in self.dual_sr_monitoring_data:
+            self.dual_sr_monitoring_data[side_key]['entry_confirmed'] = False
+            logger.debug(f"V2: Reset entry_confirmed for {direction} in monitoring data on trade exit.")
+
         if is_backtest:
             logger.debug(f"[Backtest] Cleared {direction} position in StateManager.")
             return # In backtest, PnL is handled by the tracker.
