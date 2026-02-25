@@ -164,7 +164,9 @@ class DataManager:
 
         if api_cache_key in self.api_ohlc_cache:
             df = self.api_ohlc_cache[api_cache_key]
-            if df.index.tz is None: df.index = df.index.tz_localize('Asia/Kolkata')
+            if df.empty: return df
+            if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is None:
+                df.index = df.index.tz_localize('Asia/Kolkata')
             ts = current_timestamp if current_timestamp.tzinfo else pd.Timestamp(current_timestamp).tz_localize('Asia/Kolkata')
             return df[df.index <= ts].copy() if include_current else df[df.index < ts].copy()
 
