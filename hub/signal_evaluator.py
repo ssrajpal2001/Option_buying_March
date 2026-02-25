@@ -45,60 +45,15 @@ class SignalEvaluator:
                 data = monitoring_data.get(side_key)
                 if not data: continue
 
-                gate_enabled = self.monitor._get_user_setting(
-                    'range_915_gate_enabled', bool, fallback=True, mode=mode)
-
-                range_passed = True
-                if gate_enabled:
-                    idx_ltp = self.state_manager.index_price or 0.0
-                    idx_high, idx_low = await self.indicator_manager.get_index_915_range(
-                        self.orchestrator.index_instrument_key, timestamp)
-                    range_passed = self.monitor.gate_manager.is_side_permitted(
-                        side, idx_ltp, idx_high, idx_low)
-
-                if not range_passed:
-                    last_range_log = getattr(
-                        self.monitor, f'_last_range_wait_{side}_{mode}', 0)
-                    if timestamp.timestamp() - last_range_log >= 60:
-                        wait_msg = ""
-                        breach_happened = getattr(
-                            self.state_manager, 'range_915_breached_up' if side
-                            == 'CE' else 'range_915_breached_down', False)
-                        if not breach_happened:
-                            wait_msg = f"Waiting for 9:15 {'High' if side == 'CE' else 'Low'} Breach"
-                        else:
-                            wait_msg = f"Index {idx_ltp:.2f} is not {'above' if side == 'CE' else 'below'} 9:15 Low ({idx_low:.2f})"
-
-                        logger.info(
-                            f"V2: [{side}] Gated. {wait_msg}. Range: {idx_low:.2f}-{idx_high:.2f}"
-                        )
-                        setattr(self.monitor,
-                                f'_last_range_wait_{side}_{mode}',
-                                timestamp.timestamp())
-                    continue
-
                 strike = data['strike_price']
                 inst_key = self.atm_manager.find_instrument_key_by_strike(
                     strike, side, sig_expiry)
                 if not inst_key: continue
 
-                if self.state_manager.is_in_trade('CALL' if side ==
-                                                  'CE' else 'PUT'):
-                    continue
-                if data.get('entry_confirmed'): continue
-
-                current_ltp = self.state_manager.get_ltp(inst_key)
-                if current_ltp is None or current_ltp <= 0: continue
-
+                # --- COMPUTE VWAP & SLOPE FIRST (independent of gate/LTP) ---
                 vwap_val = None
                 if needs_vwap or needs_slope:
                     vwap_val = await self.indicator_manager.calculate_vwap(inst_key, timestamp)
-                    if self._is_in_formula('vwap', entry_formula):
-                        vwap_mode = self.monitor._get_user_setting('check_mode', str, fallback='TICK', mode=mode, category='indicators/vwap').upper()
-                        if vwap_mode == 'TICK':
-                            data['criteria_state']['vwap'] = (vwap_val is None
-                                                              or current_ltp
-                                                              >= vwap_val)
                     data['vwap'] = vwap_val
 
                 if needs_slope:
@@ -185,6 +140,55 @@ class SignalEvaluator:
                         logger.warning(
                             f"V2: [{side}] Slope evaluation error: {e}",
                             exc_info=True)
+
+                # --- GATE CHECK (entry blocked if gated, but slope above is already computed) ---
+                gate_enabled = self.monitor._get_user_setting(
+                    'range_915_gate_enabled', bool, fallback=True, mode=mode)
+
+                range_passed = True
+                if gate_enabled:
+                    idx_ltp = self.state_manager.index_price or 0.0
+                    idx_high, idx_low = await self.indicator_manager.get_index_915_range(
+                        self.orchestrator.index_instrument_key, timestamp)
+                    range_passed = self.monitor.gate_manager.is_side_permitted(
+                        side, idx_ltp, idx_high, idx_low)
+
+                if not range_passed:
+                    last_range_log = getattr(
+                        self.monitor, f'_last_range_wait_{side}_{mode}', 0)
+                    if timestamp.timestamp() - last_range_log >= 60:
+                        wait_msg = ""
+                        breach_happened = getattr(
+                            self.state_manager, 'range_915_breached_up' if side
+                            == 'CE' else 'range_915_breached_down', False)
+                        if not breach_happened:
+                            wait_msg = f"Waiting for 9:15 {'High' if side == 'CE' else 'Low'} Breach"
+                        else:
+                            wait_msg = f"Index {idx_ltp:.2f} is not {'above' if side == 'CE' else 'below'} 9:15 Low ({idx_low:.2f})"
+
+                        logger.info(
+                            f"V2: [{side}] Gated. {wait_msg}. Range: {idx_low:.2f}-{idx_high:.2f}"
+                        )
+                        setattr(self.monitor,
+                                f'_last_range_wait_{side}_{mode}',
+                                timestamp.timestamp())
+                    continue
+
+                if self.state_manager.is_in_trade('CALL' if side ==
+                                                  'CE' else 'PUT'):
+                    continue
+                if data.get('entry_confirmed'): continue
+
+                current_ltp = self.state_manager.get_ltp(inst_key)
+                if current_ltp is None or current_ltp <= 0: continue
+
+                # Update VWAP criteria state now that we have LTP
+                if needs_vwap and self._is_in_formula('vwap', entry_formula):
+                    vwap_mode = self.monitor._get_user_setting('check_mode', str, fallback='TICK', mode=mode, category='indicators/vwap').upper()
+                    if vwap_mode == 'TICK':
+                        data['criteria_state']['vwap'] = (vwap_val is None
+                                                          or current_ltp
+                                                          >= vwap_val)
 
                 if needs_r1:
                     r1_mode = self.monitor._get_user_setting(
