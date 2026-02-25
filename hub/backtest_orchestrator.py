@@ -113,13 +113,23 @@ class BacktestOrchestrator(BaseOrchestrator):
 
     def _get_summary_extra(self, pos):
         info = ""
+        mode = 'buy' if pos.get('entry_type') == 'BUY' else 'sell'
+        try:
+            exit_formula = self.json_config.get_value(f"{self.instrument_name}.{mode}.exit_formula") or ''
+        except Exception:
+            exit_formula = ''
+        f_lower = exit_formula.lower()
+        sr_indicators = ['s1_low', 'r1_high', 's1_double_drop', 'r1_falling', 'r1_low_breach', 's1_confirm']
+
+        tgt = pos.get('current_target')
+        if tgt: info += f" | TARGET: {float(tgt):.1f}"
         tf = pos.get('active_s1_tf', 'N/A')
         s1 = pos.get('active_s1', 0)
         tsl = pos.get('trailing_sl', 0)
-        tgt = pos.get('current_target')
-        if tgt: info += f" | TARGET: {float(tgt):.1f}"
-        if s1: info += f" | {pos.get('s1_label', 'S1LOW')}({tf}m): {float(s1):.1f}"
-        if tsl: info += f" | TSL: {float(tsl):.1f}"
+        if s1 and any(ind in f_lower for ind in sr_indicators):
+            info += f" | {pos.get('s1_label', 'S1LOW')}({tf}m): {float(s1):.1f}"
+        if tsl and any(ind in f_lower for ind in ['tsl', 'atr_tsl']):
+            info += f" | TSL: {float(tsl):.1f}"
         return info
 
     async def _check_backtest_exit_conditions(self, timestamp):

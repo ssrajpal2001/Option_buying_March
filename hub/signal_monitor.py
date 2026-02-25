@@ -740,35 +740,38 @@ class SignalMonitor:
         is_vwap_tf_close = (last_1m_completed_ts.minute + 1) % entry_vwap_tf == 0
         is_rule_1 = (last_1m_completed_ts.hour == 9 and last_1m_completed_ts.minute == 15)
 
+        sr_indicators = ['s1_low', 'r1_high', 's1_double_drop', 'r1_falling', 'r1_low_breach', 's1_confirm']
+        needs_sr = any(ind in entry_formula.lower() or ind in exit_formula.lower() for ind in sr_indicators)
+
         if (is_r1_tf_close or is_vwap_tf_close or is_rule_1 or force_indicator_refresh) and ce_data.get('last_indicator_update') != last_1m_completed_ts:
             # Use JSON timeframe if available
             r1_tf_val = self._get_user_setting('tf', int, fallback=3, mode=ref_mode, category='indicators/r1_high')
 
             # CE side indicators
             ce_vwap = await self.indicator_manager.calculate_vwap(ce_data['instrument_key'], timestamp)
-            # Unpack 8 values from get_nuanced_barrier
-            ce_b_s1, ce_l_s1, _, _, ce_ph_s1, _, _, _ = await self.indicator_manager.get_nuanced_barrier(ce_data['instrument_key'], 's1_low', r1_tf_val, timestamp)
-            ce_b_r1, ce_l_r1, _, _, ce_ph_r1, _, _, _ = await self.indicator_manager.get_nuanced_barrier(ce_data['instrument_key'], 'r1_high', r1_tf_val, timestamp)
-            ce_data.update({
-                'vwap': ce_vwap,
-                'r1_high': ce_b_r1, 's1_low': ce_b_s1,
-                'r1_label': ce_l_r1, 's1_label': ce_l_s1,
-                'r1_phase': ce_ph_r1, 's1_phase': ce_ph_s1,
-                'last_indicator_update': last_1m_completed_ts
-            })
+            ce_data.update({'vwap': ce_vwap, 'last_indicator_update': last_1m_completed_ts})
+
+            if needs_sr:
+                ce_b_s1, ce_l_s1, _, _, ce_ph_s1, _, _, _ = await self.indicator_manager.get_nuanced_barrier(ce_data['instrument_key'], 's1_low', r1_tf_val, timestamp)
+                ce_b_r1, ce_l_r1, _, _, ce_ph_r1, _, _, _ = await self.indicator_manager.get_nuanced_barrier(ce_data['instrument_key'], 'r1_high', r1_tf_val, timestamp)
+                ce_data.update({
+                    'r1_high': ce_b_r1, 's1_low': ce_b_s1,
+                    'r1_label': ce_l_r1, 's1_label': ce_l_s1,
+                    'r1_phase': ce_ph_r1, 's1_phase': ce_ph_s1,
+                })
 
             # PE side indicators
             pe_vwap = await self.indicator_manager.calculate_vwap(pe_data['instrument_key'], timestamp)
-            # Unpack 8 values from get_nuanced_barrier
-            pe_b_s1, pe_l_s1, _, _, pe_ph_s1, _, _, _ = await self.indicator_manager.get_nuanced_barrier(pe_data['instrument_key'], 's1_low', r1_tf_val, timestamp)
-            pe_b_r1, pe_l_r1, _, _, pe_ph_r1, _, _, _ = await self.indicator_manager.get_nuanced_barrier(pe_data['instrument_key'], 'r1_high', r1_tf_val, timestamp)
-            pe_data.update({
-                'vwap': pe_vwap,
-                'r1_high': pe_b_r1, 's1_low': pe_b_s1,
-                'r1_label': pe_l_r1, 's1_label': pe_l_s1,
-                'r1_phase': pe_ph_r1, 's1_phase': pe_ph_s1,
-                'last_indicator_update': last_1m_completed_ts
-            })
+            pe_data.update({'vwap': pe_vwap, 'last_indicator_update': last_1m_completed_ts})
+
+            if needs_sr:
+                pe_b_s1, pe_l_s1, _, _, pe_ph_s1, _, _, _ = await self.indicator_manager.get_nuanced_barrier(pe_data['instrument_key'], 's1_low', r1_tf_val, timestamp)
+                pe_b_r1, pe_l_r1, _, _, pe_ph_r1, _, _, _ = await self.indicator_manager.get_nuanced_barrier(pe_data['instrument_key'], 'r1_high', r1_tf_val, timestamp)
+                pe_data.update({
+                    'r1_high': pe_b_r1, 's1_low': pe_b_s1,
+                    'r1_label': pe_l_r1, 's1_label': pe_l_s1,
+                    'r1_phase': pe_ph_r1, 's1_phase': pe_ph_s1,
+                })
 
         trade_triggered = False
         side_to_trigger = None

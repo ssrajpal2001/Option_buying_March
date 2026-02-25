@@ -218,6 +218,15 @@ class PositionManager:
 
     async def _evaluate_barriers(self, direction, pos_data, key, timestamp, mode, primary_tf, profit, global_target, force_update=False):
         s1_b, r1_b, r1_t = False, False, False
+
+        exit_formula = self._get_user_setting('exit_formula', str, fallback='', mode=mode)
+        f_lower = exit_formula.lower()
+        sr_indicators = ['s1_low', 'r1_high', 's1_double_drop', 'r1_falling', 'r1_low_breach', 's1_confirm', 'r1_stagnation', 'r1_target']
+        needs_sr = any(ind in f_lower for ind in sr_indicators)
+
+        if not needs_sr:
+            return s1_b, r1_b, r1_t
+
         target_exit_en = self._get_user_setting('enabled', bool, False, mode=mode, category='exit_indicators/target_exit')
 
         # Monotonic update

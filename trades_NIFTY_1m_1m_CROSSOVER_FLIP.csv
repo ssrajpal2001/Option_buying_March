@@ -7,3 +7,5 @@ Timestamp,Broker,InstrumentSymbol,TradeType,Price,PNL,Reason,StrategyLog
 2026-02-25 18:10:13,Backtest,NSE_FO|54972,PUT,190.0,,,PE BUY confirmed via Formula: vwap_slope (Tick)
 2026-02-25 18:52:31,Backtest,NSE_FO|54972,PUT,212.7,,,PE BUY confirmed via Formula: vwap_slope (Tick)
 2026-02-25 18:53:26,Backtest,NSE_FO|54972,EXIT_PUT,301.35,88.65,End of backtest,
+2026-02-25 18:59:51,Backtest,NSE_FO|54972,PUT,212.7,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-25 19:00:18,Backtest,NSE_FO|54972,EXIT_PUT,301.35,88.65,End of backtest,
