@@ -89,51 +89,29 @@ class SignalEvaluator:
                             mode=mode,
                             category='indicators/vwap_slope')
 
-                        anchor = timestamp.replace(hour=9,
-                                                   minute=15,
-                                                   second=0,
-                                                   microsecond=0)
-                        mins_since_open = int(
-                            (timestamp - anchor).total_seconds() / 60)
-                        is_slope_eval_time = (slope_tf
-                                              == 0) or (mins_since_open %
-                                                        slope_tf == 0)
-
                         s_ts = timestamp if slope_mode == 'TICK' else (
                             timestamp.replace(second=0, microsecond=0) -
                             pd.Timedelta(minutes=1))
                         s_v = vwap_val if slope_mode == 'TICK' else None
 
-                        if is_slope_eval_time:
-                            is_r, is_f, v_curr, v_prev, c_r, c_f = await self.indicator_manager.get_vwap_slope_status(
-                                inst_key,
-                                s_ts,
-                                slope_tf,
-                                slope_occ,
-                                live_vwap=s_v)
-                            curr_cons = c_r if slope_operator in (
-                                '>', '>=') else c_f
-                            slope_passed = False
-                            if v_curr is not None and v_prev is not None and v_prev != 0:
-                                diff = (v_curr - v_prev) / v_prev
-                                if slope_operator == '>':
-                                    slope_passed = (diff > slope_threshold
-                                                    and curr_cons >= slope_occ)
-                                elif slope_operator == '<':
-                                    slope_passed = (diff < slope_threshold
-                                                    and curr_cons >= slope_occ)
-                                elif slope_operator == '>=':
-                                    slope_passed = (diff >= slope_threshold
-                                                    and curr_cons >= slope_occ)
-                                elif slope_operator == '<=':
-                                    slope_passed = (diff <= slope_threshold
-                                                    and curr_cons >= slope_occ)
-                                data[
-                                    'slope_info'] = f"V1:{float(v_curr):.2f} {slope_operator} V0:{float(v_prev):.2f} (Pct:{diff*100:.2f}%, Cons:{curr_cons}/{slope_occ})"
-                            else:
-                                data[
-                                    'slope_info'] = f"Waiting for data (V1:{v_curr}, V0:{v_prev})"
-                            data['criteria_state']['vwap_slope'] = slope_passed
+                        is_r, is_f, v_curr, v_prev, c_r, c_f = await self.indicator_manager.get_vwap_slope_status(
+                            inst_key, s_ts, slope_tf, slope_occ, live_vwap=s_v)
+                        curr_cons = c_r if slope_operator in ('>', '>=') else c_f
+                        slope_passed = False
+                        if v_curr is not None and v_prev is not None and v_prev != 0:
+                            diff = (v_curr - v_prev) / v_prev
+                            if slope_operator == '>':
+                                slope_passed = (diff > slope_threshold and curr_cons >= slope_occ)
+                            elif slope_operator == '<':
+                                slope_passed = (diff < slope_threshold and curr_cons >= slope_occ)
+                            elif slope_operator == '>=':
+                                slope_passed = (diff >= slope_threshold and curr_cons >= slope_occ)
+                            elif slope_operator == '<=':
+                                slope_passed = (diff <= slope_threshold and curr_cons >= slope_occ)
+                            data['slope_info'] = f"V1:{float(v_curr):.2f} {slope_operator} V0:{float(v_prev):.2f} (Pct:{diff*100:.2f}%, Cons:{curr_cons}/{slope_occ})"
+                        else:
+                            data['slope_info'] = f"Waiting for data (V1:{v_curr}, V0:{v_prev})"
+                        data['criteria_state']['vwap_slope'] = slope_passed
                     except Exception as e:
                         data['slope_info'] = f"Error: {str(e)}"
                         data['criteria_state']['vwap_slope'] = False
@@ -251,33 +229,27 @@ class SignalEvaluator:
                 is_dip_pending = False
                 if is_sticky_reentry:
                     if mode == 'buy':
-                        r1_tf_val = self.monitor._get_user_setting(
-                            'tf',
-                            int,
-                            fallback=3,
-                            mode=mode,
-                            category='indicators/r1_high')
-                        b_val, _, _, _, phase, _, _, _ = await self.indicator_manager.get_nuanced_barrier(
-                            data['instrument_key'], 'r1_high', r1_tf_val,
-                            timestamp)
-                        is_below = (vwap_val is not None and current_ltp
-                                    < vwap_val) or (b_val is not None
-                                                    and current_ltp < b_val
-                                                    and phase != 'R1_TRACKING')
+                        if needs_r1:
+                            r1_tf_val = self.monitor._get_user_setting(
+                                'tf', int, fallback=3, mode=mode,
+                                category='indicators/r1_high')
+                            b_val, _, _, _, phase, _, _, _ = await self.indicator_manager.get_nuanced_barrier(
+                                data['instrument_key'], 'r1_high', r1_tf_val, timestamp)
+                            is_below = (vwap_val is not None and current_ltp < vwap_val) or (
+                                b_val is not None and current_ltp < b_val and phase != 'R1_TRACKING')
+                        else:
+                            is_below = vwap_val is not None and current_ltp < vwap_val
                     else:  # sell
-                        s1_tf_val = self.monitor._get_user_setting(
-                            'tf',
-                            int,
-                            fallback=3,
-                            mode=mode,
-                            category='indicators/s1_low')
-                        b_val, _, _, _, phase, _, _, _ = await self.indicator_manager.get_nuanced_barrier(
-                            data['instrument_key'], 's1_low', s1_tf_val,
-                            timestamp)
-                        is_below = (vwap_val is not None and current_ltp
-                                    > vwap_val) or (b_val is not None
-                                                    and current_ltp > b_val
-                                                    and phase != 'S1_TRACKING')
+                        if needs_s1:
+                            s1_tf_val = self.monitor._get_user_setting(
+                                'tf', int, fallback=3, mode=mode,
+                                category='indicators/s1_low')
+                            b_val, _, _, _, phase, _, _, _ = await self.indicator_manager.get_nuanced_barrier(
+                                data['instrument_key'], 's1_low', s1_tf_val, timestamp)
+                            is_below = (vwap_val is not None and current_ltp > vwap_val) or (
+                                b_val is not None and current_ltp > b_val and phase != 'S1_TRACKING')
+                        else:
+                            is_below = vwap_val is not None and current_ltp > vwap_val
 
                     if is_below:
                         if not monitoring_data.get('sticky_dip_confirmed'):

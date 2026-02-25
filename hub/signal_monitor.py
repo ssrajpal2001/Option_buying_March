@@ -163,23 +163,22 @@ class SignalMonitor:
         # PROACTIVELY PRIME AGGREGATORS
         # This ensures we have historical data for pattern calculation and immediate slope/S&R
         # calculation on every strike switch.
-        if True:
-            try:
-                # Concurrent priming for CE and PE to save time
-                await asyncio.wait_for(asyncio.gather(
-                    self.data_manager.prime_aggregator(self.orchestrator.entry_aggregator, ce_instrument_key, timestamp),
-                    self.data_manager.prime_aggregator(self.orchestrator.entry_aggregator, pe_instrument_key, timestamp),
-                    self.data_manager.prime_aggregator(self.orchestrator.exit_aggregator, ce_instrument_key, timestamp),
-                    self.data_manager.prime_aggregator(self.orchestrator.exit_aggregator, pe_instrument_key, timestamp),
-                    self.data_manager.prime_aggregator(self.orchestrator.one_min_aggregator, ce_instrument_key, timestamp),
-                    self.data_manager.prime_aggregator(self.orchestrator.one_min_aggregator, pe_instrument_key, timestamp),
-                    self.data_manager.prime_aggregator(self.orchestrator.five_min_aggregator, ce_instrument_key, timestamp),
-                    self.data_manager.prime_aggregator(self.orchestrator.five_min_aggregator, pe_instrument_key, timestamp)
-                ), timeout=25.0)
-            except asyncio.TimeoutError:
-                logger.error(f"V2: TIMEOUT during proactively priming for strike {target_strike}. Signals might be delayed.")
-            except Exception as e:
-                logger.error(f"V2: Error during proactively priming: {e}")
+        try:
+            # Concurrent priming for CE and PE to save time
+            await asyncio.wait_for(asyncio.gather(
+                self.data_manager.prime_aggregator(self.orchestrator.entry_aggregator, ce_instrument_key, timestamp),
+                self.data_manager.prime_aggregator(self.orchestrator.entry_aggregator, pe_instrument_key, timestamp),
+                self.data_manager.prime_aggregator(self.orchestrator.exit_aggregator, ce_instrument_key, timestamp),
+                self.data_manager.prime_aggregator(self.orchestrator.exit_aggregator, pe_instrument_key, timestamp),
+                self.data_manager.prime_aggregator(self.orchestrator.one_min_aggregator, ce_instrument_key, timestamp),
+                self.data_manager.prime_aggregator(self.orchestrator.one_min_aggregator, pe_instrument_key, timestamp),
+                self.data_manager.prime_aggregator(self.orchestrator.five_min_aggregator, ce_instrument_key, timestamp),
+                self.data_manager.prime_aggregator(self.orchestrator.five_min_aggregator, pe_instrument_key, timestamp)
+            ), timeout=25.0)
+        except asyncio.TimeoutError:
+            logger.error(f"V2: TIMEOUT during proactively priming for strike {target_strike}. Signals might be delayed.")
+        except Exception as e:
+            logger.error(f"V2: Error during proactively priming: {e}")
 
         self.last_target_strike = target_strike
 
@@ -329,10 +328,6 @@ class SignalMonitor:
                 self.state_manager.range_915_breached_up = True
                 self.state_manager.range_915_breached_down = True
 
-            # Check JSON active modes again (already got them)
-            active_modes = self.orchestrator.json_config.get_active_modes(self.orchestrator.instrument_name)
-            if not active_modes: active_modes = ['buy']
-
             currently_monitored_strike = self.state_manager.dual_sr_monitoring_data.get('target_strike') if self.state_manager.dual_sr_monitoring_data else None
 
             # 1. TARGET STRIKE SEARCH & SWITCH (Perform first so logs/eval use the latest strike)
@@ -392,19 +387,18 @@ class SignalMonitor:
 
                         # 9:15 Range Info
                         idx_ltp = self.state_manager.index_price or 0.0
-                        idx_high, idx_low = await self.indicator_manager.get_index_915_range(self.orchestrator.index_instrument_key, timestamp)
-                        
                         gate_enabled = self._get_user_setting('range_915_gate_enabled', bool, fallback=True, mode=ref_mode)
-                        g_str = "" if gate_enabled else "(Disabled)"
-                        range_str = f"9:15R{g_str}({idx_low:.1f}-{idx_high:.1f})" if idx_high else f"9:15R{g_str}(Wait)"
+                        if gate_enabled:
+                            idx_high, idx_low = await self.indicator_manager.get_index_915_range(self.orchestrator.index_instrument_key, timestamp)
+                            range_str = f"9:15R({idx_low:.1f}-{idx_high:.1f})" if idx_high else "9:15R(Wait)"
+                            status = 'NONE'
+                            if getattr(self.state_manager, 'range_915_breached_up', False): status = 'UP'
+                            elif getattr(self.state_manager, 'range_915_breached_down', False): status = 'DOWN'
+                            gate_str = f" | {range_str} | Breach:{status}"
+                        else:
+                            gate_str = ""
 
-                        status = 'NONE'
-                        if getattr(self.state_manager, 'range_915_breached_up', False): status = 'UP'
-                        elif getattr(self.state_manager, 'range_915_breached_down', False): status = 'DOWN'
-
-                        breach_str = f"Breach:{status}"
-
-                        logger.info(f"V2 MONITORING Status [{user_display}]: Strike {ce_data['strike_price']}{sw_label} | Index: {idx_ltp:.2f} | {range_str} | {breach_str} | "
+                        logger.info(f"V2 MONITORING Status [{user_display}]: Strike {ce_data['strike_price']}{sw_label} | Index: {idx_ltp:.2f}{gate_str} | "
                                      f"CE: {ce_state} (LTP: {float(self.state_manager.get_ltp(ce_data['instrument_key']) or 0):.2f}) | "
                                      f"PE: {pe_state} (LTP: {float(self.state_manager.get_ltp(pe_data['instrument_key']) or 0):.2f})")
 
