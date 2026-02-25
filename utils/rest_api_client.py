@@ -78,7 +78,9 @@ class RestApiClient:
             return []
 
     async def get_historical_candle_data(self, instrument_key, interval, to_date, from_date):
-        today_str = datetime.date.today().strftime('%Y-%m-%d')
+        import pytz
+        ist = pytz.timezone('Asia/Kolkata')
+        today_str = datetime.datetime.now(ist).strftime('%Y-%m-%d')
         to_date_str = str(to_date)
         from_date_str = str(from_date)
 
@@ -88,7 +90,7 @@ class RestApiClient:
                 return self.ohlc_cache[cache_key]
 
         # LOGIC: Upstox has separate endpoints for historical (past) and intraday (today).
-        # To get a range that includes today, we must fetch both and merge.
+        # today_str uses IST timezone to match Indian market dates correctly.
 
         df = pd.DataFrame()
 
@@ -96,25 +98,26 @@ class RestApiClient:
             # Range includes today
             if from_date_str == today_str:
                 # Today only: Use intraday endpoint
+                logger.info(f"DATA_FETCH: Intraday-only request for '{instrument_key}' ({interval}).")
                 df = await self.get_intraday_candle_data(instrument_key, interval)
             else:
                 # Range from past to today: Merge historical and intraday
-                yesterday = datetime.date.today() - datetime.timedelta(days=1)
-                yesterday_str = yesterday.strftime('%Y-%m-%d')
+                yesterday = (datetime.datetime.now(ist) - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
-                logger.debug(f"DATA_FETCH: Merging historical (up to {yesterday_str}) and intraday for today.")
+                logger.info(f"DATA_FETCH: Merging historical (up to {yesterday}) + intraday for '{instrument_key}' ({interval}).")
 
-                # 1. Fetch past data
-                hist_endpoint = f"/historical-candle/{instrument_key}/{interval}/{yesterday_str}/{from_date_str}"
+                # 1. Fetch past data up to yesterday
+                hist_endpoint = f"/historical-candle/{instrument_key}/{interval}/{yesterday}/{from_date_str}"
                 try:
                     hist_response = await self._request('get', hist_endpoint)
                     hist_candles = hist_response.get('data', {}).get('candles', [])
                     hist_df = self._format_historical_data(hist_candles)
+                    logger.info(f"DATA_FETCH: Historical part returned {len(hist_candles)} candles for '{instrument_key}'.")
                 except Exception as e:
                     logger.warning(f"Failed to fetch historical part of merged range: {e}")
                     hist_df = pd.DataFrame()
 
-                # 2. Fetch today's data
+                # 2. Fetch today's intraday data
                 intra_df = await self.get_intraday_candle_data(instrument_key, interval)
 
                 # 3. Merge
@@ -154,6 +157,7 @@ class RestApiClient:
         try:
             response = await self._request('get', endpoint)
             candles = response.get('data', {}).get('candles', [])
+            logger.info(f"DATA_FETCH: Intraday endpoint returned {len(candles)} candles for '{instrument_key}' ({interval}).")
             df = self._format_historical_data(candles)
 
             if self.backtest_mode:
