@@ -1,0 +1,142 @@
+{
+    "NIFTY": {
+        "range_915_gate_enabled": false,
+        "buy": {
+            "enabled": true,
+            "entry_type": "BUY",
+            "signal_expiry": "WEEKLY",
+            "trade_expiry": "WEEKLY",
+            "entry_formula": "vwap_slope",
+            "exit_formula": "vwap_slope",
+            "indicators": {
+                "pattern": {
+                    "tf": 1
+                },
+                "vwap": {
+                    "tf": 1,
+                    "check_mode": "TICK"
+                },
+                "vwap_slope": {
+                    "tf": 1,
+                    "check_mode": "TICK",
+                    "occurrences": 1,
+                    "operator": ">",
+                    "threshold": 0.0
+                },
+                "r1_high": {
+                    "tf": 3,
+                    "check_mode": "TICK"
+                }
+            },
+            "exit_indicators": {
+                "pattern": {
+                    "tf": 1
+                },
+                "s1_low": {
+                    "tf": 5,
+                    "fast_tf": 1,
+                    "dynamic_tf": false
+                },
+                "r1_target": {
+                    "tf": 1,
+                    "threshold": 20.0
+                },
+                "vwap_slope": {
+                    "tf": 1,
+                    "check_mode": "TICK",
+                    "operator": "<",
+                    "occurrences": 1,
+                    "threshold": -0.01
+                },
+                "s1_double_drop": {
+                    "tf": 1
+                },
+                "s1_confirm": {
+                    "fast_tf": 1,
+                    "slow_tf": 3
+                },
+                "tsl": {
+                    "enabled": true,
+                    "offset": 15,
+                    "multiplier": 1
+                },
+                "atr_tsl": {
+                    "enabled": true,
+                    "length": 10,
+                    "multiplier": 3,
+                    "tf": 3,
+                    "check_mode": "CLOSE"
+                },
+                "r1_falling": {
+                    "tf": 1
+                },
+                "r1_stagnation": {
+                    "minutes": 15
+                },
+                "r1_low_breach": {
+                    "tf": 3
+                },
+                "reversal": {
+                    "enabled": true
+                },
+                "target_exit": {
+                    "enabled": false
+                }
+            }
+        },
+        "sell": {
+            "enabled": false,
+            "entry_type": "SELL",
+            "signal_expiry": "WEEKLY",
+            "trade_expiry": "WEEKLY",
+            "entry_formula": "pattern AND vwap AND vwap_slope AND s1_low",
+            "exit_formula": "r1_high OR vwap_slope OR tsl",
+            "indicators": {
+                "pattern": {
+                    "tf": 1
+                },
+                "vwap": {
+                    "tf": 1,
+                    "check_mode": "TICK"
+                },
+                "vwap_slope": {
+                    "tf": 1,
+                    "check_mode": "CLOSE",
+                    "occurrences": 1,
+                    "operator": "<"
+                },
+                "s1_low": {
+                    "tf": 3,
+                    "check_mode": "TICK"
+                }
+            },
+            "exit_indicators": {
+                "pattern": {
+                    "tf": 1
+                },
+                "r1_high": {
+                    "tf": 5,
+                    "fast_tf": 1,
+                    "dynamic_tf": true
+                },
+                "vwap_slope": {
+                    "tf": 1,
+                    "check_mode": "CLOSE",
+                    "operator": ">",
+                    "occurrences": 1
+                },
+                "tsl": {
+                    "enabled": true,
+                    "offset": 30.0
+                },
+                "atr_tsl": {
+                    "enabled": true,
+                    "length": 5,
+                    "multiplier": 1.5,
+                    "tf": 1,
+                    "check_mode": "TICK"
+                }
+            }
+        }
+    }
+}

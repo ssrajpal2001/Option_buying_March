@@ -1,0 +1,303 @@
+import pandas as pd
+import asyncio
+from utils.logger import logger
+from datetime import datetime, time
+
+class SignalEvaluator:
+    def __init__(self, monitor):
+        self.monitor = monitor
+        self.orchestrator = monitor.orchestrator
+        self.state_manager = monitor.state_manager
+        self.indicator_manager = monitor.indicator_manager
+        self.pattern_matcher = monitor.pattern_matcher
+        self.atm_manager = monitor.atm_manager
+        self.data_manager = monitor.data_manager
+
+    async def evaluate_tick_criteria(self, timestamp, active_modes):
+        """Updates criteria_state for TICK indicators and evaluates formulas for both sides."""
+        monitoring_data = self.state_manager.dual_sr_monitoring_data
+        if not monitoring_data: return
+        triggered = False
+
+        for mode in active_modes:
+            entry_formula = self.monitor._get_user_setting('entry_formula', str, fallback='pattern', mode=mode)
+            sig_expiry = self.atm_manager.get_expiry_by_mode(mode, 'signal')
+
+            for side in ['CE', 'PE']:
+                side_key = 'ce_data' if side == 'CE' else 'pe_data'
+                data = monitoring_data.get(side_key)
+                if not data: continue
+
+                # --- 6. Index Range Filter (9:15 Breach Gate) ---
+                gate_enabled = self.monitor._get_user_setting('range_915_gate_enabled', bool, fallback=True, mode=mode)
+
+                range_passed = True
+                if gate_enabled:
+                    idx_ltp = self.state_manager.index_price or 0.0
+                    idx_high, idx_low = await self.indicator_manager.get_index_915_range(self.orchestrator.index_instrument_key, timestamp)
+                    range_passed = self.monitor.gate_manager.is_side_permitted(side, idx_ltp, idx_high, idx_low)
+
+                if not range_passed:
+                    # Gated side: Skip indicators but log a throttled wait message
+                    last_range_log = getattr(self.monitor, f'_last_range_wait_{side}_{mode}', 0)
+                    if timestamp.timestamp() - last_range_log >= 60:
+                        wait_msg = ""
+                        breach_happened = getattr(self.state_manager, 'range_915_breached_up' if side == 'CE' else 'range_915_breached_down', False)
+                        if not breach_happened:
+                            wait_msg = f"Waiting for 9:15 {'High' if side == 'CE' else 'Low'} Breach"
+                        else:
+                            wait_msg = f"Index {idx_ltp:.2f} is not {'above' if side == 'CE' else 'below'} 9:15 Low ({idx_low:.2f})"
+
+                        logger.info(f"V2: [{side}] Gated. {wait_msg}. Range: {idx_low:.2f}-{idx_high:.2f}")
+                        setattr(self.monitor, f'_last_range_wait_{side}_{mode}', timestamp.timestamp())
+                    continue
+
+                strike = data['strike_price']
+                inst_key = self.atm_manager.find_instrument_key_by_strike(strike, side, sig_expiry)
+                if not inst_key: continue
+
+                if self.state_manager.is_in_trade('CALL' if side == 'CE' else 'PUT'): continue
+                if data.get('entry_confirmed'): continue
+
+                current_ltp = self.state_manager.get_ltp(inst_key)
+                if current_ltp is None or current_ltp <= 0: continue
+
+                # 1. VWAP TICK
+                vwap_mode = self.monitor._get_user_setting('check_mode', str, fallback='TICK', mode=mode, category='indicators/vwap').upper()
+                vwap_val = await self.indicator_manager.calculate_vwap(inst_key, timestamp)
+                if vwap_mode == 'TICK': data['criteria_state']['vwap'] = (vwap_val is None or current_ltp >= vwap_val)
+                data['vwap'] = vwap_val
+
+                # 2. VWAP Slope
+                slope_mode = self.monitor._get_user_setting('check_mode', str, fallback='CLOSE', mode=mode, category='indicators/vwap_slope').upper()
+                slope_tf = self.monitor._get_user_setting('tf', int, fallback=1, mode=mode, category='indicators/vwap_slope')
+                slope_occ = self.monitor._get_user_setting('occurrences', int, fallback=1, mode=mode, category='indicators/vwap_slope')
+                slope_operator = self.monitor._get_user_setting('operator', str, fallback='>', mode=mode, category='indicators/vwap_slope')
+                slope_threshold = self.monitor._get_user_setting('threshold', float, fallback=0.0, mode=mode, category='indicators/vwap_slope')
+
+                anchor = timestamp.replace(hour=9, minute=15, second=0, microsecond=0)
+                mins_since_open = int((timestamp - anchor).total_seconds() / 60)
+                is_slope_eval_time = (mins_since_open % slope_tf == 0)
+
+                s_ts = timestamp if slope_mode == 'TICK' else (timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1))
+                s_v = vwap_val if slope_mode == 'TICK' else None
+
+                if is_slope_eval_time:
+                    is_r, is_f, v_curr, v_prev, c_r, c_f = await self.indicator_manager.get_vwap_slope_status(inst_key, s_ts, slope_tf, slope_occ, live_vwap=s_v)
+                    curr_cons = c_r if slope_operator in ('>', '>=') else c_f
+                    slope_passed = False
+                    if v_curr is not None and v_prev is not None and v_prev != 0:
+                        diff = (v_curr - v_prev) / v_prev
+                        if slope_operator == '>': slope_passed = (diff > slope_threshold and curr_cons >= slope_occ)
+                        elif slope_operator == '<': slope_passed = (diff < slope_threshold and curr_cons >= slope_occ)
+                        elif slope_operator == '>=': slope_passed = (diff >= slope_threshold and curr_cons >= slope_occ)
+                        elif slope_operator == '<=': slope_passed = (diff <= slope_threshold and curr_cons >= slope_occ)
+                        data['slope_info'] = f"V1:{float(v_curr):.2f} {slope_operator} V0:{float(v_prev):.2f} (Pct:{diff*100:.2f}%, Cons:{curr_cons}/{slope_occ})"
+                    else:
+                        data['slope_info'] = "Waiting for data"
+                    data['criteria_state']['vwap_slope'] = slope_passed
+
+                # 3. R1 High TICK
+                r1_mode = self.monitor._get_user_setting('check_mode', str, fallback='TICK', mode=mode, category='indicators/r1_high').upper()
+                r1_tf = self.monitor._get_user_setting('tf', int, fallback=3, mode=mode, category='indicators/r1_high')
+
+                if r1_mode == 'TICK':
+                    is_br, _, b_val, s1_r, r1_r, ph, s1_h, r1_l, b_lvl = await self.monitor._check_barrier_breach(inst_key, current_ltp, 'r1_high', r1_tf, timestamp, mode=mode)
+                    data['r1_high'] = b_val
+                    data['r1_phase'] = ph
+                    data['r1_label'] = 'PrevHigh' if ph == 'R1_TRACKING' else 'R1'
+                    data['criteria_state']['r1_high'] = is_br
+
+                # 4. S1 Low TICK
+                s1_mode = self.monitor._get_user_setting('check_mode', str, fallback='TICK', mode=mode, category='indicators/s1_low').upper()
+                s1_tf = self.monitor._get_user_setting('tf', int, fallback=3, mode=mode, category='indicators/s1_low')
+
+                if s1_mode == 'TICK':
+                    is_br, _, b_val, s1_r, r1_r, ph, s1_h, r1_l, b_lvl = await self.monitor._check_barrier_breach(inst_key, current_ltp, 's1_low', s1_tf, timestamp, mode=mode)
+                    data['s1_low'] = b_val
+                    data['s1_phase'] = ph
+                    data['s1_label'] = 'PrevLow' if ph == 'S1_TRACKING' else 'S1'
+                    data['criteria_state']['s1_low'] = is_br
+
+                # 5. STICKY RE-ENTRY
+                is_sticky_reentry = monitoring_data.get('awaiting_fresh_vwap_breach', False)
+                is_dip_pending = False
+                if is_sticky_reentry:
+                    if mode == 'buy':
+                        r1_tf_val = self.monitor._get_user_setting('tf', int, fallback=3, mode=mode, category='indicators/r1_high')
+                        b_val, _, _, _, phase, _, _, _ = await self.indicator_manager.get_nuanced_barrier(data['instrument_key'], 'r1_high', r1_tf_val, timestamp)
+                        is_below = (vwap_val is not None and current_ltp < vwap_val) or (b_val is not None and current_ltp < b_val and phase != 'R1_TRACKING')
+                    else: # sell
+                        s1_tf_val = self.monitor._get_user_setting('tf', int, fallback=3, mode=mode, category='indicators/s1_low')
+                        b_val, _, _, _, phase, _, _, _ = await self.indicator_manager.get_nuanced_barrier(data['instrument_key'], 's1_low', s1_tf_val, timestamp)
+                        is_below = (vwap_val is not None and current_ltp > vwap_val) or (b_val is not None and current_ltp > b_val and phase != 'S1_TRACKING')
+
+                    if is_below:
+                        if not monitoring_data.get('sticky_dip_confirmed'):
+                            monitoring_data['sticky_dip_confirmed'] = True
+                    if not monitoring_data.get('sticky_dip_confirmed'):
+                        is_dip_pending = True
+
+                # --- Evaluate Formula & Log ---
+                eval_results = {k: v for k, v in data['criteria_state'].items()}
+
+                # Throttled Status Log
+                last_wait_log = getattr(self.monitor, f'_last_wait_log_{side}_{mode}', 0)
+                if timestamp.timestamp() - last_wait_log >= 60:
+                    wait_parts = []
+                    import re
+                    f_lower = entry_formula.lower()
+                    for k, v in eval_results.items():
+                        if not re.search(rf'\b{k}\b', f_lower) and k not in ['r1_high', 's1_low']: continue
+                        if k == 'r1_high':
+                            label = data.get('r1_label', 'R1')
+                            val = data.get('r1_high')
+                            wait_parts.append(f"{label}({float(val or 0):.1f})={v}")
+                        elif k == 's1_low':
+                            label = data.get('s1_label', 'S1')
+                            val = data.get('s1_low')
+                            wait_parts.append(f"{label}({float(val or 0):.1f})={v}")
+                        elif k == 'vwap_slope':
+                            wait_parts.append(f"slope({data.get('slope_info', 'N/A')})={v}")
+                        else:
+                            wait_parts.append(f"{k}={v}")
+                    logger.info(f"V2: [{side}] [{mode.upper()}] Status [{data['strike_price']}]: {', '.join(wait_parts)} | LTP: {current_ltp:.2f} | Formula: {entry_formula}")
+                    setattr(self.monitor, f'_last_wait_log_{side}_{mode}', timestamp.timestamp())
+
+                if self.monitor._evaluate_formula(entry_formula, eval_results):
+                    if not range_passed:
+                        last_range_log = getattr(self.monitor, f'_last_range_wait_{side}_{mode}', 0)
+                        if timestamp.timestamp() - last_range_log >= 60:
+                            wait_msg = "Waiting for 9:15 High Breach" if side == 'CE' else "Waiting for 9:15 Low Breach"
+                            logger.info(f"V2: [{side}] Entry BLOCKED. {wait_msg}. Index: {idx_ltp:.2f} (9:15 Range: {idx_low:.2f} - {idx_high:.2f})")
+                            setattr(self.monitor, f'_last_range_wait_{side}_{mode}', timestamp.timestamp())
+                        continue
+
+                    if is_dip_pending:
+                        last_dip_log = getattr(self.monitor, f'_last_dip_wait_{side}_{mode}', 0)
+                        if timestamp.timestamp() - last_dip_log >= 60:
+                            logger.info(f"V2: [{side}] [{mode.upper()}] Entry BLOCKED. Formula passed but waiting for DIP.")
+                            setattr(self.monitor, f'_last_dip_wait_{side}_{mode}', timestamp.timestamp())
+                        continue
+
+                    # Trigger
+                    trigger_reason = f"{side} {mode.upper()} confirmed via Formula: {entry_formula} (Tick)"
+                    entry_type = self.monitor._get_user_setting('entry_type', str, fallback='BUY', mode=mode)
+
+                    # Reversal check logic...
+                    if not await self.monitor._handle_potential_reversal(side, mode, data, timestamp):
+                        continue # Blocked by simultaneous/reversal rules
+
+                    await self.monitor._confirm_entry(side, data, inst_key, data['strike_price'], current_ltp, trigger_reason, timestamp, entry_type)
+                    triggered = True # Triggered
+        return triggered
+
+    async def evaluate_close_criteria(self, timestamp, active_modes):
+        """Evaluates entry formulas based on finalized 1-minute candles."""
+        monitoring_data = self.state_manager.dual_sr_monitoring_data
+        if not monitoring_data: return
+        triggered = False
+
+        for mode in active_modes:
+            sig_expiry = self.atm_manager.get_expiry_by_mode(mode, 'signal')
+            entry_formula = self.monitor._get_user_setting('entry_formula', str, fallback='pattern', mode=mode)
+
+            for side in ['CE', 'PE']:
+                side_key = 'ce_data' if side == 'CE' else 'pe_data'
+                data = monitoring_data[side_key]
+
+                if data.get('entry_confirmed'):
+                    continue
+
+                # --- Index Range Filter (Gate) ---
+                gate_enabled = self.monitor._get_user_setting('range_915_gate_enabled', bool, fallback=True, mode=mode)
+
+                range_passed = True
+                if gate_enabled:
+                    idx_ltp = self.state_manager.index_price or 0.0
+                    idx_high, idx_low = await self.indicator_manager.get_index_915_range(self.orchestrator.index_instrument_key, timestamp)
+                    range_passed = self.monitor.gate_manager.is_side_permitted(side, idx_ltp, idx_high, idx_low)
+
+                if not range_passed:
+                    last_range_log = getattr(self.monitor, f'_last_range_wait_close_{side}_{mode}', 0)
+                    if timestamp.timestamp() - last_range_log >= 60:
+                        breach_happened = getattr(self.state_manager, 'range_915_breached_up' if side == 'CE' else 'range_915_breached_down', False)
+                        wait_msg = f"Gated. {'WaitBreach' if not breach_happened else 'Offside'}"
+                        logger.info(f"V2: [{side}] {wait_msg} (Close Mode). Index: {idx_ltp:.2f}")
+                        setattr(self.monitor, f'_last_range_wait_close_{side}_{mode}', timestamp.timestamp())
+                    continue
+
+                if self.state_manager.is_in_trade('CALL' if side == 'CE' else 'PUT'): continue
+
+                inst_key = self.atm_manager.find_instrument_key_by_strike(data['strike_price'], side, sig_expiry)
+                if not inst_key: continue
+
+                vwap_val = await self.indicator_manager.calculate_vwap(inst_key, timestamp)
+                last_close = data['last_close']
+
+                eval_results = {
+                    'pattern': data['criteria_state'].get('pattern', False),
+                    'vwap': data['criteria_state'].get('vwap', False),
+                    'vwap_slope': data['criteria_state'].get('vwap_slope', False),
+                    'r1_high': data['criteria_state'].get('r1_high', False),
+                    's1_low': data['criteria_state'].get('s1_low', False)
+                }
+
+                # 2. VWAP check
+                vwap_mode = self.monitor._get_user_setting('check_mode', str, fallback='TICK', mode=mode, category='indicators/vwap').upper()
+                if vwap_mode == 'CLOSE': eval_results['vwap'] = (vwap_val is None or last_close >= vwap_val)
+
+                # 3. VWAP Slope check
+                slope_mode = self.monitor._get_user_setting('check_mode', str, fallback='CLOSE', mode=mode, category='indicators/vwap_slope').upper()
+                if slope_mode == 'CLOSE':
+                    slope_tf = self.monitor._get_user_setting('tf', int, fallback=1, mode=mode, category='indicators/vwap_slope')
+                    slope_occ = self.monitor._get_user_setting('occurrences', int, fallback=1, mode=mode, category='indicators/vwap_slope')
+                    slope_operator = self.monitor._get_user_setting('operator', str, fallback='>', mode=mode, category='indicators/vwap_slope')
+                    slope_threshold = self.monitor._get_user_setting('threshold', float, fallback=0.0, mode=mode, category='indicators/vwap_slope')
+
+                    # Use finalized 1m ts
+                    last_1m_ts = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
+                    is_r, is_f, v_curr, v_prev, c_r, c_f = await self.indicator_manager.get_vwap_slope_status(inst_key, last_1m_ts, slope_tf, slope_occ)
+                    curr_cons = c_r if slope_operator in ('>', '>=') else c_f
+                    slope_passed = False
+                    if v_curr is not None and v_prev is not None and v_prev != 0:
+                        diff = (v_curr - v_prev) / v_prev
+                        if slope_operator == '>': slope_passed = (diff > slope_threshold and curr_cons >= slope_occ)
+                        elif slope_operator == '<': slope_passed = (diff < slope_threshold and curr_cons >= slope_occ)
+                        elif slope_operator == '>=': slope_passed = (diff >= slope_threshold and curr_cons >= slope_occ)
+                        elif slope_operator == '<=': slope_passed = (diff <= slope_threshold and curr_cons >= slope_occ)
+                    eval_results['vwap_slope'] = slope_passed
+
+                # 4. R1 High check (CLOSE)
+                r1_mode = self.monitor._get_user_setting('check_mode', str, fallback='TICK', mode=mode, category='indicators/r1_high').upper()
+                if r1_mode == 'CLOSE':
+                    r1_tf_val = self.monitor._get_user_setting('tf', int, fallback=3, mode=mode, category='indicators/r1_high')
+                    is_r1_p, _, b_val, _, _, ph, _, _, _ = await self.monitor._check_barrier_breach(inst_key, last_close, 'r1_high', r1_tf_val, timestamp, mode=mode)
+                    eval_results['r1_high'] = is_r1_p
+
+                # 5. S1 Low check (CLOSE)
+                s1_mode = self.monitor._get_user_setting('check_mode', str, fallback='TICK', mode=mode, category='indicators/s1_low').upper()
+                if s1_mode == 'CLOSE':
+                    s1_tf_val = self.monitor._get_user_setting('tf', int, fallback=3, mode=mode, category='indicators/s1_low')
+                    is_s1_p, _, b_val, _, _, ph, _, _, _ = await self.monitor._check_barrier_breach(inst_key, last_close, 's1_low', s1_tf_val, timestamp, mode=mode)
+                    eval_results['s1_low'] = is_s1_p
+
+                # Update main criteria_state for transparency
+                for k in ['vwap', 'vwap_slope', 'r1_high', 's1_low']:
+                    if k in eval_results: data['criteria_state'][k] = eval_results[k]
+
+                # --- Formula Evaluation ---
+                if self.monitor._evaluate_formula(entry_formula, eval_results):
+                    # Trigger trade
+                    signal_ltp = self.state_manager.get_ltp(inst_key) or last_close
+                    trigger_reason = f"{side} {mode.upper()} confirmed via Formula: {entry_formula} (Close). Slope: {data.get('slope_info', 'N/A')}"
+                    entry_type = self.monitor._get_user_setting('entry_type', str, fallback='BUY', mode=mode)
+
+                    if not await self.monitor._handle_potential_reversal(side, mode, data, timestamp):
+                        continue # Blocked
+
+                    monitoring_data['baseline_side'] = side
+                    monitoring_data['crossover_state'] = 1
+                    await self.monitor._confirm_entry(side, data, inst_key, data['strike_price'], signal_ltp, trigger_reason, timestamp, entry_type)
+                    triggered = True
+        return triggered
