@@ -32,7 +32,7 @@ class SellManager:
 
     def _find_from_chain(self, chain, side):
         """
-        Scans option chain data for the strike with LTP > 100 closest to ₹100
+        Scans option chain data for the strike with LTP closest to ₹100
         on the given side ('CE' or 'PE').
 
         Returns (float(strike_price), contract, instrument_key, ltp) or (None, None, None, None).
@@ -47,11 +47,11 @@ class SellManager:
             ltp = market.get('ltp', 0) or 0
             strike_price = entry.get('strike_price')
             inst_key = side_data.get('instrument_key')
-            if ltp > 100 and strike_price is not None and inst_key:
+            if ltp > 0 and strike_price is not None and inst_key:
                 candidates.append((abs(ltp - 100), ltp, float(strike_price), inst_key))
 
         if not candidates:
-            logger.error(f"[SellManager] No {side} strikes with LTP > 100 found in option chain")
+            logger.error(f"[SellManager] No {side} strikes found in option chain")
             return None, None, None, None
 
         candidates.sort(key=lambda x: x[0])
@@ -73,7 +73,7 @@ class SellManager:
         applies the same 'closest to ₹100' selection logic on those historical prices.
 
         Expects `chain` to already be filtered to the target ATM-anchored strikes
-        (typically 5 candidates) to minimise API calls.
+        (typically 12 candidates) to minimise API calls.
         """
         options_key = 'call_options' if side == 'CE' else 'put_options'
 
@@ -90,11 +90,11 @@ class SellManager:
         candidates = []
         for strike, inst_key in candidates_raw:
             hist_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(inst_key, timestamp)
-            if hist_ltp and hist_ltp > 100:
+            if hist_ltp is not None and hist_ltp > 0:
                 candidates.append((abs(hist_ltp - 100), hist_ltp, strike, inst_key))
 
         if not candidates:
-            logger.error(f"[SellManager][Backtest] No {side} strikes with historical LTP > 100 found at {timestamp}")
+            logger.error(f"[SellManager][Backtest] No {side} strikes with historical LTP found at {timestamp}")
             return None, None, None, None
 
         candidates.sort(key=lambda x: x[0])
@@ -149,19 +149,22 @@ class SellManager:
             return
 
         # --- T001: ATM-anchored strike filtering ---
-        # Only search the 5 strikes above ATM for CE and 5 below for PE.
-        # This reduces backtest historical LTP API calls from 63+ to 10.
+        # CE search: 8 strikes above ATM to 3 strikes below ATM.
+        # PE search: 8 strikes below ATM to 3 strikes above ATM.
+        # This reduces backtest historical LTP API calls from 63+ to 24.
         atm = self.orchestrator.atm_manager.strikes.get('atm')
         interval = self.orchestrator.config_manager.get_int(
             self.orchestrator.instrument_name, 'strike_interval', 50)
 
         if atm and interval:
-            ce_targets = {float(atm + i * interval) for i in range(1, 10)}
-            pe_targets = {float(atm - i * interval) for i in range(1, 10)}
+            # CE: range(-3, 9) covers 3 strikes below to 8 strikes above ATM
+            ce_targets = {float(atm + i * interval) for i in range(-3, 9)}
+            # PE: range(-8, 4) covers 8 strikes below to 3 strikes above ATM
+            pe_targets = {float(atm + i * interval) for i in range(-8, 4)}
             logger.info(
                 f"[SellManager] ATM={atm} interval={interval} — "
-                f"CE search: {int(atm + interval)}–{int(atm + 5*interval)} | "
-                f"PE search: {int(atm - interval)}–{int(atm - 5*interval)}"
+                f"CE search: {int(atm - 3*interval)}–{int(atm + 8*interval)} | "
+                f"PE search: {int(atm - 8*interval)}–{int(atm + 3*interval)}"
             )
             ce_chain = [e for e in chain if float(e.get('strike_price', -1)) in ce_targets]
             pe_chain = [e for e in chain if float(e.get('strike_price', -1)) in pe_targets]
