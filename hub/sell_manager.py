@@ -19,6 +19,9 @@ class SellManager:
         self.buy_pe_key = None   # instrument_key of sell_pe_strike - 100
         self.sell_ce_entry_ltp = None
         self.sell_pe_entry_ltp = None
+        self.sell_entry_timestamp = None
+        self.sell_ce_contract = None
+        self.sell_pe_contract = None
         self.expiry = None
 
     # ------------------------------------------------------------------
@@ -188,6 +191,9 @@ class SellManager:
         self.buy_pe_key = buy_pe_key
         self.sell_ce_entry_ltp = ce_entry_ltp
         self.sell_pe_entry_ltp = pe_entry_ltp
+        self.sell_entry_timestamp = timestamp
+        self.sell_ce_contract = ce_contract
+        self.sell_pe_contract = pe_contract
         self.strangle_placed = True
         all_strangle_keys = [k for k in [self.sell_ce_key, self.sell_pe_key, self.buy_ce_key, self.buy_pe_key] if k]
         if all_strangle_keys:
@@ -237,6 +243,40 @@ class SellManager:
         self.strangle_closed = True
         self.save_state()
         logger.info(f"[SellManager] Short strangle closed: CE {self.sell_ce_strike} | PE {self.sell_pe_strike}")
+
+        if self.orchestrator.is_backtest and self.sell_ce_entry_ltp and self.sell_pe_entry_ltp:
+            ce_exit_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(self.sell_ce_key, timestamp)
+            pe_exit_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(self.sell_pe_key, timestamp)
+            if ce_exit_ltp and pe_exit_ltp:
+                ce_pnl_per = self.sell_ce_entry_ltp - ce_exit_ltp
+                pe_pnl_per = self.sell_pe_entry_ltp - pe_exit_ltp
+                logger.info(
+                    f"[SellManager] SELL STRANGLE PnL at close: "
+                    f"CE {int(self.sell_ce_strike)} entry={self.sell_ce_entry_ltp:.2f} exit={ce_exit_ltp:.2f} PnL/share={ce_pnl_per:+.2f} | "
+                    f"PE {int(self.sell_pe_strike)} entry={self.sell_pe_entry_ltp:.2f} exit={pe_exit_ltp:.2f} PnL/share={pe_pnl_per:+.2f} | "
+                    f"Combined PnL/share={ce_pnl_per + pe_pnl_per:+.2f}"
+                )
+                if self.orchestrator.pnl_tracker:
+                    for side, key, strike, entry_ltp, exit_ltp, pnl_per, contract in [
+                        ('CALL', self.sell_ce_key, self.sell_ce_strike, self.sell_ce_entry_ltp, ce_exit_ltp, ce_pnl_per, self.sell_ce_contract),
+                        ('PUT',  self.sell_pe_key, self.sell_pe_strike, self.sell_pe_entry_ltp, pe_exit_ltp, pe_pnl_per, self.sell_pe_contract),
+                    ]:
+                        self.orchestrator.pnl_tracker.trade_history.append({
+                            'instrument_key': key,
+                            'entry_price': entry_ltp,
+                            'exit_price': exit_ltp,
+                            'entry_timestamp': self.sell_entry_timestamp,
+                            'exit_timestamp': timestamp,
+                            'pnl': pnl_per,
+                            'status': 'CLOSED',
+                            'side': side,
+                            'strike_price': strike,
+                            'contract': contract,
+                            'strategy_log': 'SELL NRML strangle leg',
+                            'entry_type': 'SELL',
+                        })
+            else:
+                logger.warning(f"[SellManager][Backtest] Could not fetch exit LTP for sell legs at {timestamp}. PnL not calculated.")
 
     def get_buy_strike(self, direction):
         """
