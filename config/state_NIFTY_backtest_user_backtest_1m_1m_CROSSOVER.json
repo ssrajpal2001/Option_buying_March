@@ -23,7 +23,7 @@
         "exit_sent": false,
         "s1_double_drop_triggered": false,
         "pattern_exit_triggered": false,
-        "slope_info": "V1:229.16 < Ref:229.16 (Pct:0.00%)",
+        "slope_info": "V1:229.16 < Ref:229.16 (Pct:-0.00%)",
         "entry_atr": 4.834999999999999,
         "vwap_slope_exit_triggered": false,
         "monitoring_ltp": 229.35,

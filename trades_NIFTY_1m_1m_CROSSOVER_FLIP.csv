@@ -91,3 +91,57 @@ Timestamp,Broker,InstrumentSymbol,TradeType,Price,PNL,Reason,StrategyLog
 2026-02-26 03:38:26,Backtest,NSE_FO|54984,PUT,285.0,,,PE BUY confirmed via Formula: vwap_slope (Tick)
 2026-02-26 03:38:30,Backtest,NSE_FO|54983,EXIT_CALL,229.0,7.00,End of backtest,
 2026-02-26 03:38:30,Backtest,NSE_FO|54984,EXIT_PUT,285.6,0.60,End of backtest,
+2026-02-26 03:41:18,Backtest,NSE_FO|54983,CALL,226.6,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:18,Backtest,NSE_FO|54984,PUT,292.95,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:19,Backtest,NSE_FO|54984,EXIT_PUT,307.2,14.25,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:19,Backtest,NSE_FO|54984,PUT,305.45,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:20,Backtest,NSE_FO|54983,EXIT_CALL,219.4,-7.20,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:20,Backtest,NSE_FO|54983,CALL,222.0,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:22,Backtest,NSE_FO|54984,EXIT_PUT,280.85,-24.60,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:30,Backtest,NSE_FO|54984,PUT,286.85,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:37,Backtest,NSE_FO|54984,EXIT_PUT,283.25,-3.60,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:39,Backtest,NSE_FO|54984,PUT,286.0,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:39,Backtest,NSE_FO|54983,EXIT_CALL,229.0,7.00,End of backtest,
+2026-02-26 03:41:39,Backtest,NSE_FO|54984,EXIT_PUT,285.6,-0.40,End of backtest,
+2026-02-26 03:41:52,Backtest,NSE_FO|54983,CALL,226.6,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:52,Backtest,NSE_FO|54984,PUT,292.95,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:52,Backtest,NSE_FO|54983,EXIT_CALL,220.75,-5.85,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:52,Backtest,NSE_FO|54983,CALL,223.5,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:53,Backtest,NSE_FO|54984,EXIT_PUT,307.2,14.25,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:53,Backtest,NSE_FO|54984,PUT,305.45,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:54,Backtest,NSE_FO|54983,EXIT_CALL,219.4,-4.10,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:54,Backtest,NSE_FO|54983,CALL,222.0,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:41:56,Backtest,NSE_FO|54984,EXIT_PUT,283.0,-22.45,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:59,Backtest,NSE_FO|54983,EXIT_CALL,242.5,20.50,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:41:59,Backtest,NSE_FO|54985,CALL,219.0,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:05,Backtest,NSE_FO|54984,PUT,286.85,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:08,Backtest,NSE_FO|54984,EXIT_PUT,280.2,-6.65,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:42:12,Backtest,NSE_FO|54984,PUT,285.0,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:18,Backtest,NSE_FO|54985,EXIT_CALL,207.9,-11.10,End of backtest,
+2026-02-26 03:42:18,Backtest,NSE_FO|54984,EXIT_PUT,285.6,0.60,End of backtest,
+2026-02-26 03:42:30,Backtest,NSE_FO|54983,CALL,226.6,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:30,Backtest,NSE_FO|54984,PUT,292.95,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:31,Backtest,NSE_FO|54984,EXIT_PUT,310.65,17.70,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:42:31,Backtest,NSE_FO|54984,PUT,310.25,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:32,Backtest,NSE_FO|54983,EXIT_CALL,217.2,-9.40,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:42:33,Backtest,NSE_FO|54983,CALL,222.0,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:35,Backtest,NSE_FO|54984,EXIT_PUT,280.85,-29.40,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:42:44,Backtest,NSE_FO|54984,PUT,286.85,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:51,Backtest,NSE_FO|54984,EXIT_PUT,283.25,-3.60,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:42:53,Backtest,NSE_FO|54984,PUT,286.0,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:42:53,Backtest,NSE_FO|54983,EXIT_CALL,229.0,7.00,End of backtest,
+2026-02-26 03:42:53,Backtest,NSE_FO|54984,EXIT_PUT,285.6,-0.40,End of backtest,
+2026-02-26 03:43:06,Backtest,NSE_FO|54983,CALL,226.6,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:43:06,Backtest,NSE_FO|54984,PUT,292.95,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:43:06,Backtest,NSE_FO|54983,EXIT_CALL,227.45,0.85,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:43:06,Backtest,NSE_FO|54983,CALL,226.7,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:43:07,Backtest,NSE_FO|54984,EXIT_PUT,310.65,17.70,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:43:07,Backtest,NSE_FO|54984,PUT,310.25,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:43:08,Backtest,NSE_FO|54983,EXIT_CALL,217.2,-9.50,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:43:08,Backtest,NSE_FO|54983,CALL,222.0,,,CE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:43:11,Backtest,NSE_FO|54984,EXIT_PUT,280.85,-29.40,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:43:20,Backtest,NSE_FO|54984,PUT,286.85,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:43:23,Backtest,NSE_FO|54984,EXIT_PUT,285.1,-1.75,Structural Exit: VWAP Slope < (CLOSE),Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 03:43:26,Backtest,NSE_FO|54984,PUT,285.0,,,PE BUY confirmed via Formula: vwap_slope (Tick)
+2026-02-26 03:43:30,Backtest,NSE_FO|54983,EXIT_CALL,229.0,7.00,End of backtest,
+2026-02-26 03:43:30,Backtest,NSE_FO|54984,EXIT_PUT,285.6,0.60,End of backtest,
