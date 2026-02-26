@@ -68,12 +68,11 @@ class ExpiryManager:
         idx = expiry_map.get(mode_upper, 0)
 
         # Edge case: on expiry day, today might not be in all_future_expiries (broker excluded it).
-        # If the mode is WEEKLY/EXPIRY (nearest) and today is a Thursday expiry day, return today.
+        # Detect by checking if the first future expiry is strictly after today (meaning today
+        # was excluded). This works regardless of which weekday NSE sets as expiry day.
         if idx == 0 and all_future_expiries[0] > today:
-            # today is not the first future expiry — it may have been excluded
-            if today.weekday() == 3:  # today is a Thursday → likely an expiry day
-                logger.warning(f"ExpiryManager: WEEKLY/EXPIRY mode — today {today} (Thursday) not in future expiries. Using today as expiry.")
-                return today
+            logger.warning(f"ExpiryManager: WEEKLY/EXPIRY mode — today {today} not in future expiries list. Using today as expiry.")
+            return today
 
         return all_future_expiries[idx] if idx < len(all_future_expiries) else all_future_expiries[-1]
 
@@ -89,10 +88,11 @@ class ExpiryManager:
 
         mode = mode.upper()
 
-        # Edge case: on expiry day, if today (Thursday) is excluded from unique_weekly,
-        # prepend it so that WEEKLY/CURRENT_WEEK correctly resolves to today.
-        if today.weekday() == 3 and (not unique_weekly or unique_weekly[0] > today):
-            logger.warning(f"ExpiryManager: calculate_expiry_date — today {today} (Thursday) excluded from contract list. Injecting as expiry.")
+        # Edge case: on expiry day, today may be excluded from unique_weekly (broker API omits
+        # expiring contracts). Detect by checking if the list is empty or starts after today.
+        # Works regardless of which weekday NSE uses as expiry day.
+        if not unique_weekly or unique_weekly[0] > today:
+            logger.warning(f"ExpiryManager: calculate_expiry_date — today {today} excluded from contract list. Injecting as expiry.")
             unique_weekly = [today] + unique_weekly
 
         if not unique_weekly: return None
