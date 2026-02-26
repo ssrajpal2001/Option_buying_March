@@ -11,6 +11,10 @@ class LiveOrchestrator(BaseOrchestrator):
         super().__init__(*args, **kwargs)
         self.subscribed_instruments = set()
 
+        from hub.sell_manager import SellManager
+        self.sell_manager = SellManager(self)
+        self.sell_manager.load_state()
+
         # Dynamic watchlist management for traded ITM contracts
         event_bus.subscribe('ADD_TO_WATCHLIST', self.handle_add_to_watchlist)
         event_bus.subscribe('REMOVE_FROM_WATCHLIST', self.handle_remove_from_watchlist)
