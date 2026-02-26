@@ -409,7 +409,10 @@ class SignalMonitor:
 
                 for side_data in [ce_data, pe_data]:
                     if side_data:
-                        inst_key = side_data['instrument_key']
+                        inst_key = side_data.get('instrument_key')
+                        if not inst_key:
+                            logger.warning(f"V2: Resume-priming skipped for side — instrument_key is None in saved monitoring data.")
+                            continue
                         try:
                             await asyncio.wait_for(asyncio.gather(
                                 self.data_manager.prime_aggregator(self.orchestrator.entry_aggregator, inst_key, timestamp),
