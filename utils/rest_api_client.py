@@ -1,4 +1,48 @@
-pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
+import aiohttp
+from .logger import logger
+import datetime
+import pandas as pd
+import asyncio
+
+class RestApiClient:
+    BASE_URL = "https://api.upstox.com/v2"
+
+    def __init__(self, auth_handler):
+        self.auth_handler = auth_handler
+        self.session = None
+        self.ohlc_cache = {}
+        self.backtest_mode = self.auth_handler.config_manager.get_boolean('backtest', 'enabled', fallback=False)
+
+    async def _get_session(self):
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession(headers=await self._get_headers())
+        return self.session
+
+    async def _get_headers(self):
+        return {
+            'Accept': 'application/json',
+            'Api-Version': '2.0',
+            'Authorization': f'Bearer {self.auth_handler.get_access_token()}'
+        }
+
+    async def _request(self, method, endpoint, params=None, retry=True, silence_error=False, timeout=15):
+        try:
+            session = await self._get_session()
+            url = f"{self.BASE_URL}{endpoint}"
+
+            atimeout = aiohttp.ClientTimeout(total=timeout)
+
+            async with session.request(method, url, params=params, timeout=atimeout) as response:
+                if response.status == 400:
+                    body = await response.text()
+                    if silence_error:
+                        logger.debug(f"Upstox API 400 (Expected/Silenced) at {endpoint}. Body: {body}")
+                    else:
+                        logger.error(f"Upstox API 400 Bad Request at {endpoint}. Body: {body}")
+
+                response.raise_for_status()
+                return await response.json()
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
             status = getattr(e, 'status', None)
             error_msg = str(e)
             if isinstance(e, asyncio.TimeoutError):
@@ -44,24 +88,17 @@ pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
             if cache_key in self.ohlc_cache:
                 return self.ohlc_cache[cache_key]
 
-        # LOGIC: Upstox has separate endpoints for historical (past) and intraday (today).
-        # today_str uses IST timezone to match Indian market dates correctly.
-
         df = pd.DataFrame()
 
         if to_date_str == today_str:
-            # Range includes today
             if from_date_str == today_str:
-                # Today only: Use intraday endpoint
                 logger.info(f"DATA_FETCH: Intraday-only request for '{instrument_key}' ({interval}).")
                 df = await self.get_intraday_candle_data(instrument_key, interval)
             else:
-                # Range from past to today: Merge historical and intraday
                 yesterday = (datetime.datetime.now(ist) - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
                 logger.info(f"DATA_FETCH: Merging historical (up to {yesterday}) + intraday for '{instrument_key}' ({interval}).")
 
-                # 1. Fetch past data up to yesterday
                 hist_endpoint = f"/historical-candle/{instrument_key}/{interval}/{yesterday}/{from_date_str}"
                 try:
                     hist_response = await self._request('get', hist_endpoint)
@@ -72,14 +109,11 @@ pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
                     logger.warning(f"Failed to fetch historical part of merged range: {e}")
                     hist_df = pd.DataFrame()
 
-                # 2. Fetch today's intraday data
                 intra_df = await self.get_intraday_candle_data(instrument_key, interval)
 
-                # 3. Merge
                 df = pd.concat([hist_df, intra_df]).sort_index()
                 df = df[~df.index.duplicated(keep='last')]
         else:
-            # Past range only: Use standard historical endpoint
             logger.info(f"DATA_FETCH: Requesting historical data for '{instrument_key}' from {from_date_str} to {to_date_str} ({interval}).")
             endpoint = f"/historical-candle/{instrument_key}/{interval}/{to_date_str}/{from_date_str}"
             try:
@@ -100,10 +134,8 @@ pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
         if self.backtest_mode:
             cache_key = (instrument_key, interval, today_str)
             if cache_key in self.ohlc_cache:
-                # logger.info(f"CACHE HIT: Returning cached intraday OHLC data for {instrument_key} on {today_str}.")
                 return self.ohlc_cache[cache_key]
 
-        # Upstox API only accepts '1minute' or '30minute' for intraday interval
         valid_intervals = ['1minute', '30minute']
         if interval not in valid_intervals:
             logger.warning(f"Invalid interval '{interval}' for Upstox intraday candle API. Defaulting to '1minute'.")
@@ -116,7 +148,6 @@ pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
             df = self._format_historical_data(candles)
 
             if self.backtest_mode:
-                # logger.info(f"CACHE MISS: Caching intraday OHLC data for {instrument_key} on {today_str}.")
                 self.ohlc_cache[cache_key] = df
 
             return df
@@ -136,15 +167,10 @@ pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
             return 0.0
 
     async def get_ltps(self, instrument_keys, silence_error=False):
-        """
-        Fetches LTP for multiple instrument keys in a single call.
-        instrument_keys: list of strings
-        """
         if not instrument_keys:
             return {}
 
         all_results = {}
-        # Upstox API allows max 50 keys per request
         chunk_size = 50
         for i in range(0, len(instrument_keys), chunk_size):
             chunk = instrument_keys[i:i + chunk_size]
@@ -161,12 +187,10 @@ pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
         return all_results
 
     async def get_full_market_quote(self, instrument_keys):
-        """Fetches full market quote including OHLC and volume."""
         if not instrument_keys:
             return {}
 
         all_results = {}
-        # Upstox API allows max 50 keys per request
         chunk_size = 50
         for i in range(0, len(instrument_keys), chunk_size):
             chunk = instrument_keys[i:i + chunk_size]
@@ -181,20 +205,14 @@ pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
         return all_results
 
     async def verify_authentication(self):
-        """
-        Makes a simple, low-cost API call to verify that the access token is valid.
-        Returns True if successful, False otherwise.
-        """
         try:
             await self._request('get', '/user/profile')
             return True
         except aiohttp.ClientResponseError as e:
             if e.status == 401:
                 return False
-            # For other errors, we might want to log them but not necessarily
-            # treat it as a critical auth failure.
             logger.warning(f"An unexpected error occurred during auth verification: {e}")
-            return False # Treat other errors as failures for safety
+            return False
 
     def _format_historical_data(self, candles):
         if not candles:
@@ -203,7 +221,7 @@ pt (asyncio.TimeoutError, aiohttp.ClientError) as e:
         df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'oi'])
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df.set_index('timestamp', inplace=True)
-        df.sort_index(inplace=True) # Ensure data is sorted chronologically
+        df.sort_index(inplace=True)
         return df
 
     async def close(self):
