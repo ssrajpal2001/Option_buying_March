@@ -1,0 +1,153 @@
+2026-02-26 11:01:22,509 - UpstoxApp - INFO - Logger has been successfully configured.
+2026-02-26 11:01:22,512 - UpstoxApp - INFO - ACTIVE STRATEGY: Entry TF: 1m | Exit TF: 1m
+2026-02-26 11:01:22,512 - UpstoxApp - INFO - Starting the multi-broker trading application...
+2026-02-26 11:01:22,512 - UpstoxApp - INFO - Using configuration file: config/config_trader.ini
+2026-02-26 11:01:22,512 - UpstoxApp - INFO - Starting configuration validation for context: 'trader'...
+2026-02-26 11:01:22,512 - UpstoxApp - INFO - Configuration validation for 'trader' successful.
+2026-02-26 11:01:22,512 - UpstoxApp - INFO - Initializing API Client Manager for data providers...
+2026-02-26 11:01:22,512 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_1]
+2026-02-26 11:01:22,512 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_1]
+2026-02-26 11:01:22,565 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_1].
+2026-02-26 11:01:22,567 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_2]
+2026-02-26 11:01:22,568 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_2]
+2026-02-26 11:01:22,611 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_2].
+2026-02-26 11:01:22,612 - UpstoxApp - INFO - API client pool initialized with 2 clients. Active client is set.
+2026-02-26 11:01:22,614 - UpstoxApp - ERROR - Failed to connect to database: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+2026-02-26 11:01:22,615 - UpstoxApp - WARNING - DATABASE WARNING: Connection failed ([Errno 111] Connect call failed ('127.0.0.1', 5432)). Proceeding in legacy mode (INI only).
+2026-02-26 11:01:22,616 - UpstoxApp - WARNING - TRADING_BOT_MASTER_KEY not found in environment. Sensitive data will be inaccessible.
+2026-02-26 11:01:22,617 - UpstoxApp - DEBUG - Listener handle_execute_trade_request subscribed to EXECUTE_TRADE_REQUEST
+2026-02-26 11:01:22,617 - UpstoxApp - DEBUG - Listener handle_exit_request subscribed to EXIT_TRADE_REQUEST
+2026-02-26 11:01:22,619 - UpstoxApp - DEBUG - BrokerManager: Discovering multi-tenant brokers from database...
+2026-02-26 11:01:22,619 - UpstoxApp - WARNING - Database broker discovery skipped or failed: 'NoneType' object has no attribute 'acquire'. Falling back to .ini
+2026-02-26 11:01:22,620 - UpstoxApp - INFO - PaperTrade initialized for instruments: ['NIFTY']
+2026-02-26 11:01:22,620 - UpstoxApp - INFO - Successfully loaded broker: PaperTrade (Client: PaperTrade)
+2026-02-26 11:01:22,620 - UpstoxApp - INFO - Live mode enabled. Selected data provider: upstox
+2026-02-26 11:01:22,623 - UpstoxApp - INFO - WebSocket listener task created.
+2026-02-26 11:01:22,624 - UpstoxApp - INFO - Strategy logic loaded from /home/ec2-user/environment/AlgoSoft_March/utils/../config/strategy_logic.json
+2026-02-26 11:01:22,625 - UpstoxApp - DEBUG - Listener _handle_spot_price_update subscribed to SPOT_PRICE_UPDATE
+2026-02-26 11:01:22,636 - UpstoxApp - INFO - Message handler handle_message registered.
+2026-02-26 11:01:22,637 - UpstoxApp - DEBUG - Initializing V2 Logic Components...
+2026-02-26 11:01:22,638 - UpstoxApp - INFO - [NIFTY] IndicatorManager initialized on orchestrator.
+2026-02-26 11:01:22,638 - UpstoxApp - DEBUG - Listener handle_add_to_watchlist subscribed to ADD_TO_WATCHLIST
+2026-02-26 11:01:22,638 - UpstoxApp - DEBUG - Listener handle_remove_from_watchlist subscribed to REMOVE_FROM_WATCHLIST
+2026-02-26 11:01:22,639 - UpstoxApp - INFO - WebSocketManager starting connection loop.
+2026-02-26 11:01:22,639 - UpstoxApp - INFO - Attempting to authorize and connect... (Attempt 1)
+2026-02-26 11:01:22,639 - UpstoxApp - INFO - Authorizing WebSocket feed...
+2026-02-26 11:01:22,639 - UpstoxApp - INFO - Sending GET request to https://api.upstox.com/v3/feed/market-data-feed/authorize...
+2026-02-26 11:01:22,642 - UpstoxApp - INFO - Tick worker started for NIFTY.
+2026-02-26 11:01:22,686 - UpstoxApp - INFO - WebSocket authorization successful.
+2026-02-26 11:01:22,695 - UpstoxApp - INFO - Opening WebSocket connection to wss://wsfeeder-api.upstox.com/market-data-feeder/v...
+2026-02-26 11:01:22,722 - UpstoxApp - INFO - WebSocket connection established successfully.
+2026-02-26 11:01:22,723 - UpstoxApp - WARNING - V2 WebSocket: No existing instruments to re-subscribe to.
+2026-02-26 11:01:22,725 - UpstoxApp - INFO - WebSocket message processor started.
+2026-02-26 11:01:22,726 - UpstoxApp - INFO - First market data packet processed from queue. Data feed is active.
+2026-02-26 11:01:22,748 - UpstoxApp - DEBUG - Upstox API 400 (Expected/Silenced) at /market-quote/ltp. Body: {"status":"error","errors":[{"errorCode":"UDAPI1087","message":"One of either symbol or instrument_key is invalid.","propertyPath":null,"invalidValue":null,"error_code":"UDAPI1087","property_path":null,"invalid_value":null}]}
+2026-02-26 11:01:23,095 - UpstoxApp - INFO - ContractManager: Expiry day detected (2026-02-26) — today's contracts absent from standard endpoint. Fetching from expired-instruments API...
+2026-02-26 11:01:23,098 - UpstoxApp - INFO - ContractManager: Trying expired-instruments: https://api.upstox.com/v2/expired-instruments/option/contract params={'instrument_key': 'NSE_INDEX|Nifty 50', 'expiry_date': '2026-02-26'}
+2026-02-26 11:01:23,131 - UpstoxApp - INFO - ContractManager: expired-instruments response — status=200, data_count=0, body_keys=['status', 'data']
+2026-02-26 11:01:23,131 - UpstoxApp - WARNING - ContractManager: https://api.upstox.com/v2 returned 200 but data=[] for expiry=2026-02-26
+2026-02-26 11:01:23,131 - UpstoxApp - INFO - ContractManager: Trying expired-instruments: https://api.upstox.com/v3/expired-instruments/option/contract params={'instrument_key': 'NSE_INDEX|Nifty 50', 'expiry_date': '2026-02-26'}
+2026-02-26 11:01:23,166 - UpstoxApp - INFO - ContractManager: expired-instruments response — status=404, data_count=0, body_keys=['status', 'errors']
+2026-02-26 11:01:23,166 - UpstoxApp - WARNING - ContractManager: https://api.upstox.com/v3 returned HTTP 404
+2026-02-26 11:01:23,166 - UpstoxApp - ERROR - ContractManager: All endpoints returned empty — no expiry-day contracts found for 2026-02-26 (key=NSE_INDEX|Nifty 50)
+2026-02-26 11:01:23,166 - UpstoxApp - WARNING - ContractManager: expired-instruments API returned no contracts. Bot may be unable to trade today's expiry.
+2026-02-26 11:01:23,166 - UpstoxApp - INFO - ContractManager: Near weekly expiry resolved to 2026-03-02 (day=Monday)
+2026-02-26 11:01:23,168 - UpstoxApp - DEBUG - AtmManager initialized with Expiry and Subscription managers.
+2026-02-26 11:01:23,168 - UpstoxApp - DEBUG - Orchestrator initialization finalized.
+2026-02-26 11:01:23,169 - UpstoxApp - INFO - [NIFTY] Default expiry resolved: signal=2026-03-02 (CURRENT_WEEK), trade=2026-03-02 (WEEKLY)
+2026-02-26 11:01:23,171 - UpstoxApp - INFO - [NIFTY] [BUY] Expiry resolved: signal=2026-03-02 (WEEKLY), trade=2026-03-02 (WEEKLY)
+2026-02-26 11:01:23,172 - UpstoxApp - INFO - [NIFTY] [SELL] Expiry resolved: signal=2026-03-02 (WEEKLY), trade=2026-03-02 (WEEKLY)
+2026-02-26 11:01:23,173 - UpstoxApp - DEBUG - Listener handle_trade_confirmed subscribed to TRADE_CONFIRMED
+2026-02-26 11:01:23,173 - UpstoxApp - DEBUG - Listener handle_trade_closed subscribed to TRADE_CLOSED
+2026-02-26 11:01:23,173 - UpstoxApp - INFO - UserSession Initialized: User=default_user@local | Instrument=NIFTY
+2026-02-26 11:01:23,173 - UpstoxApp - INFO - No saved state file found. Starting with a fresh state.
+2026-02-26 11:01:23,173 - UpstoxApp - DEBUG - [NIFTY] User default_user@local added to monitoring.
+2026-02-26 11:01:23,173 - UpstoxApp - DEBUG - [NIFTY] Requesting initial subscriptions for: ['NSE_FO|51714', 'NSE_INDEX|Nifty 50']
+2026-02-26 11:01:23,173 - UpstoxApp - DEBUG - LifecycleManager started. Delegating startup sequence...
+2026-02-26 11:01:23,173 - UpstoxApp - INFO - Trading bot is now live.
+2026-02-26 11:01:23,177 - UpstoxApp - DEBUG - OHLC Aggregator [Pattern_Entry|1m]: Initialized first interval start at 11:01:00 (First tick at 11:01:21.793000)
+2026-02-26 11:01:23,178 - UpstoxApp - DEBUG - OHLC Aggregator [Pattern_Exit|1m]: Initialized first interval start at 11:01:00 (First tick at 11:01:21.793000)
+2026-02-26 11:01:23,179 - UpstoxApp - DEBUG - OHLC Aggregator [S1LOW_Fast|1m]: Initialized first interval start at 11:01:00 (First tick at 11:01:21.793000)
+2026-02-26 11:01:23,181 - UpstoxApp - DEBUG - OHLC Aggregator [S1LOW_Slow|3m]: Initialized first interval start at 11:00:00 (First tick at 11:01:21.793000)
+2026-02-26 11:01:23,181 - UpstoxApp - INFO - V2: First FUTURES price received for NIFTY: 25629.7
+2026-02-26 11:01:23,181 - UpstoxApp - INFO - V2: First INDEX price (Spot) received for NIFTY: 25493.25
+2026-02-26 11:01:23,181 - UpstoxApp - DEBUG - V2: Performing resubscription around ATM: 25650
+2026-02-26 11:01:23,182 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.0s | Worker: ALIVE | Exchange: 2026-02-26 11:01:23.174000+05:30 | Sessions: Global:Idle
+2026-02-26 11:01:23,185 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54969' (1minute).
+2026-02-26 11:01:23,230 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54969'.
+2026-02-26 11:01:23,263 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 106 candles for 'NSE_FO|54969' (1minute).
+2026-02-26 11:01:23,319 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54967' (1minute).
+2026-02-26 11:01:23,359 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54967'.
+2026-02-26 11:01:23,392 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 106 candles for 'NSE_FO|54967' (1minute).
+2026-02-26 11:01:23,448 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54972' (1minute).
+2026-02-26 11:01:23,494 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54972'.
+2026-02-26 11:01:23,513 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 106 candles for 'NSE_FO|54972' (1minute).
+2026-02-26 11:01:23,570 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54971' (1minute).
+2026-02-26 11:01:23,613 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54971'.
+2026-02-26 11:01:23,634 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 106 candles for 'NSE_FO|54971' (1minute).
+2026-02-26 11:01:23,690 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54968' (1minute).
+2026-02-26 11:01:23,728 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54968'.
+2026-02-26 11:01:23,761 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 106 candles for 'NSE_FO|54968' (1minute).
+2026-02-26 11:01:23,820 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54970' (1minute).
+2026-02-26 11:01:23,866 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54970'.
+2026-02-26 11:01:23,888 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 106 candles for 'NSE_FO|54970' (1minute).
+2026-02-26 11:01:33,401 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 88.85)
+2026-02-26 11:01:34,003 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 87.50)
+2026-02-26 11:01:34,405 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 87.50)
+2026-02-26 11:01:34,405 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks): None -> 25600 (User: Global)
+2026-02-26 11:01:34,405 - UpstoxApp - DEBUG - [Task 139766598288880] V2: Initiating Crossover Monitoring for strike pair 25600 (User: Global).
+2026-02-26 11:01:34,806 - UpstoxApp - DEBUG - V2: Initial state for strike 25600: PE is higher (Current LTPs - CE: 85.80, PE: 173.30)
+2026-02-26 11:01:34,807 - UpstoxApp - DEBUG - V2: Subscribing to Signal instruments for target strike 25600: ['NSE_FO|54968', 'NSE_FO|54967']
+2026-02-26 11:01:34,809 - UpstoxApp - DEBUG - [Task 139766598288880] V2: Dual Crossover Monitoring is ACTIVE for strike 25600.
+2026-02-26 11:01:34,831 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25600]: slope(V1:106.17 > V0:106.34 (Pct:-0.16%, Cons:0/1))=False | LTP: 85.80 | Formula: vwap_slope
+2026-02-26 11:01:34,842 - UpstoxApp - INFO - V2: [PE] [BUY] Status [25600]: slope(V1:148.58 > V0:148.38 (Pct:0.14%, Cons:1/1))=True | LTP: 173.30 | Formula: vwap_slope
+2026-02-26 11:01:34,844 - UpstoxApp - INFO - [Task 139766598288880] V2: SETTING entry_confirmed=True for PE (BUY)
+2026-02-26 11:01:34,845 - UpstoxApp - INFO - [NIFTY] Broadcasting PUT signal (BUY) to 1 users.
+2026-02-26 11:01:34,846 - UpstoxApp - INFO - Trade expiry confirmed: 2026-03-02 (matches signal expiry)
+2026-02-26 11:01:34,846 - UpstoxApp - INFO - Dynamically adding NSE_FO|54968 to watchlist for live P&L display.
+2026-02-26 11:01:34,846 - UpstoxApp - INFO - V2: Discovery price for NSE_FO|54968...
+2026-02-26 11:01:34,846 - UpstoxApp - INFO - V2: Using price from WebSocket tick: 173.30
+2026-02-26 11:01:34,847 - UpstoxApp - DEBUG - Successfully saved state to config/state_NIFTY_1m_1m_CROSSOVER.json
+2026-02-26 11:01:34,847 - UpstoxApp - INFO - [Task 139766598289296] V2: Marked order_sent=True for PUT
+2026-02-26 11:01:34,847 - UpstoxApp - INFO - [Task 139766598289296] V2: Sending EXECUTE_TRADE_REQUEST for PUT
+2026-02-26 11:01:34,847 - UpstoxApp - INFO - BrokerManager routing NIFTY signal for user_id=None
+2026-02-26 11:01:34,847 - UpstoxApp - INFO - Executing trade on broker 'PaperTrade' (User: None)
+2026-02-26 11:01:34,847 - UpstoxApp - INFO - --- [PaperTrade] PAPER TRADE ENTRY (PUT - BUY) for NIFTY ---
+2026-02-26 11:01:34,847 - UpstoxApp - INFO - Instrument: None | Entry Price: 173.3
+2026-02-26 11:01:34,851 - UpstoxApp - INFO - [NIFTY] Trade confirmed for PUT on NSE_FO|54968 (User: None)
+2026-02-26 11:01:35,039 - UpstoxApp - INFO - V2: Entry ATR for PUT set to 12.15 (Len: 10, TF: 3m)
+2026-02-26 11:01:35,042 - UpstoxApp - INFO - V2: Trade entered on NSE_FO|54968. Monitoring strike 25600 for crossover exit.
+2026-02-26 11:01:35,044 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25600 (SWITCHED) | Index: 25494.90 | CE: slope(V1:106.17 > V0:106.34 (Pct:-0.16%, Cons:0/1)):False (LTP: 85.80) | PE: (In Trade) [V:150.5, VP:0.0, LP:173.3] (LTP: 173.30)
+2026-02-26 11:01:35,416 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 89.10)
+2026-02-26 11:01:36,420 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 88.95)
+2026-02-26 11:01:37,424 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 87.40)
+2026-02-26 11:01:38,429 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 86.90)
+2026-02-26 11:01:39,433 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 88.00)
+2026-02-26 11:01:40,438 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 88.15)
+2026-02-26 11:01:41,444 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 86.90)
+2026-02-26 11:01:42,447 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 85.95)
+2026-02-26 11:01:43,452 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 84.95)
+2026-02-26 11:01:44,458 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 83.25)
+2026-02-26 11:01:45,461 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 81.95)
+2026-02-26 11:01:46,466 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 84.25)
+2026-02-26 11:01:47,471 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 83.70)
+2026-02-26 11:01:48,475 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 82.00)
+2026-02-26 11:01:49,479 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 83.50)
+2026-02-26 11:01:50,484 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 84.90)
+2026-02-26 11:01:51,491 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 84.95)
+2026-02-26 11:01:52,494 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 85.40)
+2026-02-26 11:01:53,500 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 86.05)
+2026-02-26 11:01:54,506 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 86.20)
+2026-02-26 11:01:55,510 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 83.70)
+2026-02-26 11:01:56,515 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 82.50)
+2026-02-26 11:01:57,519 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 83.90)
+2026-02-26 11:01:58,525 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 84.35)
+2026-02-26 11:01:59,529 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 85.40)
+2026-02-26 11:02:00,146 - UpstoxApp - DEBUG - OHLC Aggregator [Pattern_Entry|1m]: Transitioning interval 11:01:00 -> 11:02:00 at 11:02:00.080000
+2026-02-26 11:02:00,147 - UpstoxApp - DEBUG - OHLC Aggregator [Pattern_Exit|1m]: Transitioning interval 11:01:00 -> 11:02:00 at 11:02:00.080000
+2026-02-26 11:02:00,147 - UpstoxApp - DEBUG - OHLC Aggregator [S1LOW_Fast|1m]: Transitioning interval 11:01:00 -> 11:02:00 at 11:02:00.080000
+2026-02-26 11:02:00,534 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 87.25)
+2026-02-26 11:02:00,566 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -19.50 | LTP: 173.00 | VWAP: 150.55 (Peak: 150.55) | Initializing...
+2026-02-26 11:02:01,538 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 87.60)
+2026-02-26 11:02:02,540 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 88.25)
+2026-02-26 11:02:03,545 - UpstoxApp - DEBUG - V2 Selection: Best strike for 2026-03-02 identified: 25600 (Diff: 87.95)
