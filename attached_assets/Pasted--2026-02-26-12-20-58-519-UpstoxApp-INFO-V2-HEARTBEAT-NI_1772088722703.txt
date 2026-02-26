@@ -1,0 +1,66 @@
+
+
+2026-02-26 12:20:58,519 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.1s | Worker: ALIVE | Exchange: 2026-02-26 12:20:58.414000+05:30 | Sessions: Global:In Trade
+2026-02-26 12:21:00,350 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25550 | Index: 25437.05 | CE: slope(V1:121.22 > V0:121.40 (Pct:-0.15%, Cons:0/1)):False (LTP: 87.40) | PE: (In Trade) [V:130.6, VP:130.6, LP:171.7] (LTP: 181.30)
+2026-02-26 12:21:00,352 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: 627.25 | LTP: 181.30 | VWAP: 130.66 (Peak: 130.66) | V1:131.38 < Ref:131.38 (Pct:0.00%)
+2026-02-26 12:21:05,922 - UpstoxApp - INFO - Logger has been successfully configured.
+2026-02-26 12:21:05,922 - UpstoxApp - INFO - ACTIVE STRATEGY: Entry TF: 1m | Exit TF: 1m
+2026-02-26 12:21:05,922 - UpstoxApp - INFO - Starting the multi-broker trading application...
+2026-02-26 12:21:05,923 - UpstoxApp - INFO - Using configuration file: config/config_trader.ini
+2026-02-26 12:21:05,923 - UpstoxApp - INFO - Starting configuration validation for context: 'trader'...
+2026-02-26 12:21:05,923 - UpstoxApp - INFO - Configuration validation for 'trader' successful.
+2026-02-26 12:21:05,923 - UpstoxApp - INFO - Initializing API Client Manager for data providers...
+2026-02-26 12:21:05,923 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_1]
+2026-02-26 12:21:05,923 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_1]
+2026-02-26 12:21:05,972 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_1].
+2026-02-26 12:21:05,972 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_2]
+2026-02-26 12:21:05,972 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_2]
+2026-02-26 12:21:06,025 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_2].
+2026-02-26 12:21:06,025 - UpstoxApp - INFO - API client pool initialized with 2 clients. Active client is set.
+2026-02-26 12:21:06,026 - UpstoxApp - ERROR - Failed to connect to database: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+2026-02-26 12:21:06,026 - UpstoxApp - WARNING - DATABASE WARNING: Connection failed ([Errno 111] Connect call failed ('127.0.0.1', 5432)). Proceeding in legacy mode (INI only).
+2026-02-26 12:21:06,026 - UpstoxApp - WARNING - TRADING_BOT_MASTER_KEY not found in environment. Sensitive data will be inaccessible.
+2026-02-26 12:21:06,028 - UpstoxApp - WARNING - Database broker discovery skipped or failed: 'NoneType' object has no attribute 'acquire'. Falling back to .ini
+2026-02-26 12:21:06,213 - UpstoxApp - INFO - Starting Zerodha authentication for section: Zerodha_Client_Live_1...
+2026-02-26 12:21:06,214 - UpstoxApp - INFO - Validating Zerodha access token for Zerodha_Client_Live_1...
+2026-02-26 12:21:06,256 - UpstoxApp - INFO - Zerodha access token for Zerodha_Client_Live_1 is valid.
+2026-02-26 12:21:06,275 - UpstoxApp - INFO - Zerodha authentication successful for user: SA5770 [Zerodha_Client_Live_1].
+2026-02-26 12:21:06,275 - UpstoxApp - INFO - Successfully loaded broker: Zerodha_Client_Live_1 (Client: Zerodha)
+2026-02-26 12:21:06,276 - UpstoxApp - INFO - Live mode enabled. Selected data provider: upstox
+2026-02-26 12:21:06,278 - UpstoxApp - INFO - WebSocket listener task created.
+2026-02-26 12:21:06,278 - UpstoxApp - INFO - Strategy logic loaded from /home/ec2-user/environment/AlgoSoft_March/utils/../config/strategy_logic.json
+2026-02-26 12:21:06,287 - UpstoxApp - INFO - Message handler handle_message registered.
+2026-02-26 12:21:06,288 - UpstoxApp - INFO - [NIFTY] IndicatorManager initialized on orchestrator.
+2026-02-26 12:21:06,288 - UpstoxApp - INFO - WebSocketManager starting connection loop.
+2026-02-26 12:21:06,288 - UpstoxApp - INFO - Attempting to authorize and connect... (Attempt 1)
+2026-02-26 12:21:06,288 - UpstoxApp - INFO - Authorizing WebSocket feed...
+2026-02-26 12:21:06,288 - UpstoxApp - INFO - Sending GET request to https://api.upstox.com/v3/feed/market-data-feed/authorize...
+2026-02-26 12:21:06,289 - UpstoxApp - INFO - Tick worker started for NIFTY.
+2026-02-26 12:21:06,322 - UpstoxApp - INFO - WebSocket authorization successful.
+2026-02-26 12:21:06,329 - UpstoxApp - INFO - Opening WebSocket connection to wss://wsfeeder-api.upstox.com/market-data-feeder/v...
+2026-02-26 12:21:06,357 - UpstoxApp - INFO - WebSocket connection established successfully.
+2026-02-26 12:21:06,357 - UpstoxApp - WARNING - V2 WebSocket: No existing instruments to re-subscribe to.
+2026-02-26 12:21:06,357 - UpstoxApp - INFO - WebSocket message processor started.
+2026-02-26 12:21:06,357 - UpstoxApp - INFO - First market data packet processed from queue. Data feed is active.
+2026-02-26 12:21:06,667 - UpstoxApp - INFO - ContractManager: Expiry day detected (2026-02-26) — today's contracts absent from standard endpoint. Fetching from expired-instruments API...
+2026-02-26 12:21:06,689 - UpstoxApp - WARNING - ContractManager: https://api.upstox.com/v2 returned 200 but data=[] for expiry=2026-02-26
+2026-02-26 12:21:06,714 - UpstoxApp - WARNING - ContractManager: https://api.upstox.com/v3 returned HTTP 404
+2026-02-26 12:21:06,714 - UpstoxApp - ERROR - ContractManager: All endpoints returned empty — no expiry-day contracts found for 2026-02-26 (key=NSE_INDEX|Nifty 50)
+2026-02-26 12:21:06,714 - UpstoxApp - WARNING - ContractManager: expired-instruments API returned no contracts. Bot may be unable to trade today's expiry.
+2026-02-26 12:21:06,715 - UpstoxApp - INFO - ContractManager: Near weekly expiry resolved to 2026-03-02 (day=Monday)
+2026-02-26 12:21:06,719 - UpstoxApp - INFO - [NIFTY] Default expiry resolved: signal=2026-03-02 (CURRENT_WEEK), trade=2026-03-02 (WEEKLY)
+2026-02-26 12:21:06,720 - UpstoxApp - INFO - [NIFTY] [BUY] Expiry resolved: signal=2026-03-02 (WEEKLY), trade=2026-03-02 (WEEKLY)
+2026-02-26 12:21:06,721 - UpstoxApp - INFO - [NIFTY] [SELL] Expiry resolved: signal=2026-03-02 (WEEKLY), trade=2026-03-02 (WEEKLY)
+2026-02-26 12:21:06,721 - UpstoxApp - INFO - UserSession Initialized: User=default_user@local | Instrument=NIFTY
+2026-02-26 12:21:06,721 - UpstoxApp - INFO - Successfully loaded state from config/state_NIFTY_1m_1m_CROSSOVER.json
+2026-02-26 12:21:06,728 - UpstoxApp - INFO - Trading bot is now live.
+2026-02-26 12:21:06,730 - UpstoxApp - INFO - V2: First INDEX price (Spot) received for NIFTY: 25439.2
+2026-02-26 12:21:06,730 - UpstoxApp - INFO - V2: First FUTURES price received for NIFTY: 25581.0
+2026-02-26 12:21:06,731 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.0s | Worker: ALIVE | Exchange: 2026-02-26 12:21:06.729000+05:30 | Sessions: Global:In Trade
+2026-02-26 12:21:07,961 - UpstoxApp - ERROR - Upstox API 400 Bad Request at /historical-candle/None/1minute/2026-02-25/2026-02-22. Body: {"status":"error","errors":[{"errorCode":"UDAPI1021","message":"Instrument key is of invalid format","propertyPath":"getHistoricalCandleData.instrumentKey","invalidValue":"None","error_code":"UDAPI1021","property_path":"getHistoricalCandleData.instrumentKey","invalid_value":"None"}]}
+2026-02-26 12:21:07,962 - UpstoxApp - WARNING - API call to /historical-candle/None/1minute/2026-02-25/2026-02-22 failed (Status: 400). Reason: 400, message='Bad Request', url='https://api.upstox.com/v2/historical-candle/None/1minute/2026-02-25/2026-02-22'
+2026-02-26 12:21:07,962 - UpstoxApp - WARNING - Failed to fetch historical part of merged range: 400, message='Bad Request', url='https://api.upstox.com/v2/historical-candle/None/1minute/2026-02-25/2026-02-22'
+2026-02-26 12:21:07,991 - UpstoxApp - ERROR - Upstox API 400 Bad Request at /historical-candle/intraday/None/1minute. Body: {"status":"error","errors":[{"errorCode":"UDAPI1021","message":"Instrument key is of invalid format","propertyPath":"getIntraDayCandleData.instrumentKey","invalidValue":"None","error_code":"UDAPI1021","property_path":"getIntraDayCandleData.instrumentKey","invalid_value":"None"}]}
+2026-02-26 12:21:07,992 - UpstoxApp - WARNING - API call to /historical-candle/intraday/None/1minute failed (Status: 400). Reason: 400, message='Bad Request', url='https://api.upstox.com/v2/historical-candle/intraday/None/1minute'
+2026-02-26 12:21:07,992 - UpstoxApp - ERROR - Error fetching intraday candle data: 400, message='Bad Request', url='https://api.upstox.com/v2/historical-candle/intraday/None/1minute'
+2026-02-26 12:21:17,428 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25550]: slope(V1:127.00 > V0:127.13 (Pct:-0.11%, Cons:0/1))=False | LTP: 87.00 | Formula: vwap_slope
