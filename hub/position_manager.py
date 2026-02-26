@@ -145,6 +145,14 @@ class PositionManager:
         monitoring_ltp = await self._get_current_ltp_by_strike(direction, mon_strike, position_data, timestamp, ticks)
         position_data['monitoring_ltp'] = monitoring_ltp
 
+        # Track Monitoring Peak/Min for decoupled TSL/ATR TSL
+        if entry_type == 'SELL':
+            mon_min = min(monitoring_ltp, position_data.get('monitoring_min_price', monitoring_ltp))
+            position_data['monitoring_min_price'] = mon_min
+        else:
+            mon_max = max(monitoring_ltp, position_data.get('monitoring_peak_price', monitoring_ltp))
+            position_data['monitoring_peak_price'] = mon_max
+
         if mon_key:
             curr_vwap = await self.indicator_manager.calculate_vwap(mon_key, timestamp)
             if curr_vwap:
@@ -414,11 +422,13 @@ class PositionManager:
                     if entry_type == 'SELL':
                         h_min = float(relevant_full['low'].min())
                         pos_data['min_price'] = h_min
-                        logger.info(f"V2: Hot Handover [{side}] Min Price updated to {h_min:.2f} (Duration: {entry_floor.time()} - {timestamp_aware.time()})")
+                        pos_data['monitoring_min_price'] = h_min
+                        logger.info(f"V2: Hot Handover [{side}] Min Price (Traded & Mon) updated to {h_min:.2f} (Duration: {entry_floor.time()} - {timestamp_aware.time()})")
                     else:
                         h_max = float(relevant_full['high'].max())
                         pos_data['peak_price'] = h_max
-                        logger.info(f"V2: Hot Handover [{side}] Peak Price updated to {h_max:.2f} (Duration: {entry_floor.time()} - {timestamp_aware.time()})")
+                        pos_data['monitoring_peak_price'] = h_max
+                        logger.info(f"V2: Hot Handover [{side}] Peak Price (Traded & Mon) updated to {h_max:.2f} (Duration: {entry_floor.time()} - {timestamp_aware.time()})")
 
                 if not relevant_past.empty:
                     # Update VWAP peaks using historical data till Current Time - 1

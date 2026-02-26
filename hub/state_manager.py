@@ -180,6 +180,8 @@ class StateManager:
                 "ltp": ltp,
                 "peak_price": ltp,
                 "min_price": ltp,
+                "monitoring_peak_price": None,
+                "monitoring_min_price": None,
                 "vwap_peak": None,
                 "vwap_trough": None,
                 "entry_timestamp": timestamp,

@@ -381,10 +381,11 @@ class TradeExecutor:
                 # Defensive check for indicator_manager availability
                 ind_mgr = getattr(self.orchestrator, 'indicator_manager', None) or position_manager.indicator_manager
 
-                # Calculate ATR for the traded instrument using current LTP
-                atr_val = await ind_mgr.calculate_atr(trade_instrument_key, atr_tf, atr_len, timestamp, current_ltp=trade_ltp)
+                # Calculate ATR for the MONITORING instrument (Signal Strike) for decoupled exit
+                mon_ltp = position.get('monitoring_ltp', trade_ltp)
+                atr_val = await ind_mgr.calculate_atr(exit_monitoring_key, atr_tf, atr_len, timestamp, current_ltp=mon_ltp)
                 if atr_val:
                     position['entry_atr'] = atr_val
-                    logger.debug(f"V2: Entry ATR for {direction} set to {atr_val:.2f} (Len: {atr_len}, TF: {atr_tf}m)")
+                    logger.debug(f"V2: Entry ATR for {direction} (Mon Strike) set to {atr_val:.2f} (Len: {atr_len}, TF: {atr_tf}m)")
 
             logger.info(f"V2: Trade entered on {trade_instrument_key}. Monitoring strike {signal_strike} for crossover exit.")

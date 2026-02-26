@@ -148,8 +148,13 @@ class ExitEvaluator:
 
         if 'tsl' in f_lower:
             offset = self._get_user_setting('offset', mode, 'exit_indicators/tsl', type_func=float, fallback=30.0)
-            trailing_sl = (peak_price + offset) if entry_type == 'SELL' else (peak_price - offset)
-            if (entry_type == 'SELL' and current_ltp > trailing_sl) or (entry_type == 'BUY' and current_ltp < trailing_sl):
+
+            # Use monitoring prices for decoupled exit trigger
+            mon_ltp = position_data.get('monitoring_ltp', current_ltp)
+            mon_peak = position_data.get('monitoring_peak_price' if entry_type == 'BUY' else 'monitoring_min_price', peak_price)
+
+            trailing_sl = (mon_peak + offset) if entry_type == 'SELL' else (mon_peak - offset)
+            if (entry_type == 'SELL' and mon_ltp > trailing_sl) or (entry_type == 'BUY' and mon_ltp < trailing_sl):
                 eval_results['tsl'] = True
                 reasons.append(f"TSL Hit")
             position_data['trailing_sl'] = trailing_sl
@@ -159,16 +164,21 @@ class ExitEvaluator:
             if atr_val:
                 multiplier = self._get_user_setting('multiplier', mode, 'exit_indicators/atr_tsl', type_func=float, fallback=2.0)
                 check_mode = self._get_user_setting('check_mode', mode, 'exit_indicators/atr_tsl', fallback='TICK').upper()
+
+                # Use monitoring prices for decoupled exit trigger
+                mon_ltp = position_data.get('monitoring_ltp', current_ltp)
+                mon_peak = position_data.get('monitoring_peak_price' if entry_type == 'BUY' else 'monitoring_min_price', peak_price)
+
                 atr_offset = atr_val * multiplier
-                atr_sl = (peak_price + atr_offset) if entry_type == 'SELL' else (peak_price - atr_offset)
+                atr_sl = (mon_peak + atr_offset) if entry_type == 'SELL' else (mon_peak - atr_offset)
 
                 is_breached = False
                 if check_mode == 'CLOSE':
                     if (timestamp.second >= 5) or (self.orchestrator.is_backtest and timestamp.second == 0):
-                        if (entry_type == 'SELL' and current_ltp > atr_sl) or (entry_type == 'BUY' and current_ltp < atr_sl):
+                        if (entry_type == 'SELL' and mon_ltp > atr_sl) or (entry_type == 'BUY' and mon_ltp < atr_sl):
                             is_breached = True
                 else:
-                    if (entry_type == 'SELL' and current_ltp > atr_sl) or (entry_type == 'BUY' and current_ltp < atr_sl):
+                    if (entry_type == 'SELL' and mon_ltp > atr_sl) or (entry_type == 'BUY' and mon_ltp < atr_sl):
                         is_breached = True
 
                 if is_breached:
