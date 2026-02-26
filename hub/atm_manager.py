@@ -150,12 +150,21 @@ class AtmManager:
                     s_d = self.expiry_manager.calculate_expiry_date(s_m or 'MONTHLY', context_date)
                     t_d = self.expiry_manager.get_trade_expiry_date(context_date, mode=t_m or 'MONTHLY')
                     self.mode_expiries[mode] = {'signal': s_d, 'trade': t_d}
+                    if s_d != t_d:
+                        logger.warning(f"[{self.instrument_name}] [{mode.upper()}] EXPIRY MISMATCH: signal_expiry={s_d} ({s_m}) vs trade_expiry={t_d} ({t_m}). Console will show signal prices but trades will execute on trade expiry contract!")
+                    else:
+                        logger.info(f"[{self.instrument_name}] [{mode.upper()}] Expiry resolved: signal={s_d} ({s_m}), trade={t_d} ({t_m})")
 
     def _determine_default_expiries(self, context_date):
-        mode = self.config.get('settings', 'signal_expiry', fallback='CURRENT_WEEK').upper()
-        self.signal_expiry_date = self.expiry_manager.calculate_expiry_date(mode, context_date)
-        self.trade_expiry_date = self.expiry_manager.get_trade_expiry_date(context_date, mode=self.config.get('settings', 'trade_expiry_type', fallback='WEEKLY'))
+        sig_mode = self.config.get('settings', 'signal_expiry', fallback='CURRENT_WEEK').upper()
+        trd_mode = self.config.get('settings', 'trade_expiry_type', fallback='WEEKLY').upper()
+        self.signal_expiry_date = self.expiry_manager.calculate_expiry_date(sig_mode, context_date)
+        self.trade_expiry_date = self.expiry_manager.get_trade_expiry_date(context_date, mode=trd_mode)
         self.target_expiry = self.trade_expiry_date
+        if self.signal_expiry_date != self.trade_expiry_date:
+            logger.warning(f"[{self.instrument_name}] DEFAULT EXPIRY MISMATCH (ini config): signal={self.signal_expiry_date} ({sig_mode}) vs trade={self.trade_expiry_date} ({trd_mode})")
+        else:
+            logger.info(f"[{self.instrument_name}] Default expiry resolved: signal={self.signal_expiry_date} ({sig_mode}), trade={self.trade_expiry_date} ({trd_mode})")
 
     def _build_contract_lookup_table(self):
         self.contract_lookup.clear()

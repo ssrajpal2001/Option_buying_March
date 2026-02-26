@@ -207,14 +207,16 @@ class ZerodhaClient(BaseBroker):
             logger.error(f"Error placing order with Zerodha. Symbol: {symbol}, Exchange: {exchange}, Type: {transaction_type}, Qty: {quantity}. API Error: {e}", exc_info=True)
             return None
 
-    def construct_zerodha_symbol(self, contract, signal_expiry_date):
+    def construct_zerodha_symbol(self, contract, signal_expiry_date=None):
         """
-        Constructs a Zerodha-compatible trading symbol for a given contract by comparing its
-        expiry date with the application's signal_expiry_date to determine if it's a monthly
-        or weekly contract.
-        - Monthly format: NIFTY<YY><MON><STRIKE>CE (e.g., NIFTY26JAN26500CE)
-        - Weekly format:  NIFTY<YY><M><D><STRIKE>CE (e.g., NIFTY2621025600CE for Feb 10th)
+        Constructs a Zerodha-compatible trading symbol for a given contract.
+        Determines monthly vs weekly by checking if the contract's expiry falls
+        on the last Thursday of its month (NSE monthly options always expire on last Thursday).
+        - Monthly format: NIFTY<YY><MON><STRIKE>CE (e.g., NIFTY26MAR25650PE)
+        - Weekly format:  NIFTY<YY><M><DD><STRIKE>CE (e.g., NIFTY262625650PE for Feb 26th)
         """
+        import datetime, calendar
+
         # Dynamic prefix detection: BANKNIFTY, NIFTY, SENSEX, etc.
         instrument_name = getattr(contract, 'name', 'NIFTY').upper()
         if instrument_name == "NIFTY 50": instrument_name = "NIFTY"
@@ -225,11 +227,20 @@ class ZerodhaClient(BaseBroker):
         option_type = contract.instrument_type.upper()
         year_str = expiry.strftime('%y')
 
-        # The definitive check: Compare the contract's expiry with the known monthly signal expiry.
-        # The expiry object can be either a datetime.datetime or datetime.date, so handle both.
-        import datetime
+        # Normalize to date object (expiry can be datetime or date)
         expiry_date_obj = expiry.date() if isinstance(expiry, datetime.datetime) else expiry
-        is_monthly_expiry = (expiry_date_obj == signal_expiry_date)
+
+        # Detect monthly expiry: NSE monthly options always expire on the last Thursday of the month
+        last_day_of_month = calendar.monthrange(expiry_date_obj.year, expiry_date_obj.month)[1]
+        last_thursday = None
+        for day in range(last_day_of_month, last_day_of_month - 7, -1):
+            candidate = datetime.date(expiry_date_obj.year, expiry_date_obj.month, day)
+            if candidate.weekday() == 3:  # Thursday
+                last_thursday = candidate
+                break
+        is_monthly_expiry = (expiry_date_obj == last_thursday)
+
+        logger.info(f"construct_zerodha_symbol: expiry={expiry_date_obj}, last_thursday={last_thursday}, is_monthly={is_monthly_expiry}")
 
         if is_monthly_expiry:
             # Monthly format: NIFTY<YY><MON><STRIKE>CE

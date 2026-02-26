@@ -1,0 +1,83 @@
+2026-02-26 09:15:00,303 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54972' (1minute).
+2026-02-26 09:15:00,340 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54972'.
+2026-02-26 09:15:00,369 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 0 candles for 'NSE_FO|54972' (1minute).
+2026-02-26 09:15:00,415 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54970' (1minute).
+2026-02-26 09:15:00,454 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54970'.
+2026-02-26 09:15:00,477 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 0 candles for 'NSE_FO|54970' (1minute).
+2026-02-26 09:15:00,525 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54969' (1minute).
+2026-02-26 09:15:00,556 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54969'.
+2026-02-26 09:15:00,581 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 0 candles for 'NSE_FO|54969' (1minute).
+2026-02-26 09:15:00,630 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54967' (1minute).
+2026-02-26 09:15:00,665 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54967'.
+2026-02-26 09:15:00,690 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 0 candles for 'NSE_FO|54967' (1minute).
+2026-02-26 09:15:00,736 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54971' (1minute).
+2026-02-26 09:15:00,766 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54971'.
+2026-02-26 09:15:00,790 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 0 candles for 'NSE_FO|54971' (1minute).
+2026-02-26 09:15:00,836 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54968' (1minute).
+2026-02-26 09:15:00,868 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54968'.
+2026-02-26 09:15:00,890 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 0 candles for 'NSE_FO|54968' (1minute).
+2026-02-26 09:15:01,797 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54973' (1minute).
+2026-02-26 09:15:01,825 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54973'.
+2026-02-26 09:15:01,864 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 0 candles for 'NSE_FO|54973' (1minute).
+2026-02-26 09:15:02,134 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54974' (1minute).
+2026-02-26 09:15:02,137 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks): None -> 25650 (User: Global)
+2026-02-26 09:15:02,173 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54974'.
+2026-02-26 09:15:02,200 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 0 candles for 'NSE_FO|54974' (1minute).
+2026-02-26 09:15:02,610 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25650]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 89.85 | Formula: vwap_slope
+2026-02-26 09:15:02,616 - UpstoxApp - INFO - V2: [PE] [BUY] Status [25650]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 184.30 | Formula: vwap_slope
+2026-02-26 09:15:02,616 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25650 (SWITCHED) | Index: 25548.90 | CE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 89.85) | PE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 184.30)
+2026-02-26 09:15:05,354 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks): 25650 -> 25600 (User: Global)
+2026-02-26 09:15:05,356 - UpstoxApp - INFO - V2: Switching monitoring strike 25650 -> 25600
+2026-02-26 09:15:05,700 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25600 (SWITCHED) | Index: 25530.55 | CE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 110.00) | PE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 154.40)
+2026-02-26 09:15:08,672 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks): 25600 -> 25650 (User: Global)
+2026-02-26 09:15:08,674 - UpstoxApp - INFO - V2: Switching monitoring strike 25600 -> 25650
+2026-02-26 09:15:08,988 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25650 (SWITCHED) | Index: 25531.95 | CE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 88.90) | PE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 176.40)
+2026-02-26 09:16:02,245 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25650]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 97.15 | Formula: vwap_slope
+2026-02-26 09:16:02,255 - UpstoxApp - INFO - V2: [PE] [BUY] Status [25650]: slope(Waiting for data (V1:None, V0:None))=False | LTP: 158.50 | Formula: vwap_slope
+2026-02-26 09:16:43,214 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.0s | Worker: ALIVE | Exchange: 2026-02-26 09:16:43.196000+05:30 | Sessions: Global:Monitoring
+2026-02-26 09:17:00,512 - UpstoxApp - INFO - [Task 139666422996496] V2: SETTING entry_confirmed=True for PE (BUY)
+2026-02-26 09:17:00,515 - UpstoxApp - INFO - [NIFTY] Broadcasting PUT signal (BUY) to 1 users.
+2026-02-26 09:17:00,516 - UpstoxApp - INFO - Dynamically adding NSE_FO|54970 to watchlist for live P&L display.
+2026-02-26 09:17:00,516 - UpstoxApp - INFO - V2: Discovery price for NSE_FO|54970...
+2026-02-26 09:17:00,516 - UpstoxApp - INFO - V2: Using price from WebSocket tick: 178.10
+2026-02-26 09:17:00,520 - UpstoxApp - INFO - [Task 139666398768448] V2: Marked order_sent=True for PUT
+2026-02-26 09:17:00,520 - UpstoxApp - INFO - [Task 139666398768448] V2: Sending EXECUTE_TRADE_REQUEST for PUT
+2026-02-26 09:17:00,520 - UpstoxApp - INFO - BrokerManager routing NIFTY signal for user_id=None
+2026-02-26 09:17:00,520 - UpstoxApp - INFO - Executing trade on broker 'Zerodha_Client_Live_1' (User: None)
+2026-02-26 09:17:00,520 - UpstoxApp - INFO - Calculated trade quantity for Zerodha_Client_Live_1 on NIFTY: Broker Qty (10) * Lot Size (65) = 650
+2026-02-26 09:17:00,548 - UpstoxApp - INFO - Successfully placed BUY (PUT) order for NIFTY26MAR25650PE with order_id: 260226190064862
+2026-02-26 09:17:00,549 - UpstoxApp - INFO - [NIFTY] Trade confirmed for PUT on NIFTY26MAR25650PE (User: None)
+2026-02-26 09:17:00,550 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54970' (1minute).
+2026-02-26 09:17:00,614 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54970'.
+2026-02-26 09:17:00,650 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 2 candles for 'NSE_FO|54970' (1minute).
+2026-02-26 09:17:00,811 - UpstoxApp - INFO - V2: Entry ATR for PUT set to 16.69 (Len: 10, TF: 3m)
+2026-02-26 09:17:00,813 - UpstoxApp - INFO - V2: Trade entered on NSE_FO|54970. Monitoring strike 25650 for crossover exit.
+2026-02-26 09:17:00,946 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -32.50 | LTP: 178.10 | VWAP: 167.40 (Peak: 167.40) | Initializing...
+2026-02-26 09:17:02,562 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25650]: slope(V1:94.50 > V0:95.78 (Pct:-1.34%, Cons:0/1))=False | LTP: 90.75 | Formula: vwap_slope
+2026-02-26 09:17:08,712 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54972' (1minute).
+2026-02-26 09:17:08,747 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54972'.
+2026-02-26 09:17:08,779 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 2 candles for 'NSE_FO|54972' (1minute).
+2026-02-26 09:17:08,919 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54969' (1minute).
+2026-02-26 09:17:08,966 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54969'.
+2026-02-26 09:17:08,990 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 2 candles for 'NSE_FO|54969' (1minute).
+2026-02-26 09:17:09,041 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54967' (1minute).
+2026-02-26 09:17:09,079 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54967'.
+2026-02-26 09:17:09,100 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 1 candles for 'NSE_FO|54967' (1minute).
+2026-02-26 09:17:09,155 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54971' (1minute).
+2026-02-26 09:17:09,193 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54971'.
+2026-02-26 09:17:09,224 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 2 candles for 'NSE_FO|54971' (1minute).
+2026-02-26 09:17:09,276 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54968' (1minute).
+2026-02-26 09:17:09,311 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54968'.
+2026-02-26 09:17:09,340 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 2 candles for 'NSE_FO|54968' (1minute).
+2026-02-26 09:17:09,901 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54973' (1minute).
+2026-02-26 09:17:09,948 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54973'.
+2026-02-26 09:17:09,967 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 2 candles for 'NSE_FO|54973' (1minute).
+2026-02-26 09:17:10,410 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54974' (1minute).
+2026-02-26 09:17:10,465 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54974'.
+2026-02-26 09:17:10,492 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 2 candles for 'NSE_FO|54974' (1minute).
+2026-02-26 09:17:17,105 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks): 25650 -> 25600 (User: Global)
+2026-02-26 09:17:17,106 - UpstoxApp - INFO - V2: Switching monitoring strike 25650 -> 25600
+2026-02-26 09:17:17,441 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25600 (SWITCHED) | Index: 25530.85 | CE: slope(Waiting for data (V1:None, V0:None)):False (LTP: 108.65) | PE: (In Trade) [V:169.3, VP:169.3, LP:178.1] (LTP: 150.15)
+2026-02-26 09:17:19,431 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks): 25600 -> 25650 (User: Global)
+2026-02-26 09:17:19,431 - UpstoxApp - INFO - V2: Switching monitoring strike 25600 -> 25650
+2026-02-26 09:17:19,800 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25650 (SWITCHED) | Index: 25532.60 | CE: slope(V1:94.50 > V0:95.78 (Pct:-1.34%, Cons:0/1)):False (LTP: 89.20) | PE: (In Trade) [V:169.4, VP:169.4, LP:178.1] (LTP: 182.85)

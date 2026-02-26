@@ -35,6 +35,12 @@ class TradeExecutor:
         mode = 'buy' if entry_type == 'BUY' else 'sell'
         mode_expiries = self.atm_manager.mode_expiries.get(mode)
         trade_expiry = mode_expiries['trade'] if mode_expiries else self.atm_manager.trade_expiry_date
+        signal_expiry_check = mode_expiries['signal'] if mode_expiries else self.atm_manager.signal_expiry_date
+
+        if signal_expiry_check != trade_expiry:
+            logger.warning(f"TRADE EXPIRY MISMATCH at execution: signal={signal_expiry_check}, trade={trade_expiry}. Will monitor {direction} on signal contract but TRADE will be on DIFFERENT expiry!")
+        else:
+            logger.info(f"Trade expiry confirmed: {trade_expiry} (matches signal expiry)")
 
         trade_instrument_key = self.atm_manager.find_instrument_key_by_strike(trade_strike, direction, trade_expiry)
 
