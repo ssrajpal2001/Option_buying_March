@@ -113,7 +113,7 @@ class BrokerManager:
             logger.error(f"Trade request is missing 'instrument_name'. Cannot route.")
             return
 
-        logger.info(f"BrokerManager routing {instrument_name} signal for user_id={target_user_id}")
+        logger.debug(f"BrokerManager routing {instrument_name} signal for user_id={target_user_id}")
 
         for broker in self.brokers:
             # Check if this broker instance belongs to the target user
@@ -138,7 +138,7 @@ class BrokerManager:
             logger.error(f"Exit request is missing 'instrument_name'. Cannot route.")
             return
 
-        logger.info(f"BrokerManager routing exit signal for user_id={target_user_id}")
+        logger.debug(f"BrokerManager routing exit signal for user_id={target_user_id}")
 
         for broker in self.brokers:
             is_user_match = (target_user_id is None) or (broker.user_id == target_user_id)
