@@ -76,6 +76,22 @@ class RestApiClient:
             logger.error(f"Error fetching option contracts: {e}")
             return []
 
+    async def get_expiring_option_contracts(self, instrument_key):
+        """Fetch contracts that are expiring today (or have already expired).
+        Upstox excludes today's expiry from /option/contract on expiry day;
+        this endpoint fills that gap."""
+        endpoint = "/v2/expired-instruments/option/contract"
+        params = {'instrument_key': instrument_key}
+        try:
+            response = await self._request('get', endpoint, params=params)
+            return response.get('data', [])
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"Error fetching expiring option contracts: {e}")
+            return []
+        except Exception as e:
+            logger.warning(f"get_expiring_option_contracts failed (non-expiry day?): {e}")
+            return []
+
     async def get_historical_candle_data(self, instrument_key, interval, to_date, from_date):
         import pytz
         ist = pytz.timezone('Asia/Kolkata')

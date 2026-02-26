@@ -77,6 +77,33 @@ class ContractManager:
             logger.error(f"Failed to load contracts from CSV: {e}", exc_info=True)
             return None
 
+    async def _supplement_expiry_day_contracts(self, instrument_key):
+        """On NSE expiry day, Upstox excludes today's expiring contracts from the standard
+        /option/contract endpoint.  This method detects that and supplements all_options by
+        fetching the /expired-instruments/option/contract endpoint."""
+        today = datetime.date.today()
+        loaded_expiries = {c.expiry.date() for c in self.all_options if c.instrument_type in ['CE', 'PE']}
+        if today in loaded_expiries:
+            return  # today's contracts already present — nothing to do
+
+        logger.info(f"ContractManager: Expiry day detected ({today}) — today's contracts absent from standard endpoint. Fetching from expired-instruments API...")
+        if not hasattr(self.rest_client, 'get_expiring_option_contracts'):
+            logger.warning("ContractManager: rest_client does not support get_expiring_option_contracts — cannot supplement.")
+            return
+
+        expiring_raw = await self.rest_client.get_expiring_option_contracts(instrument_key)
+        if not expiring_raw:
+            logger.warning("ContractManager: expired-instruments API returned no contracts. Bot may be unable to trade today's expiry.")
+            return
+
+        today_contracts = [OptionContract(c) for c in expiring_raw
+                           if c.get('expiry') == today.strftime('%Y-%m-%d')]
+        if today_contracts:
+            self.all_options.extend(today_contracts)
+            logger.info(f"ContractManager: Supplemented with {len(today_contracts)} expiry-day contracts for {today}. Total option contracts: {len(self.all_options)}")
+        else:
+            logger.warning(f"ContractManager: expired-instruments API returned data but none matched today ({today}). Bot may be unable to trade today's expiry.")
+
     async def _load_contracts_from_api(self, instrument_key):
         try:
             if not instrument_key: return False
@@ -85,6 +112,7 @@ class ContractManager:
                 self.all_options = []
                 return True
             self.all_options = [OptionContract(c) for c in raw_contracts]
+            await self._supplement_expiry_day_contracts(instrument_key)
             self._determine_near_expiry_date()
             self._identify_monthly_expiries()
             return True
@@ -99,9 +127,12 @@ class ContractManager:
 
         trade_expiry_type = self.config_manager.get('settings', 'trade_expiry_type', fallback='WEEKLY').upper()
         if trade_expiry_type == 'WEEKLY':
+            # Use the first available expiry >= today from the API-provided list.
+            # This works regardless of which weekday NSE chooses as expiry day.
             for expiry_date in unique_expiries:
-                if expiry_date >= today and expiry_date.weekday() == 3:
+                if expiry_date >= today:
                     self.near_expiry_date = datetime.datetime.combine(expiry_date, datetime.time.min)
+                    logger.info(f"ContractManager: Near weekly expiry resolved to {expiry_date} (day={expiry_date.strftime('%A')})")
                     return
         elif trade_expiry_type == 'MONTHLY':
             for expiry_date in self.monthly_expiries:
