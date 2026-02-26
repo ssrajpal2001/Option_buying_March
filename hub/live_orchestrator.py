@@ -18,14 +18,14 @@ class LiveOrchestrator(BaseOrchestrator):
     async def handle_add_to_watchlist(self, data):
         instrument_key = data.get('instrument_key')
         if instrument_key and instrument_key not in self.subscribed_instruments:
-            logger.info(f"Dynamically adding {instrument_key} to watchlist for live P&L display.")
+            logger.debug(f"Dynamically adding {instrument_key} to watchlist for live P&L display.")
             self.subscribed_instruments.add(instrument_key)
             self.websocket.subscribe([instrument_key])
 
     async def handle_remove_from_watchlist(self, data):
         instrument_key = data.get('instrument_key')
         if instrument_key and instrument_key in self.subscribed_instruments:
-            logger.info(f"Dynamically removing {instrument_key} from watchlist after trade exit.")
+            logger.debug(f"Dynamically removing {instrument_key} from watchlist after trade exit.")
             self.subscribed_instruments.discard(instrument_key)
             self.websocket.unsubscribe([instrument_key])
 
