@@ -91,21 +91,34 @@ class ExitEvaluator:
                     res = await self.indicator_manager.get_vwap_slope_status(signal_inst_key, eval_ts, s_tf, s_occ, live_vwap=live_v)
                     v_curr, v_prev = res[2], res[3]
 
-                    v_ref = position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough')
-                    if v_ref is None or v_ref == 0: v_ref = v_prev
+                    if s_mode == 'CLOSE':
+                        # CLOSE mode: track OHLC-based peak so v_curr and v_ref come from the same data source.
+                        # Live-tick vwap_peak diverges from OHLC cumulative VWAP — comparing them creates
+                        # artificial drawdown. Instead, we maintain an OHLC peak updated each candle boundary.
+                        ohlc_peak_key = 'vwap_peak_ohlc' if mode == 'buy' else 'vwap_trough_ohlc'
+                        if v_curr is not None:
+                            stored = position_data.get(ohlc_peak_key)
+                            if stored is None:
+                                position_data[ohlc_peak_key] = v_curr
+                            elif mode == 'buy' and v_curr > stored:
+                                position_data[ohlc_peak_key] = v_curr
+                            elif mode == 'sell' and v_curr < stored:
+                                position_data[ohlc_peak_key] = v_curr
+                        v_ref = position_data.get(ohlc_peak_key) or v_prev
+                        is_peak_ref = True
+                    else:
+                        v_ref = position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough')
+                        if v_ref is None or v_ref == 0: v_ref = v_prev
+                        is_peak_ref = (v_ref == position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough'))
 
                     if v_curr is not None and v_ref:
                         diff = (v_curr - v_ref) / v_ref
-                        if self.orchestrator.is_backtest:
-                            logger.info(f"V2 MGMT: [{direction}] VWAP EXIT CHECK: Current {v_curr:.2f} vs Peak {v_ref:.2f} | Drawdown: {diff*100:.2f}% | Threshold: {s_thr*100:.2f}%")
-
                         passed = False
                         if s_op == '>': passed = diff > s_thr
                         elif s_op == '<': passed = diff < s_thr
                         elif s_op == '>=': passed = diff >= s_thr
                         elif s_op == '<=': passed = diff <= s_thr
 
-                        is_peak_ref = (v_ref == position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough'))
                         if is_peak_ref:
                             eval_results['vwap_slope'] = passed
                         else:
@@ -115,6 +128,8 @@ class ExitEvaluator:
                         if eval_results['vwap_slope']:
                             reasons.append(f"VWAP Slope {s_op} ({s_mode})")
                             logger.info(f"V2 MGMT: [{direction}] EXIT CRITERIA MET (VWAP Slope): Current VWAP {v_curr:.2f} vs Ref {v_ref:.2f} (Drawdown: {diff*100:.2f}%, Threshold: {s_thr*100:.2f}%)")
+                        else:
+                            logger.info(f"V2 MGMT: [{direction}] VWAP EXIT CHECK: Current {v_curr:.2f} vs Peak {v_ref:.2f} | Drawdown: {diff*100:.2f}% | Threshold: {s_thr*100:.2f}% → HOLD")
                     else:
                         position_data['slope_info'] = f"Waiting for data (V:{v_curr}, Ref:{v_ref})"
             except Exception as e:
