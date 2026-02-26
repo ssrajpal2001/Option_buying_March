@@ -91,8 +91,14 @@ class EngineManager:
                 if is_initialized and not is_trading_active:
                     await asyncio.gather(*(m.start(False) for m in self.lifecycle_managers.values()))
                     is_trading_active = True
+                    for orch in orchestrators.values():
+                        if hasattr(orch, 'sell_manager') and not orch.sell_manager.strangle_placed:
+                            await orch.sell_manager.execute_short_strangle(datetime.datetime.now())
             else:
                 if is_trading_active:
+                    for orch in orchestrators.values():
+                        if hasattr(orch, 'sell_manager') and not orch.sell_manager.strangle_closed:
+                            await orch.sell_manager.close_all(datetime.datetime.now())
                     await asyncio.gather(*(m.stop() for m in self.lifecycle_managers.values()))
                     is_trading_active = False
                 if is_initialized:
