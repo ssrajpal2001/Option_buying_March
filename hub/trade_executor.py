@@ -40,7 +40,7 @@ class TradeExecutor:
         if signal_expiry_check != trade_expiry:
             logger.warning(f"TRADE EXPIRY MISMATCH at execution: signal={signal_expiry_check}, trade={trade_expiry}. Will monitor {direction} on signal contract but TRADE will be on DIFFERENT expiry!")
         else:
-            logger.info(f"Trade expiry confirmed: {trade_expiry} (matches signal expiry)")
+            logger.debug(f"Trade expiry confirmed: {trade_expiry} (matches signal expiry)")
 
         trade_instrument_key = self.atm_manager.find_instrument_key_by_strike(trade_strike, direction, trade_expiry)
 
@@ -125,12 +125,12 @@ class TradeExecutor:
             await event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': trade_instrument_key})
 
             # 2. Discovery accurate price for entry (to prevent P&L mismatch)
-            logger.info(f"V2: Discovery price for {trade_instrument_key}...")
+            logger.debug(f"V2: Discovery price for {trade_instrument_key}...")
             trade_ltp = await state_manager.get_ltp_for_instrument(trade_instrument_key, timeout=1)
             is_fallback = False
 
             if trade_ltp:
-                logger.info(f"V2: Using price from WebSocket tick: {trade_ltp:.2f}")
+                logger.debug(f"V2: Using price from WebSocket tick: {trade_ltp:.2f}")
             else:
                 # Priority 2: REST Discovery
                 try:
@@ -290,9 +290,9 @@ class TradeExecutor:
                 # Mark as sent EARLY to prevent duplicate orders from concurrent tasks
                 if existing_pos:
                     existing_pos['order_sent'] = True
-                    logger.info(f"[Task {task_id}] V2: Marked order_sent=True for {direction}")
+                    logger.debug(f"[Task {task_id}] V2: Marked order_sent=True for {direction}")
 
-                logger.info(f"[Task {task_id}] V2: Sending EXECUTE_TRADE_REQUEST for {direction}")
+                logger.debug(f"[Task {task_id}] V2: Sending EXECUTE_TRADE_REQUEST for {direction}")
                 await event_bus.publish('EXECUTE_TRADE_REQUEST', trade_data=trade_payload)
             else:
                 logger.warning(f"[Task {task_id}] V2: Order already sent for {direction}. Skipping duplicate request.")
@@ -373,6 +373,6 @@ class TradeExecutor:
                 atr_val = await ind_mgr.calculate_atr(trade_instrument_key, atr_tf, atr_len, timestamp, current_ltp=trade_ltp)
                 if atr_val:
                     position['entry_atr'] = atr_val
-                    logger.info(f"V2: Entry ATR for {direction} set to {atr_val:.2f} (Len: {atr_len}, TF: {atr_tf}m)")
+                    logger.debug(f"V2: Entry ATR for {direction} set to {atr_val:.2f} (Len: {atr_len}, TF: {atr_tf}m)")
 
             logger.info(f"V2: Trade entered on {trade_instrument_key}. Monitoring strike {signal_strike} for crossover exit.")

@@ -1,0 +1,124 @@
+2026-02-26 11:50:57,102 - UpstoxApp - INFO - Logger has been successfully configured.
+2026-02-26 11:50:57,103 - UpstoxApp - INFO - ACTIVE STRATEGY: Entry TF: 1m | Exit TF: 1m
+2026-02-26 11:50:57,103 - UpstoxApp - INFO - Starting the multi-broker trading application...
+2026-02-26 11:50:57,103 - UpstoxApp - INFO - Using configuration file: config/config_trader.ini
+2026-02-26 11:50:57,103 - UpstoxApp - INFO - Starting configuration validation for context: 'trader'...
+2026-02-26 11:50:57,103 - UpstoxApp - INFO - Configuration validation for 'trader' successful.
+2026-02-26 11:50:57,104 - UpstoxApp - INFO - Initializing API Client Manager for data providers...
+2026-02-26 11:50:57,104 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_1]
+2026-02-26 11:50:57,104 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_1]
+2026-02-26 11:50:57,149 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_1].
+2026-02-26 11:50:57,149 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_2]
+2026-02-26 11:50:57,149 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_2]
+2026-02-26 11:50:57,200 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_2].
+2026-02-26 11:50:57,200 - UpstoxApp - INFO - API client pool initialized with 2 clients. Active client is set.
+2026-02-26 11:50:57,202 - UpstoxApp - ERROR - Failed to connect to database: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+2026-02-26 11:50:57,202 - UpstoxApp - WARNING - DATABASE WARNING: Connection failed ([Errno 111] Connect call failed ('127.0.0.1', 5432)). Proceeding in legacy mode (INI only).
+2026-02-26 11:50:57,202 - UpstoxApp - WARNING - TRADING_BOT_MASTER_KEY not found in environment. Sensitive data will be inaccessible.
+2026-02-26 11:50:57,203 - UpstoxApp - WARNING - Database broker discovery skipped or failed: 'NoneType' object has no attribute 'acquire'. Falling back to .ini
+2026-02-26 11:50:57,399 - UpstoxApp - INFO - Starting Zerodha authentication for section: Zerodha_Client_Live_1...
+2026-02-26 11:50:57,399 - UpstoxApp - INFO - Validating Zerodha access token for Zerodha_Client_Live_1...
+2026-02-26 11:50:57,437 - UpstoxApp - INFO - Zerodha access token for Zerodha_Client_Live_1 is valid.
+2026-02-26 11:50:57,460 - UpstoxApp - INFO - Zerodha authentication successful for user: SA5770 [Zerodha_Client_Live_1].
+2026-02-26 11:50:57,460 - UpstoxApp - INFO - Successfully loaded broker: Zerodha_Client_Live_1 (Client: Zerodha)
+2026-02-26 11:50:57,460 - UpstoxApp - INFO - Live mode enabled. Selected data provider: upstox
+2026-02-26 11:50:57,464 - UpstoxApp - INFO - WebSocket listener task created.
+2026-02-26 11:50:57,464 - UpstoxApp - INFO - Strategy logic loaded from /home/ec2-user/environment/AlgoSoft_March/utils/../config/strategy_logic.json
+2026-02-26 11:50:57,472 - UpstoxApp - INFO - Message handler handle_message registered.
+2026-02-26 11:50:57,472 - UpstoxApp - INFO - [NIFTY] IndicatorManager initialized on orchestrator.
+2026-02-26 11:50:57,473 - UpstoxApp - INFO - WebSocketManager starting connection loop.
+2026-02-26 11:50:57,473 - UpstoxApp - INFO - Attempting to authorize and connect... (Attempt 1)
+2026-02-26 11:50:57,473 - UpstoxApp - INFO - Authorizing WebSocket feed...
+2026-02-26 11:50:57,473 - UpstoxApp - INFO - Sending GET request to https://api.upstox.com/v3/feed/market-data-feed/authorize...
+2026-02-26 11:50:57,473 - UpstoxApp - INFO - Tick worker started for NIFTY.
+2026-02-26 11:50:57,509 - UpstoxApp - INFO - WebSocket authorization successful.
+2026-02-26 11:50:57,516 - UpstoxApp - INFO - Opening WebSocket connection to wss://wsfeeder-api.upstox.com/market-data-feeder/v...
+2026-02-26 11:50:57,543 - UpstoxApp - INFO - WebSocket connection established successfully.
+2026-02-26 11:50:57,544 - UpstoxApp - WARNING - V2 WebSocket: No existing instruments to re-subscribe to.
+2026-02-26 11:50:57,544 - UpstoxApp - INFO - WebSocket message processor started.
+2026-02-26 11:50:57,544 - UpstoxApp - INFO - First market data packet processed from queue. Data feed is active.
+2026-02-26 11:50:57,846 - UpstoxApp - INFO - ContractManager: Expiry day detected (2026-02-26) — today's contracts absent from standard endpoint. Fetching from expired-instruments API...
+2026-02-26 11:50:57,847 - UpstoxApp - INFO - ContractManager: Trying expired-instruments: https://api.upstox.com/v2/expired-instruments/option/contract params={'instrument_key': 'NSE_INDEX|Nifty 50', 'expiry_date': '2026-02-26'}
+2026-02-26 11:50:57,878 - UpstoxApp - INFO - ContractManager: expired-instruments response — status=200, data_count=0, body_keys=['status', 'data']
+2026-02-26 11:50:57,878 - UpstoxApp - WARNING - ContractManager: https://api.upstox.com/v2 returned 200 but data=[] for expiry=2026-02-26
+2026-02-26 11:50:57,878 - UpstoxApp - INFO - ContractManager: Trying expired-instruments: https://api.upstox.com/v3/expired-instruments/option/contract params={'instrument_key': 'NSE_INDEX|Nifty 50', 'expiry_date': '2026-02-26'}
+2026-02-26 11:50:57,900 - UpstoxApp - INFO - ContractManager: expired-instruments response — status=404, data_count=0, body_keys=['status', 'errors']
+2026-02-26 11:50:57,900 - UpstoxApp - WARNING - ContractManager: https://api.upstox.com/v3 returned HTTP 404
+2026-02-26 11:50:57,900 - UpstoxApp - ERROR - ContractManager: All endpoints returned empty — no expiry-day contracts found for 2026-02-26 (key=NSE_INDEX|Nifty 50)
+2026-02-26 11:50:57,901 - UpstoxApp - WARNING - ContractManager: expired-instruments API returned no contracts. Bot may be unable to trade today's expiry.
+2026-02-26 11:50:57,901 - UpstoxApp - INFO - ContractManager: Near weekly expiry resolved to 2026-03-02 (day=Monday)
+2026-02-26 11:50:57,905 - UpstoxApp - INFO - [NIFTY] Default expiry resolved: signal=2026-03-02 (CURRENT_WEEK), trade=2026-03-02 (WEEKLY)
+2026-02-26 11:50:57,906 - UpstoxApp - INFO - [NIFTY] [BUY] Expiry resolved: signal=2026-03-02 (WEEKLY), trade=2026-03-02 (WEEKLY)
+2026-02-26 11:50:57,906 - UpstoxApp - INFO - [NIFTY] [SELL] Expiry resolved: signal=2026-03-02 (WEEKLY), trade=2026-03-02 (WEEKLY)
+2026-02-26 11:50:57,907 - UpstoxApp - INFO - UserSession Initialized: User=default_user@local | Instrument=NIFTY
+2026-02-26 11:50:57,907 - UpstoxApp - INFO - No saved state file found. Starting with a fresh state.
+2026-02-26 11:50:57,907 - UpstoxApp - INFO - Trading bot is now live.
+2026-02-26 11:50:57,911 - UpstoxApp - INFO - V2: First FUTURES price received for NIFTY: 25627.5
+2026-02-26 11:50:57,911 - UpstoxApp - INFO - V2: First INDEX price (Spot) received for NIFTY: 25483.9
+2026-02-26 11:50:57,911 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.0s | Worker: ALIVE | Exchange: 2026-02-26 11:50:57.908000+05:30 | Sessions: Global:Idle
+2026-02-26 11:50:57,912 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54970' (1minute).
+2026-02-26 11:50:57,953 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54970'.
+2026-02-26 11:50:57,976 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 155 candles for 'NSE_FO|54970' (1minute).
+2026-02-26 11:50:58,029 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54969' (1minute).
+2026-02-26 11:50:58,062 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 750 candles for 'NSE_FO|54969'.
+2026-02-26 11:50:58,093 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 155 candles for 'NSE_FO|54969' (1minute).
+2026-02-26 11:50:58,138 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54968' (1minute).
+2026-02-26 11:50:58,169 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54968'.
+2026-02-26 11:50:58,200 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 155 candles for 'NSE_FO|54968' (1minute).
+2026-02-26 11:50:58,257 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54972' (1minute).
+2026-02-26 11:50:58,287 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54972'.
+2026-02-26 11:50:58,309 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 155 candles for 'NSE_FO|54972' (1minute).
+2026-02-26 11:50:58,368 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54971' (1minute).
+2026-02-26 11:50:58,399 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54971'.
+2026-02-26 11:50:58,446 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 155 candles for 'NSE_FO|54971' (1minute).
+2026-02-26 11:50:58,507 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54967' (1minute).
+2026-02-26 11:50:58,540 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54967'.
+2026-02-26 11:50:58,555 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 155 candles for 'NSE_FO|54967' (1minute).
+2026-02-26 11:51:09,275 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks): None -> 25600 (User: Global)
+2026-02-26 11:51:09,664 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25600]: slope(V1:101.70 > V0:101.85 (Pct:-0.15%, Cons:0/1))=False | LTP: 80.50 | Formula: vwap_slope
+2026-02-26 11:51:09,675 - UpstoxApp - INFO - V2: [PE] [BUY] Status [25600]: slope(V1:151.16 > V0:150.96 (Pct:0.13%, Cons:1/1))=True | LTP: 180.30 | Formula: vwap_slope
+2026-02-26 11:51:09,675 - UpstoxApp - INFO - [Task 139894984543344] V2: SETTING entry_confirmed=True for PE (BUY)
+2026-02-26 11:51:09,676 - UpstoxApp - INFO - [NIFTY] Broadcasting PUT signal (BUY) to 1 users.
+2026-02-26 11:51:09,676 - UpstoxApp - INFO - Trade expiry confirmed: 2026-03-02 (matches signal expiry)
+2026-02-26 11:51:09,676 - UpstoxApp - INFO - Dynamically adding NSE_FO|54968 to watchlist for live P&L display.
+2026-02-26 11:51:09,676 - UpstoxApp - INFO - V2: Discovery price for NSE_FO|54968...
+2026-02-26 11:51:09,676 - UpstoxApp - INFO - V2: Using price from WebSocket tick: 180.30
+2026-02-26 11:51:09,678 - UpstoxApp - INFO - [Task 139894984543968] V2: Marked order_sent=True for PUT
+2026-02-26 11:51:09,678 - UpstoxApp - INFO - [Task 139894984543968] V2: Sending EXECUTE_TRADE_REQUEST for PUT
+2026-02-26 11:51:09,678 - UpstoxApp - INFO - BrokerManager routing NIFTY signal for user_id=None
+2026-02-26 11:51:09,678 - UpstoxApp - INFO - Executing trade on broker 'Zerodha_Client_Live_1' (User: None)
+2026-02-26 11:51:09,678 - UpstoxApp - INFO - Calculated trade quantity for Zerodha_Client_Live_1 on NIFTY: Broker Qty (10) * Lot Size (65) = 650
+2026-02-26 11:51:09,678 - UpstoxApp - INFO - construct_zerodha_symbol: expiry=2026-03-02, last_thursday=2026-03-26, is_monthly=False
+2026-02-26 11:51:09,678 - UpstoxApp - INFO - construct_zerodha_symbol: expiry=2026-03-02, last_thursday=2026-03-26, is_monthly=False
+2026-02-26 11:51:09,707 - UpstoxApp - INFO - Successfully placed BUY (PUT) order for NIFTY2630225600PE with order_id: 260226190863812
+2026-02-26 11:51:09,707 - UpstoxApp - INFO - [NIFTY] Trade confirmed for PUT on NIFTY2630225600PE (User: None)
+2026-02-26 11:51:09,901 - UpstoxApp - INFO - V2: Entry ATR for PUT set to 14.71 (Len: 10, TF: 3m)
+2026-02-26 11:51:09,902 - UpstoxApp - INFO - V2: Trade entered on NSE_FO|54968. Monitoring strike 25600 for crossover exit.
+2026-02-26 11:51:09,902 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25600 (SWITCHED) | Index: 25487.65 | CE: slope(V1:101.70 > V0:101.85 (Pct:-0.15%, Cons:0/1)):False (LTP: 80.35) | PE: (In Trade) [V:152.6, VP:0.0, LP:180.3] (LTP: 180.55)
+2026-02-26 11:51:27,811 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54966' (1minute).
+2026-02-26 11:51:27,880 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54966'.
+2026-02-26 11:51:27,900 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 155 candles for 'NSE_FO|54966' (1minute).
+2026-02-26 11:51:27,965 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54965' (1minute).
+2026-02-26 11:51:28,015 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54965'.
+2026-02-26 11:51:28,041 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 156 candles for 'NSE_FO|54965' (1minute).
+2026-02-26 11:51:31,269 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54970' (1minute).
+2026-02-26 11:51:31,312 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54970'.
+2026-02-26 11:51:31,342 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 156 candles for 'NSE_FO|54970' (1minute).
+2026-02-26 11:51:31,408 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54969' (1minute).
+2026-02-26 11:51:31,446 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54969'.
+2026-02-26 11:51:31,482 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 156 candles for 'NSE_FO|54969' (1minute).
+2026-02-26 11:51:31,540 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54968' (1minute).
+2026-02-26 11:51:31,573 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54968'.
+2026-02-26 11:51:31,610 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 156 candles for 'NSE_FO|54968' (1minute).
+2026-02-26 11:51:31,669 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54972' (1minute).
+2026-02-26 11:51:31,711 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54972'.
+2026-02-26 11:51:31,740 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 156 candles for 'NSE_FO|54972' (1minute).
+2026-02-26 11:51:31,799 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54971' (1minute).
+2026-02-26 11:51:31,843 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54971'.
+2026-02-26 11:51:31,876 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 156 candles for 'NSE_FO|54971' (1minute).
+2026-02-26 11:51:31,934 - UpstoxApp - INFO - DATA_FETCH: Merging historical (up to 2026-02-25) + intraday for 'NSE_FO|54967' (1minute).
+2026-02-26 11:51:31,969 - UpstoxApp - INFO - DATA_FETCH: Historical part returned 1125 candles for 'NSE_FO|54967'.
+2026-02-26 11:51:31,991 - UpstoxApp - INFO - DATA_FETCH: Intraday endpoint returned 156 candles for 'NSE_FO|54967' (1minute).
+2026-02-26 11:52:00,415 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: 48.75 | LTP: 181.05 | VWAP: 152.63 (Peak: 152.63) | Initializing...
+2026-02-26 11:52:09,436 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25600]: slope(V1:101.56 > V0:101.70 (Pct:-0.14%, Cons:0/1))=False | LTP: 81.30 | Formula: vwap_slope
+2026-02-26 11:53:00,242 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: 87.75 | LTP: 181.65 | VWAP: 152.74 (Peak: 152.74) | Initializing...

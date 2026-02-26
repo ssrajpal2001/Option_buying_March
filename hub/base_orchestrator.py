@@ -148,7 +148,7 @@ class BaseOrchestrator(ABC):
 
     async def broadcast_signal(self, direction, instrument_key, signal_ltp, strike_price, timestamp, strategy_log, entry_type='BUY'):
         """Broadcasts a validated market signal to all isolated user sessions."""
-        logger.info(f"[{self.instrument_name}] Broadcasting {direction} signal ({entry_type}) to {len(self.user_sessions)} users.")
+        logger.debug(f"[{self.instrument_name}] Broadcasting {direction} signal ({entry_type}) to {len(self.user_sessions)} users.")
         tasks = []
         for session in self.user_sessions.values():
             tasks.append(session.evaluate_signal(
