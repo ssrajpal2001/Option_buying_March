@@ -15,44 +15,68 @@ class SellManager:
         self.sell_pe_strike = None
         self.sell_ce_key = None
         self.sell_pe_key = None
+        self.buy_ce_key = None   # instrument_key of sell_ce_strike + 100
+        self.buy_pe_key = None   # instrument_key of sell_pe_strike - 100
         self.expiry = None
 
-    async def find_100_nearest_strike(self, expiry, side):
+    # ------------------------------------------------------------------
+    # Internal helpers — work directly on a pre-fetched chain list
+    # ------------------------------------------------------------------
+
+    def _find_from_chain(self, chain, side):
         """
-        Finds the strike with LTP > 100 that is closest to ₹100 for the given side (CE or PE).
-        Returns (float(strike_price), contract) or (None, None) if not found.
+        Scans option chain data for the strike with LTP > 100 closest to ₹100
+        on the given side ('CE' or 'PE').
+
+        Returns (float(strike_price), contract, instrument_key) or (None, None, None).
+        The contract object is looked up from contract_lookup for its lot_size.
         """
-        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(expiry, {})
-        if not expiry_strikes:
-            logger.error(f"[SellManager] No contracts found for expiry {expiry}")
-            return None, None
-
-        key_to_contract = {}
-        for strike, sides in expiry_strikes.items():
-            contract = sides.get(side)
-            if contract:
-                key_to_contract[contract.instrument_key] = (strike, contract)
-
-        if not key_to_contract:
-            logger.error(f"[SellManager] No {side} contracts found for expiry {expiry}")
-            return None, None
-
-        ltp_map = await self.orchestrator.rest_client.get_ltps(list(key_to_contract.keys()))
+        options_key = 'call_options' if side == 'CE' else 'put_options'
 
         candidates = []
-        for inst_key, (strike, contract) in key_to_contract.items():
-            ltp = ltp_map.get(inst_key, 0.0)
-            if ltp > 100:
-                candidates.append((abs(ltp - 100), ltp, float(strike), contract))
+        for entry in chain:
+            side_data = entry.get(options_key) or {}
+            market = side_data.get('market_data') or {}
+            ltp = market.get('ltp', 0) or 0
+            strike_price = entry.get('strike_price')
+            inst_key = side_data.get('instrument_key')
+            if ltp > 100 and strike_price is not None and inst_key:
+                candidates.append((abs(ltp - 100), ltp, float(strike_price), inst_key))
 
         if not candidates:
-            logger.error(f"[SellManager] No {side} strikes with LTP > 100 found for expiry {expiry}")
-            return None, None
+            logger.error(f"[SellManager] No {side} strikes with LTP > 100 found in option chain")
+            return None, None, None
 
         candidates.sort(key=lambda x: x[0])
-        _, ltp, strike, contract = candidates[0]
-        logger.info(f"[SellManager] Selected {side} sell strike: {strike} (LTP: {ltp:.2f})")
-        return strike, contract
+        _, ltp, strike, inst_key = candidates[0]
+        logger.info(f"[SellManager] Selected {side} sell strike: {strike} (LTP: {ltp:.2f}, key: {inst_key})")
+
+        # Look up contract for lot_size
+        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
+        contract = expiry_strikes.get(float(strike), {}).get(side)
+        if not contract:
+            logger.error(f"[SellManager] {side} strike {strike} not found in contract_lookup — cannot determine lot_size")
+            return None, None, None
+
+        return strike, contract, inst_key
+
+    def _find_hedge_key_in_chain(self, chain, hedge_strike, side):
+        """
+        Finds the instrument_key for hedge_strike on side ('CE' or 'PE') in the chain data.
+        Returns instrument_key string or None.
+        """
+        options_key = 'call_options' if side == 'CE' else 'put_options'
+        for entry in chain:
+            if float(entry.get('strike_price', -1)) == float(hedge_strike):
+                inst_key = (entry.get(options_key) or {}).get('instrument_key')
+                if inst_key:
+                    return inst_key
+        logger.warning(f"[SellManager] Hedge strike {hedge_strike} {side} not found in option chain")
+        return None
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     async def execute_short_strangle(self, timestamp):
         """Places SELL NRML orders for both CE and PE legs at market open."""
@@ -65,12 +89,31 @@ class SellManager:
             logger.error("[SellManager] Cannot place strangle — signal_expiry_date not set.")
             return
 
-        ce_strike, ce_contract = await self.find_100_nearest_strike(expiry, 'CE')
-        pe_strike, pe_contract = await self.find_100_nearest_strike(expiry, 'PE')
+        self.expiry = expiry
+        index_key = self.orchestrator.index_instrument_key
+
+        # Fetch the full option chain once for all lookups
+        logger.info(f"[SellManager] Fetching option chain for {index_key} expiry {expiry}")
+        chain = await self.orchestrator.rest_client.get_option_chain(index_key, expiry)
+        if not chain:
+            logger.error(f"[SellManager] Option chain returned empty for {index_key} expiry {expiry}. Aborting strangle.")
+            return
+
+        ce_strike, ce_contract, ce_sell_key = self._find_from_chain(chain, 'CE')
+        pe_strike, pe_contract, pe_sell_key = self._find_from_chain(chain, 'PE')
 
         if ce_strike is None or pe_strike is None:
             logger.error("[SellManager] Could not find valid strikes for strangle. Aborting.")
             return
+
+        # Resolve hedge keys from the same chain data
+        buy_ce_key = self._find_hedge_key_in_chain(chain, ce_strike + 100, 'CE')
+        buy_pe_key = self._find_hedge_key_in_chain(chain, pe_strike - 100, 'PE')
+
+        if not buy_ce_key:
+            logger.warning(f"[SellManager] CE hedge strike {ce_strike + 100} not found in chain — hedge BUY may fail")
+        if not buy_pe_key:
+            logger.warning(f"[SellManager] PE hedge strike {pe_strike - 100} not found in chain — hedge BUY may fail")
 
         brokers = self.orchestrator.broker_manager.brokers
         for broker in brokers:
@@ -89,12 +132,17 @@ class SellManager:
 
         self.sell_ce_strike = ce_strike
         self.sell_pe_strike = pe_strike
-        self.sell_ce_key = ce_contract.instrument_key
-        self.sell_pe_key = pe_contract.instrument_key
-        self.expiry = expiry
+        self.sell_ce_key = ce_sell_key
+        self.sell_pe_key = pe_sell_key
+        self.buy_ce_key = buy_ce_key
+        self.buy_pe_key = buy_pe_key
         self.strangle_placed = True
         self.save_state()
-        logger.info(f"[SellManager] Short strangle placed: SELL CE {ce_strike} | SELL PE {pe_strike} | Expiry: {expiry}")
+        logger.info(
+            f"[SellManager] Short strangle placed: "
+            f"SELL CE {ce_strike} (key:{ce_sell_key}) | SELL PE {pe_strike} (key:{pe_sell_key}) | "
+            f"Hedge CE key:{buy_ce_key} | Hedge PE key:{buy_pe_key} | Expiry: {expiry}"
+        )
 
     async def close_all(self, timestamp):
         """Buys back both CE and PE legs to close the short strangle (EOD close)."""
@@ -137,30 +185,27 @@ class SellManager:
     def get_buy_strike(self, direction):
         """
         Returns the hedge (BUY) strike and instrument_key for the given signal direction.
-        CALL signal → buy CE at sell_ce_strike + 100
-        PUT  signal → buy PE at sell_pe_strike - 100
-        Returns (None, None) if strangle not placed or hedge strike not found.
+          CALL signal → buy CE at sell_ce_strike + 100  (key stored as buy_ce_key)
+          PUT  signal → buy PE at sell_pe_strike - 100  (key stored as buy_pe_key)
+        Returns (None, None) if strangle not placed or hedge key was not resolved.
         """
         if not self.strangle_placed:
             return None, None
 
-        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
-
         if direction == 'CALL':
             hedge_strike = self.sell_ce_strike + 100
-            side = 'CE'
+            hedge_key = self.buy_ce_key
         elif direction == 'PUT':
             hedge_strike = self.sell_pe_strike - 100
-            side = 'PE'
+            hedge_key = self.buy_pe_key
         else:
             return None, None
 
-        contract = expiry_strikes.get(float(hedge_strike), {}).get(side)
-        if not contract:
-            logger.warning(f"[SellManager] Hedge strike {hedge_strike}{side} not found in contract_lookup")
+        if not hedge_key:
+            logger.warning(f"[SellManager] No stored hedge key for {direction} (hedge strike {hedge_strike})")
             return None, None
 
-        return hedge_strike, contract.instrument_key
+        return hedge_strike, hedge_key
 
     def save_state(self):
         """Persists strangle state to JSON so a mid-day restart doesn't re-place orders."""
@@ -171,6 +216,8 @@ class SellManager:
             'sell_pe_strike': self.sell_pe_strike,
             'sell_ce_key': self.sell_ce_key,
             'sell_pe_key': self.sell_pe_key,
+            'buy_ce_key': self.buy_ce_key,
+            'buy_pe_key': self.buy_pe_key,
             'expiry': self.expiry.isoformat() if self.expiry else None
         }
         try:
@@ -182,7 +229,7 @@ class SellManager:
             logger.error(f"[SellManager] Failed to save state: {e}")
 
     def load_state(self):
-        """Restores strangle state from JSON file if it exists and is from today."""
+        """Restores strangle state from JSON file if it exists and is from today's expiry."""
         if not os.path.exists(self.state_file):
             return
 
@@ -203,9 +250,16 @@ class SellManager:
             self.sell_pe_strike = state.get('sell_pe_strike')
             self.sell_ce_key = state.get('sell_ce_key')
             self.sell_pe_key = state.get('sell_pe_key')
+            self.buy_ce_key = state.get('buy_ce_key')
+            self.buy_pe_key = state.get('buy_pe_key')
             self.expiry = expiry
 
             if self.strangle_placed:
-                logger.info(f"[SellManager] Restored state: CE {self.sell_ce_strike} | PE {self.sell_pe_strike} | Expiry: {expiry} | Closed: {self.strangle_closed}")
+                logger.info(
+                    f"[SellManager] Restored state: "
+                    f"CE {self.sell_ce_strike} | PE {self.sell_pe_strike} | "
+                    f"Hedge CE key:{self.buy_ce_key} | Hedge PE key:{self.buy_pe_key} | "
+                    f"Expiry: {expiry} | Closed: {self.strangle_closed}"
+                )
         except Exception as e:
             logger.error(f"[SellManager] Failed to load state: {e}")
