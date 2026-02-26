@@ -25,7 +25,7 @@ class TradeExecutor:
             return self.orchestrator.user_sessions[user_id].position_manager
         return self.orchestrator.position_manager
 
-    async def execute_trade_v2(self, direction, signal_instrument_key, signal_ltp, strike_price, timestamp, signal_strike, strategy_log="", user_id=None, entry_type='BUY'):
+    async def execute_trade_v2(self, direction, signal_instrument_key, signal_ltp, strike_price, timestamp, signal_strike, strategy_log="", user_id=None, entry_type='BUY', quantity_multiplier=1):
         state_manager = self._get_state_manager(user_id)
 
         # NEW LOGIC: Execute on the same strike where the crossover occurred
@@ -285,7 +285,8 @@ class TradeExecutor:
                 "signal_expiry_date": signal_expiry,
                 "strategy_log": strategy_log,
                 "entry_type": entry_type,
-                "product_type": "MIS"
+                "product_type": "MIS",
+                "quantity_multiplier": quantity_multiplier
             }
 
             # IDEMPOTENCY CHECK based on returned position or re-fetched position

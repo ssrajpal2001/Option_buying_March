@@ -411,9 +411,15 @@ class SignalMonitor:
                         else:
                             gate_str = ""
 
+                        sell_str = ""
+                        if hasattr(self.orchestrator, 'sell_manager') and self.orchestrator.sell_manager.strangle_placed:
+                            sm = self.orchestrator.sell_manager
+                            ce_sell_ltp = float(self.state_manager.get_ltp(sm.sell_ce_key) or 0)
+                            pe_sell_ltp = float(self.state_manager.get_ltp(sm.sell_pe_key) or 0)
+                            sell_str = f" | SOLD CE {int(sm.sell_ce_strike)}@{ce_sell_ltp:.2f} | SOLD PE {int(sm.sell_pe_strike)}@{pe_sell_ltp:.2f}"
                         logger.info(f"V2 MONITORING Status [{user_display}]: Strike {ce_data['strike_price']}{sw_label} | Index: {idx_ltp:.2f}{gate_str} | "
                                      f"CE: {ce_state} (LTP: {float(self.state_manager.get_ltp(ce_data['instrument_key']) or 0):.2f}) | "
-                                     f"PE: {pe_state} (LTP: {float(self.state_manager.get_ltp(pe_data['instrument_key']) or 0):.2f})")
+                                     f"PE: {pe_state} (LTP: {float(self.state_manager.get_ltp(pe_data['instrument_key']) or 0):.2f}){sell_str}")
 
             # 4. RESUME MONITORING AFTER RESTART
             if currently_monitored_strike and not self._resumed_priming:

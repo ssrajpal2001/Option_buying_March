@@ -49,8 +49,9 @@ class ZerodhaClient(BaseBroker):
 
         broker_base_qty = self.config_manager.get_int(self.instance_name, 'quantity', 1)
         instrument_lot_size = contract.lot_size
-        final_qty = broker_base_qty * instrument_lot_size
-        logger.info(f"Calculated trade quantity for {self.instance_name} on {instrument_name}: Broker Qty ({broker_base_qty}) * Lot Size ({instrument_lot_size}) = {final_qty}")
+        quantity_multiplier = int(kwargs.get('quantity_multiplier', 1))
+        final_qty = broker_base_qty * instrument_lot_size * quantity_multiplier
+        logger.info(f"Calculated trade quantity for {self.instance_name} on {instrument_name}: Broker Qty ({broker_base_qty}) * Lot Size ({instrument_lot_size}) * Multiplier ({quantity_multiplier}) = {final_qty}")
 
         try:
             order_id = None

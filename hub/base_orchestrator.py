@@ -148,12 +148,14 @@ class BaseOrchestrator(ABC):
 
     async def broadcast_signal(self, direction, instrument_key, signal_ltp, strike_price, timestamp, strategy_log, entry_type='BUY'):
         """Broadcasts a validated market signal to all isolated user sessions."""
+        quantity_multiplier = 1
         if not self.is_backtest and hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed:
             hedge_strike, hedge_key = self.sell_manager.get_buy_strike(direction)
             if hedge_strike and hedge_key:
-                logger.info(f"[{self.instrument_name}] Buy strike overridden: {strike_price} -> {hedge_strike} (sell_hedge_{direction})")
+                logger.info(f"[{self.instrument_name}] Hedge override: {strike_price} -> {hedge_strike} (sell_hedge_{direction}) | qty x2")
                 strike_price = hedge_strike
                 instrument_key = hedge_key
+                quantity_multiplier = 2
 
         logger.debug(f"[{self.instrument_name}] Broadcasting {direction} signal ({entry_type}) to {len(self.user_sessions)} users.")
         tasks = []
@@ -165,7 +167,8 @@ class BaseOrchestrator(ABC):
                 strike_price=strike_price,
                 timestamp=timestamp,
                 strategy_log=strategy_log,
-                entry_type=entry_type
+                entry_type=entry_type,
+                quantity_multiplier=quantity_multiplier
             ))
 
         if tasks:

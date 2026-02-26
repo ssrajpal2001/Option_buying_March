@@ -47,7 +47,7 @@ class UserSession:
         if self.is_in_trade():
             await self.position_manager.manage_active_trades_v2(timestamp, current_ticks, current_atm)
 
-    async def evaluate_signal(self, direction, instrument_key, signal_ltp, strike_price, timestamp, strategy_log, entry_type='BUY'):
+    async def evaluate_signal(self, direction, instrument_key, signal_ltp, strike_price, timestamp, strategy_log, entry_type='BUY', quantity_multiplier=1):
         """Evaluates a market signal against user-specific state and settings."""
         if self.is_in_trade(direction):
             logger.debug(f"User {self.email} already in {direction} trade. Skipping signal.")
@@ -88,6 +88,7 @@ class UserSession:
             timestamp=timestamp,
             signal_strike=strike_price,
             strategy_log=strategy_log,
-            user_id=self.user_id, # Pass user identity
-            entry_type=entry_type
+            user_id=self.user_id,
+            entry_type=entry_type,
+            quantity_multiplier=quantity_multiplier
         )

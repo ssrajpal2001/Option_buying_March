@@ -137,6 +137,10 @@ class SellManager:
         self.buy_ce_key = buy_ce_key
         self.buy_pe_key = buy_pe_key
         self.strangle_placed = True
+        all_strangle_keys = [k for k in [self.sell_ce_key, self.sell_pe_key, self.buy_ce_key, self.buy_pe_key] if k]
+        if all_strangle_keys:
+            self.orchestrator.websocket.subscribe(all_strangle_keys)
+            logger.info(f"[SellManager] Subscribed all 4 strangle keys to websocket: {all_strangle_keys}")
         self.save_state()
         logger.info(
             f"[SellManager] Short strangle placed: "
