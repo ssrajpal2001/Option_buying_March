@@ -109,6 +109,12 @@ class AtmManager:
     def find_contracts_for_strike(self, strike_price, expiry_date=None):
         target = expiry_date.date() if hasattr(expiry_date, 'date') else expiry_date
         if not target: return None, None
+        if isinstance(target, str):
+            try:
+                import datetime as _dt
+                target = _dt.date.fromisoformat(target)
+            except Exception:
+                return None, None
         expiry_strikes = self.contract_lookup.get(target, {})
         data = expiry_strikes.get(float(strike_price), {})
         return data.get('CE'), data.get('PE')
@@ -117,6 +123,12 @@ class AtmManager:
         api_type = 'CE' if option_type.upper() in ['CALL', 'CE'] else 'PE'
         target = expiry_date.date() if hasattr(expiry_date, 'date') else expiry_date
         if not target: return None
+        if isinstance(target, str):
+            try:
+                import datetime as _dt
+                target = _dt.date.fromisoformat(target)
+            except Exception:
+                return None
         expiry_strikes = self.contract_lookup.get(target, {})
         contract = expiry_strikes.get(float(strike_price), {}).get(api_type)
         return contract.instrument_key if contract else None
