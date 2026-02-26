@@ -240,7 +240,7 @@ class ZerodhaClient(BaseBroker):
                 break
         is_monthly_expiry = (expiry_date_obj == last_thursday)
 
-        logger.info(f"construct_zerodha_symbol: expiry={expiry_date_obj}, last_thursday={last_thursday}, is_monthly={is_monthly_expiry}")
+        logger.debug(f"construct_zerodha_symbol: expiry={expiry_date_obj}, last_thursday={last_thursday}, is_monthly={is_monthly_expiry}")
 
         if is_monthly_expiry:
             # Monthly format: NIFTY<YY><MON><STRIKE>CE
