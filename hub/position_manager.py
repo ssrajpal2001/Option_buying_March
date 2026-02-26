@@ -363,6 +363,17 @@ class PositionManager:
             del self.state_manager.s1_monotonic_tracker[k]
             logger.debug(f"V2: Reset monotonic tracker for {k} on strike switch.")
 
+        # CRITICAL: Immediately invalidate the CLOSE-mode OHLC peak/trough for the OLD instrument.
+        # The CLOSE mode exit check uses 'vwap_peak_ohlc' (a separate key from 'vwap_peak').
+        # Without this reset, the stale OHLC peak from the old strike is compared against
+        # the new strike's VWAP, causing a false cross-instrument drawdown and premature exit.
+        # Resetting to None puts the exit check into "Initializing" mode until the Hot Handover
+        # recalculates the correct peak for the new instrument below.
+        ohlc_peak_key = 'vwap_peak_ohlc' if mode == 'buy' else 'vwap_trough_ohlc'
+        pos_data[ohlc_peak_key] = None
+        pos_data['_vwap_close_last_candle'] = None  # Force re-evaluation at next candle boundary
+        logger.debug(f"V2: Hot Handover [{side}] Reset {ohlc_peak_key} and _vwap_close_last_candle to prevent cross-instrument false exit.")
+
         # --- Hot Handover: Fetch historical peaks for the new strike ---
         sig_expiry = pos_data.get('signal_expiry_date') or self.atm_manager.signal_expiry_date
         new_key = self.atm_manager.find_instrument_key_by_strike(new_strike, inst_side, sig_expiry)
