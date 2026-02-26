@@ -17,6 +17,8 @@ class SellManager:
         self.sell_pe_key = None
         self.buy_ce_key = None   # instrument_key of sell_ce_strike + 100
         self.buy_pe_key = None   # instrument_key of sell_pe_strike - 100
+        self.sell_ce_entry_ltp = None
+        self.sell_pe_entry_ltp = None
         self.expiry = None
 
     # ------------------------------------------------------------------
@@ -45,7 +47,7 @@ class SellManager:
 
         if not candidates:
             logger.error(f"[SellManager] No {side} strikes with LTP > 100 found in option chain")
-            return None, None, None
+            return None, None, None, None
 
         candidates.sort(key=lambda x: x[0])
         _, ltp, strike, inst_key = candidates[0]
@@ -56,9 +58,9 @@ class SellManager:
         contract = expiry_strikes.get(float(strike), {}).get(side)
         if not contract:
             logger.error(f"[SellManager] {side} strike {strike} not found in contract_lookup — cannot determine lot_size")
-            return None, None, None
+            return None, None, None, None
 
-        return strike, contract, inst_key
+        return strike, contract, inst_key, ltp
 
     def _find_hedge_key_in_chain(self, chain, hedge_strike, side):
         """
@@ -99,8 +101,8 @@ class SellManager:
             logger.error(f"[SellManager] Option chain returned empty for {index_key} expiry {expiry}. Aborting strangle.")
             return
 
-        ce_strike, ce_contract, ce_sell_key = self._find_from_chain(chain, 'CE')
-        pe_strike, pe_contract, pe_sell_key = self._find_from_chain(chain, 'PE')
+        ce_strike, ce_contract, ce_sell_key, ce_entry_ltp = self._find_from_chain(chain, 'CE')
+        pe_strike, pe_contract, pe_sell_key, pe_entry_ltp = self._find_from_chain(chain, 'PE')
 
         if ce_strike is None or pe_strike is None:
             logger.error("[SellManager] Could not find valid strikes for strangle. Aborting.")
@@ -136,6 +138,8 @@ class SellManager:
         self.sell_pe_key = pe_sell_key
         self.buy_ce_key = buy_ce_key
         self.buy_pe_key = buy_pe_key
+        self.sell_ce_entry_ltp = ce_entry_ltp
+        self.sell_pe_entry_ltp = pe_entry_ltp
         self.strangle_placed = True
         all_strangle_keys = [k for k in [self.sell_ce_key, self.sell_pe_key, self.buy_ce_key, self.buy_pe_key] if k]
         if all_strangle_keys:
@@ -222,6 +226,8 @@ class SellManager:
             'sell_pe_key': self.sell_pe_key,
             'buy_ce_key': self.buy_ce_key,
             'buy_pe_key': self.buy_pe_key,
+            'sell_ce_entry_ltp': self.sell_ce_entry_ltp,
+            'sell_pe_entry_ltp': self.sell_pe_entry_ltp,
             'expiry': self.expiry.isoformat() if self.expiry else None
         }
         try:
@@ -256,6 +262,8 @@ class SellManager:
             self.sell_pe_key = state.get('sell_pe_key')
             self.buy_ce_key = state.get('buy_ce_key')
             self.buy_pe_key = state.get('buy_pe_key')
+            self.sell_ce_entry_ltp = state.get('sell_ce_entry_ltp')
+            self.sell_pe_entry_ltp = state.get('sell_pe_entry_ltp')
             self.expiry = expiry
 
             if self.strangle_placed:

@@ -63,6 +63,7 @@ class DisplayManager:
                 print(f"[{instrument_name}] FUTURES: {spot_price_str} | INDEX: {index_price_str} | ATM: {atm_strike} | TARGET: {target_strike_str}")
 
                 self._display_monitored_strikes(orchestrator)
+                self._display_strangle_positions(orchestrator)
                 self._display_active_trades(orchestrator)
 
                 # Aggregate PNL
@@ -209,6 +210,41 @@ class DisplayManager:
                 # Log error and show a recovery row to avoid console blanking
                 logger.error(f"Error displaying strike {strike}: {e}")
                 print(f"  {int(strike):<10} | {'ERROR':<10} | {'ERROR':<10} | {'ERROR':<10} | {'ERROR':<10} | Check Logs")
+
+    def _display_strangle_positions(self, orchestrator):
+        """Displays the active short strangle SELL positions with running PNL."""
+        if not hasattr(orchestrator, 'sell_manager'):
+            return
+        sm = orchestrator.sell_manager
+        if not sm.strangle_placed:
+            return
+
+        state_manager = orchestrator.state_manager
+        ce_ltp = state_manager.option_prices.get(sm.sell_ce_key)
+        pe_ltp = state_manager.option_prices.get(sm.sell_pe_key)
+        hedge_ce_ltp = state_manager.option_prices.get(sm.buy_ce_key)
+        hedge_pe_ltp = state_manager.option_prices.get(sm.buy_pe_key)
+
+        ce_entry = sm.sell_ce_entry_ltp or 0.0
+        pe_entry = sm.sell_pe_entry_ltp or 0.0
+
+        ce_ltp_str = f"{ce_ltp:.2f}" if ce_ltp is not None else "---"
+        pe_ltp_str = f"{pe_ltp:.2f}" if pe_ltp is not None else "---"
+        hedge_ce_str = f"{hedge_ce_ltp:.2f}" if hedge_ce_ltp is not None else "---"
+        hedge_pe_str = f"{hedge_pe_ltp:.2f}" if hedge_pe_ltp is not None else "---"
+
+        ce_pnl = (ce_entry - ce_ltp) if ce_ltp is not None else 0.0
+        pe_pnl = (pe_entry - pe_ltp) if pe_ltp is not None else 0.0
+        total_pnl = ce_pnl + pe_pnl
+
+        pnl_sign = "+" if total_pnl >= 0 else ""
+        print(f"\n    --- STRANGLE POSITIONS (SELL NRML) ---")
+        print(f"    SELL CE {int(sm.sell_ce_strike)} | Entry: {ce_entry:.2f} | LTP: {ce_ltp_str} | PNL: {'+' if ce_pnl >= 0 else ''}{ce_pnl:.2f}")
+        print(f"    SELL PE {int(sm.sell_pe_strike)} | Entry: {pe_entry:.2f} | LTP: {pe_ltp_str} | PNL: {'+' if pe_pnl >= 0 else ''}{pe_pnl:.2f}")
+        hedge_ce_strike = int(sm.sell_ce_strike + 100) if sm.sell_ce_strike else "---"
+        hedge_pe_strike = int(sm.sell_pe_strike - 100) if sm.sell_pe_strike else "---"
+        print(f"    Hedge CE {hedge_ce_strike} (LTP: {hedge_ce_str}) | Hedge PE {hedge_pe_strike} (LTP: {hedge_pe_str})")
+        print(f"    Strangle PNL: {pnl_sign}{total_pnl:.2f} per lot")
 
     def _display_active_trades(self, orchestrator):
         """Displays the status and P&L of any active ITM weekly trades for an instrument."""

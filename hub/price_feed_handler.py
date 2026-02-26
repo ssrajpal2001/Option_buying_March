@@ -136,6 +136,13 @@ class PriceFeedHandler:
                     if side_data and side_data.get('instrument_key'):
                         relevant_keys.add(side_data['instrument_key'])
 
+            # Include SellManager strangle keys (SELL legs + HEDGE legs)
+            if hasattr(self.trade_orchestrator, 'sell_manager'):
+                sell_mgr = self.trade_orchestrator.sell_manager
+                for k in [sell_mgr.sell_ce_key, sell_mgr.sell_pe_key, sell_mgr.buy_ce_key, sell_mgr.buy_pe_key]:
+                    if k:
+                        relevant_keys.add(k)
+
             self._relevant_keys_cache = relevant_keys
             self._last_keys_rebuild_time = asyncio.get_event_loop().time()
         except Exception as e:
