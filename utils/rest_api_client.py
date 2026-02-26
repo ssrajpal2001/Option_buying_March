@@ -220,6 +220,21 @@ class RestApiClient:
 
         return all_results
 
+    async def get_option_chain(self, instrument_key, expiry_date):
+        """Fetch full option chain with live LTPs for all strikes via /option/chain.
+        Returns a list of strike dicts:
+          { strike_price, call_options: { instrument_key, market_data: { ltp } },
+                          put_options:  { instrument_key, market_data: { ltp } } }
+        """
+        endpoint = "/option/chain"
+        params = {'instrument_key': instrument_key, 'expiry_date': str(expiry_date)}
+        try:
+            response = await self._request('get', endpoint, params=params)
+            return response.get('data', [])
+        except Exception as e:
+            logger.error(f"Error fetching option chain for {instrument_key} expiry {expiry_date}: {e}")
+            return []
+
     async def get_full_market_quote(self, instrument_keys):
         if not instrument_keys:
             return {}
