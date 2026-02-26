@@ -47,15 +47,31 @@ class SellManager:
             ltp = market.get('ltp', 0) or 0
             strike_price = entry.get('strike_price')
             inst_key = side_data.get('instrument_key')
-            if ltp > 0 and strike_price is not None and inst_key:
-                candidates.append((abs(ltp - 100), ltp, float(strike_price), inst_key))
+            # User requirement: LTP must be > 100
+            if ltp > 100 and strike_price is not None and inst_key:
+                candidates.append((ltp, float(strike_price), inst_key))
 
         if not candidates:
-            logger.error(f"[SellManager] No {side} strikes found in option chain")
-            return None, None, None, None
+            logger.warning(f"[SellManager] No {side} strikes found with LTP > 100. Falling back to closest available.")
+            for entry in chain:
+                side_data = entry.get(options_key) or {}
+                market = side_data.get('market_data') or {}
+                ltp = market.get('ltp', 0) or 0
+                strike_price = entry.get('strike_price')
+                inst_key = side_data.get('instrument_key')
+                if ltp > 0 and strike_price is not None and inst_key:
+                    candidates.append((ltp, float(strike_price), inst_key))
 
-        candidates.sort(key=lambda x: x[0])
-        _, ltp, strike, inst_key = candidates[0]
+            if not candidates:
+                logger.error(f"[SellManager] No {side} strikes found in option chain")
+                return None, None, None, None
+
+            candidates.sort(key=lambda x: abs(x[0] - 100))
+        else:
+            # Pick the strike closest to 100 among those that are > 100
+            candidates.sort(key=lambda x: x[0])
+
+        ltp, strike, inst_key = candidates[0]
         logger.info(f"[SellManager] Selected {side} sell strike: {strike} (LTP: {ltp:.2f}, key: {inst_key})")
 
         expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
@@ -90,15 +106,27 @@ class SellManager:
         candidates = []
         for strike, inst_key in candidates_raw:
             hist_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(inst_key, timestamp)
-            if hist_ltp is not None and hist_ltp > 0:
-                candidates.append((abs(hist_ltp - 100), hist_ltp, strike, inst_key))
+            # User requirement: LTP must be > 100
+            if hist_ltp is not None and hist_ltp > 100:
+                candidates.append((hist_ltp, strike, inst_key))
 
         if not candidates:
-            logger.error(f"[SellManager][Backtest] No {side} strikes with historical LTP found at {timestamp}")
-            return None, None, None, None
+            logger.warning(f"[SellManager][Backtest] No {side} strikes with historical LTP > 100 found at {timestamp}. Falling back to closest available.")
+            for strike, inst_key in candidates_raw:
+                hist_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(inst_key, timestamp)
+                if hist_ltp is not None and hist_ltp > 0:
+                    candidates.append((hist_ltp, strike, inst_key))
 
-        candidates.sort(key=lambda x: x[0])
-        _, hist_ltp, strike, inst_key = candidates[0]
+            if not candidates:
+                logger.error(f"[SellManager][Backtest] No {side} strikes with historical LTP found at {timestamp}")
+                return None, None, None, None
+
+            candidates.sort(key=lambda x: abs(x[0] - 100))
+        else:
+            # Pick the strike closest to 100 among those that are > 100
+            candidates.sort(key=lambda x: x[0])
+
+        hist_ltp, strike, inst_key = candidates[0]
         logger.info(f"[SellManager][Backtest] Selected {side} sell strike: {strike} (Historical LTP at {timestamp}: {hist_ltp:.2f}, key: {inst_key})")
 
         expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
