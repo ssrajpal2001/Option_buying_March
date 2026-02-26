@@ -28,6 +28,7 @@
         "vwap_slope_exit_triggered": false,
         "monitoring_ltp": 229.35,
         "monitoring_vwap": 229.15677810433505,
+        "_vwap_close_last_candle": "2026-02-09 14:40:00+05:30",
         "sl_confirm_pending_low": null,
         "sl_confirm_pending_high": null,
         "r1_breach_low": null,

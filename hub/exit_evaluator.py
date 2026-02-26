@@ -72,8 +72,19 @@ class ExitEvaluator:
 
                 can_eval, eval_ts, live_v = True, timestamp, None
                 if s_mode == 'CLOSE':
-                    if not ((timestamp.second >= 5 or self.orchestrator.is_backtest) and (timestamp.minute % s_tf == 0)): can_eval = False
-                    else: eval_ts = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
+                    at_candle_boundary = (timestamp.second >= 5 or self.orchestrator.is_backtest) and (timestamp.minute % s_tf == 0)
+                    if not at_candle_boundary:
+                        can_eval = False
+                    else:
+                        # Compute this candle's aligned start time (e.g. 09:24:00 for tf=3 at 09:24:38)
+                        aligned_min = (timestamp.minute // s_tf) * s_tf
+                        candle_ref = timestamp.replace(minute=aligned_min, second=0, microsecond=0)
+                        last_checked = position_data.get('_vwap_close_last_candle')
+                        if last_checked == candle_ref:
+                            can_eval = False  # Already evaluated for this candle — skip until next tf-min boundary
+                        else:
+                            position_data['_vwap_close_last_candle'] = candle_ref
+                            eval_ts = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
                 else:
                     live_v = position_data.get('monitoring_vwap')
                     if live_v is None:
