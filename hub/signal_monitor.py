@@ -41,6 +41,7 @@ class SignalMonitor:
         self._resumed_priming = False
         self._target_strike_consensus_count = 0
         self._pending_target_strike = None
+        self._last_strike_switch_time = None
 
     def is_monitoring(self):
         return bool(self.state_manager.dual_sr_monitoring_data)
@@ -341,6 +342,7 @@ class SignalMonitor:
                 new_target_strike = v2_target_pair['strike']
 
                 # STRIKE SWITCH CONSENSUS: Prevent ATM jitter
+                # Requires BOTH: tick consensus AND 60-second cooldown since last switch
                 if new_target_strike != currently_monitored_strike:
                     if new_target_strike != self._pending_target_strike:
                         self._pending_target_strike = new_target_strike
@@ -349,14 +351,25 @@ class SignalMonitor:
                         self._target_strike_consensus_count += 1
 
                     consensus_threshold = self._get_user_setting('strike_switch_consensus', int, fallback=2, mode=ref_mode)
-                    if self._target_strike_consensus_count >= consensus_threshold:
+                    ticks_ok = self._target_strike_consensus_count >= consensus_threshold
+
+                    elapsed_since_switch = (
+                        (timestamp - self._last_strike_switch_time).total_seconds()
+                        if self._last_strike_switch_time is not None else 9999
+                    )
+                    time_ok = elapsed_since_switch >= 60
+
+                    if ticks_ok and time_ok:
                         user_display = self.user_id if self.user_id else "Global"
-                        logger.info(f"V2: Target strike change confirmed ({self._target_strike_consensus_count} ticks): {currently_monitored_strike} -> {new_target_strike} (User: {user_display})")
+                        logger.info(f"V2: Target strike change confirmed ({self._target_strike_consensus_count} ticks, {elapsed_since_switch:.0f}s since last switch): {currently_monitored_strike} -> {new_target_strike} (User: {user_display})")
                         await self._monitor_crossover_unlocked(timestamp, v2_target_pair, current_atm)
                         currently_monitored_strike = new_target_strike
                         is_switching = True
+                        self._last_strike_switch_time = timestamp
                         self._pending_target_strike = None
                         self._target_strike_consensus_count = 0
+                    elif ticks_ok and not time_ok:
+                        logger.debug(f"V2: Strike switch {currently_monitored_strike} -> {new_target_strike} ticks confirmed but cooldown active ({60 - elapsed_since_switch:.0f}s remaining). Holding.")
                 else:
                     self._pending_target_strike = None
                     self._target_strike_consensus_count = 0
