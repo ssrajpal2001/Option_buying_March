@@ -152,6 +152,9 @@ class TradeExecutor:
                 trade_ltp = await state_manager.get_ltp_for_instrument(trade_instrument_key, timeout=5)
 
             if not trade_ltp:
+                if float(trade_strike) != float(signal_strike):
+                    logger.error(f"V2: NO PRICE DISCOVERED for HEDGE STRIKE {trade_strike}. Cannot fallback to signal LTP {signal_ltp:.2f} (from strike {signal_strike}). Aborting.")
+                    return
                 logger.warning(f"V2: NO PRICE DISCOVERED for STRIKE {trade_strike} after initial checks. Falling back to signal price.")
                 trade_ltp = signal_ltp
                 is_fallback = True
