@@ -146,12 +146,15 @@ class PositionManager:
         position_data['monitoring_ltp'] = monitoring_ltp
 
         # Track Monitoring Peak/Min for decoupled TSL/ATR TSL
-        if entry_type == 'SELL':
-            mon_min = min(monitoring_ltp, position_data.get('monitoring_min_price', monitoring_ltp))
-            position_data['monitoring_min_price'] = mon_min
-        else:
-            mon_max = max(monitoring_ltp, position_data.get('monitoring_peak_price', monitoring_ltp))
-            position_data['monitoring_peak_price'] = mon_max
+        if monitoring_ltp is not None:
+            if entry_type == 'SELL':
+                curr_min = position_data.get('monitoring_min_price')
+                mon_min = min(monitoring_ltp, curr_min) if curr_min is not None else monitoring_ltp
+                position_data['monitoring_min_price'] = mon_min
+            else:
+                curr_max = position_data.get('monitoring_peak_price')
+                mon_max = max(monitoring_ltp, curr_max) if curr_max is not None else monitoring_ltp
+                position_data['monitoring_peak_price'] = mon_max
 
         if mon_key:
             curr_vwap = await self.indicator_manager.calculate_vwap(mon_key, timestamp)
