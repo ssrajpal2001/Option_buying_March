@@ -96,6 +96,8 @@ class IndicatorManager:
         return ohlc
 
     async def calculate_vwap(self, inst_key, timestamp):
+        if not inst_key:
+            return None
         if not self.orchestrator.is_backtest:
             atps = getattr(self.state_manager, 'option_atps', {})
             live_atp = atps.get(inst_key)
@@ -138,6 +140,8 @@ class IndicatorManager:
         return cum_pv / cum_vol if cum_vol > 0 else None
 
     async def get_vwap_slope_status(self, inst_key, timestamp, timeframe_minutes, count=1, live_vwap=None):
+        if not inst_key:
+            return None, None, None, None, 0, 0
         cache_key = (inst_key, timeframe_minutes, count, live_vwap, timestamp.date(), timestamp.hour, timestamp.minute)
         cached = self._vwap_slope_cache.get(cache_key)
         if cached and (timestamp - cached['ts']).total_seconds() < 5.0:

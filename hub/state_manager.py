@@ -354,7 +354,7 @@ class StateManager:
             # Convert timestamp strings back to datetime objects in positions
             for pos in [self.call_position, self.put_position]:
                 if pos and isinstance(pos, dict):
-                    timestamp_keys = ['entry_timestamp', 'entry_time', 'last_s1_refresh_ts', 'last_exit_check_candle', 'r1_last_above_time']
+                    timestamp_keys = ['entry_timestamp', 'entry_time', 'last_s1_refresh_ts', 'last_exit_check_candle', 'r1_last_above_time', '_vwap_close_last_candle']
                     # Also convert dynamic TF activation timestamps
                     for key in list(pos.keys()):
                         if key in timestamp_keys or key.endswith('_activation'):
@@ -369,6 +369,16 @@ class StateManager:
                                     pos[key] = ts
                                 except Exception:
                                     pass
+
+                    # Convert signal_expiry_date from JSON string back to datetime.date.
+                    # contract_lookup keys are datetime.date objects; a string never matches,
+                    # causing find_instrument_key_by_strike to return None on every lookup.
+                    if 'signal_expiry_date' in pos and isinstance(pos['signal_expiry_date'], str):
+                        try:
+                            import datetime as _dt
+                            pos['signal_expiry_date'] = _dt.date.fromisoformat(pos['signal_expiry_date'])
+                        except Exception:
+                            pass
 
             # Convert timestamps in monitoring data
             if self.dual_sr_monitoring_data:
