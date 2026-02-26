@@ -234,7 +234,9 @@ class DataManager:
         return None
 
     async def prime_aggregator(self, aggregator, instrument_key, timestamp):
-        # Robust priming logic using get_historical_ohlc
+        if not instrument_key:
+            logger.warning(f"prime_aggregator called with None instrument_key — skipping.")
+            return
         df = await self.get_historical_ohlc(instrument_key, aggregator.interval_minutes, timestamp, for_full_day=True, include_current=True)
         if not df.empty:
             aggregator.prime_with_history(instrument_key, df[df.index < timestamp])
