@@ -1,0 +1,140 @@
+2026-02-26 10:16:19,293 - UpstoxApp - INFO - Logger has been successfully configured.
+2026-02-26 10:16:19,297 - UpstoxApp - INFO - ACTIVE STRATEGY: Entry TF: 1m | Exit TF: 1m
+2026-02-26 10:16:19,298 - UpstoxApp - INFO - Starting the multi-broker trading application...
+2026-02-26 10:16:19,298 - UpstoxApp - INFO - Using configuration file: config/config_trader.ini
+2026-02-26 10:16:19,298 - UpstoxApp - INFO - Starting configuration validation for context: 'trader'...
+2026-02-26 10:16:19,298 - UpstoxApp - INFO - Configuration validation for 'trader' successful.
+2026-02-26 10:16:19,298 - UpstoxApp - INFO - Initializing API Client Manager for data providers...
+2026-02-26 10:16:19,299 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_1]
+2026-02-26 10:16:19,299 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_1]
+2026-02-26 10:16:19,361 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_1].
+2026-02-26 10:16:19,362 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_2]
+2026-02-26 10:16:19,364 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_2]
+2026-02-26 10:16:19,405 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_2].
+2026-02-26 10:16:19,406 - UpstoxApp - INFO - API client pool initialized with 2 clients. Active client is set.
+2026-02-26 10:16:19,409 - UpstoxApp - ERROR - Failed to connect to database: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+2026-02-26 10:16:19,410 - UpstoxApp - WARNING - DATABASE WARNING: Connection failed ([Errno 111] Connect call failed ('127.0.0.1', 5432)). Proceeding in legacy mode (INI only).
+2026-02-26 10:16:19,411 - UpstoxApp - WARNING - TRADING_BOT_MASTER_KEY not found in environment. Sensitive data will be inaccessible.
+2026-02-26 10:16:19,412 - UpstoxApp - DEBUG - Listener handle_execute_trade_request subscribed to EXECUTE_TRADE_REQUEST
+2026-02-26 10:16:19,413 - UpstoxApp - DEBUG - Listener handle_exit_request subscribed to EXIT_TRADE_REQUEST
+2026-02-26 10:16:19,414 - UpstoxApp - DEBUG - BrokerManager: Discovering multi-tenant brokers from database...
+2026-02-26 10:16:19,414 - UpstoxApp - WARNING - Database broker discovery skipped or failed: 'NoneType' object has no attribute 'acquire'. Falling back to .ini
+2026-02-26 10:16:19,619 - UpstoxApp - INFO - Starting Zerodha authentication for section: Zerodha_Client_Live_1...
+2026-02-26 10:16:19,621 - UpstoxApp - INFO - Validating Zerodha access token for Zerodha_Client_Live_1...
+2026-02-26 10:16:19,662 - UpstoxApp - INFO - Zerodha access token for Zerodha_Client_Live_1 is valid.
+2026-02-26 10:16:19,678 - UpstoxApp - INFO - Zerodha authentication successful for user: SA5770 [Zerodha_Client_Live_1].
+2026-02-26 10:16:19,682 - UpstoxApp - INFO - Successfully loaded broker: Zerodha_Client_Live_1 (Client: Zerodha)
+2026-02-26 10:16:19,682 - UpstoxApp - INFO - Live mode enabled. Selected data provider: upstox
+2026-02-26 10:16:19,685 - UpstoxApp - INFO - WebSocket listener task created.
+2026-02-26 10:16:19,688 - UpstoxApp - INFO - Strategy logic loaded from /home/ec2-user/environment/AlgoSoft_March/utils/../config/strategy_logic.json
+2026-02-26 10:16:19,688 - UpstoxApp - DEBUG - Listener _handle_spot_price_update subscribed to SPOT_PRICE_UPDATE
+2026-02-26 10:16:19,701 - UpstoxApp - INFO - Message handler handle_message registered.
+2026-02-26 10:16:19,706 - UpstoxApp - DEBUG - Initializing V2 Logic Components...
+2026-02-26 10:16:19,707 - UpstoxApp - INFO - [NIFTY] IndicatorManager initialized on orchestrator.
+2026-02-26 10:16:19,707 - UpstoxApp - DEBUG - Listener handle_add_to_watchlist subscribed to ADD_TO_WATCHLIST
+2026-02-26 10:16:19,707 - UpstoxApp - DEBUG - Listener handle_remove_from_watchlist subscribed to REMOVE_FROM_WATCHLIST
+2026-02-26 10:16:19,708 - UpstoxApp - INFO - WebSocketManager starting connection loop.
+2026-02-26 10:16:19,708 - UpstoxApp - INFO - Attempting to authorize and connect... (Attempt 1)
+2026-02-26 10:16:19,709 - UpstoxApp - INFO - Authorizing WebSocket feed...
+2026-02-26 10:16:19,710 - UpstoxApp - INFO - Sending GET request to https://api.upstox.com/v3/feed/market-data-feed/authorize...
+2026-02-26 10:16:19,710 - UpstoxApp - INFO - Tick worker started for NIFTY.
+2026-02-26 10:16:19,746 - UpstoxApp - INFO - WebSocket authorization successful.
+2026-02-26 10:16:19,755 - UpstoxApp - INFO - Opening WebSocket connection to wss://wsfeeder-api.upstox.com/market-data-feeder/v...
+2026-02-26 10:16:19,784 - UpstoxApp - INFO - WebSocket connection established successfully.
+2026-02-26 10:16:19,786 - UpstoxApp - WARNING - V2 WebSocket: No existing instruments to re-subscribe to.
+2026-02-26 10:16:19,786 - UpstoxApp - INFO - WebSocket message processor started.
+2026-02-26 10:16:19,788 - UpstoxApp - DEBUG - Upstox API 400 (Expected/Silenced) at /market-quote/ltp. Body: {"status":"error","errors":[{"errorCode":"UDAPI1087","message":"One of either symbol or instrument_key is invalid.","propertyPath":null,"invalidValue":null,"error_code":"UDAPI1087","property_path":null,"invalid_value":null}]}
+2026-02-26 10:16:19,790 - UpstoxApp - INFO - First market data packet processed from queue. Data feed is active.
+2026-02-26 10:16:20,045 - UpstoxApp - DEBUG - AtmManager initialized with Expiry and Subscription managers.
+2026-02-26 10:16:20,046 - UpstoxApp - DEBUG - Orchestrator initialization finalized.
+2026-02-26 10:16:20,048 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
+2026-02-26 10:16:20,049 - UpstoxApp - WARNING - ExpiryManager: WEEKLY/EXPIRY mode — today 2026-02-26 (Thursday) not in future expiries. Using today as expiry.
+2026-02-26 10:16:20,050 - UpstoxApp - INFO - [NIFTY] Default expiry resolved: signal=2026-02-26 (CURRENT_WEEK), trade=2026-02-26 (WEEKLY)
+2026-02-26 10:16:20,052 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
+2026-02-26 10:16:20,052 - UpstoxApp - WARNING - ExpiryManager: WEEKLY/EXPIRY mode — today 2026-02-26 (Thursday) not in future expiries. Using today as expiry.
+2026-02-26 10:16:20,053 - UpstoxApp - INFO - [NIFTY] [BUY] Expiry resolved: signal=2026-02-26 (WEEKLY), trade=2026-02-26 (WEEKLY)
+2026-02-26 10:16:20,054 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
+2026-02-26 10:16:20,054 - UpstoxApp - WARNING - ExpiryManager: WEEKLY/EXPIRY mode — today 2026-02-26 (Thursday) not in future expiries. Using today as expiry.
+2026-02-26 10:16:20,054 - UpstoxApp - INFO - [NIFTY] [SELL] Expiry resolved: signal=2026-02-26 (WEEKLY), trade=2026-02-26 (WEEKLY)
+2026-02-26 10:16:20,055 - UpstoxApp - DEBUG - Listener handle_trade_confirmed subscribed to TRADE_CONFIRMED
+2026-02-26 10:16:20,055 - UpstoxApp - DEBUG - Listener handle_trade_closed subscribed to TRADE_CLOSED
+2026-02-26 10:16:20,057 - UpstoxApp - INFO - UserSession Initialized: User=default_user@local | Instrument=NIFTY
+2026-02-26 10:16:20,058 - UpstoxApp - INFO - No saved state file found. Starting with a fresh state.
+2026-02-26 10:16:20,058 - UpstoxApp - DEBUG - [NIFTY] User default_user@local added to monitoring.
+2026-02-26 10:16:20,058 - UpstoxApp - DEBUG - [NIFTY] Requesting initial subscriptions for: ['NSE_FO|51714', 'NSE_INDEX|Nifty 50']
+2026-02-26 10:16:20,058 - UpstoxApp - DEBUG - LifecycleManager started. Delegating startup sequence...
+2026-02-26 10:16:20,058 - UpstoxApp - INFO - Trading bot is now live.
+2026-02-26 10:16:20,062 - UpstoxApp - DEBUG - OHLC Aggregator [Pattern_Entry|1m]: Initialized first interval start at 10:16:00 (First tick at 10:16:19.165000)
+2026-02-26 10:16:20,062 - UpstoxApp - DEBUG - OHLC Aggregator [Pattern_Exit|1m]: Initialized first interval start at 10:16:00 (First tick at 10:16:19.165000)
+2026-02-26 10:16:20,062 - UpstoxApp - DEBUG - OHLC Aggregator [S1LOW_Fast|1m]: Initialized first interval start at 10:16:00 (First tick at 10:16:19.165000)
+2026-02-26 10:16:20,062 - UpstoxApp - DEBUG - OHLC Aggregator [S1LOW_Slow|3m]: Initialized first interval start at 10:15:00 (First tick at 10:16:19.165000)
+2026-02-26 10:16:20,062 - UpstoxApp - INFO - V2: First FUTURES price received for NIFTY: 25692.0
+2026-02-26 10:16:20,062 - UpstoxApp - INFO - V2: First INDEX price (Spot) received for NIFTY: 25547.0
+2026-02-26 10:16:20,062 - UpstoxApp - DEBUG - V2: Performing resubscription around ATM: 25700
+2026-02-26 10:16:20,062 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.0s | Worker: ALIVE | Exchange: 2026-02-26 10:16:20.059000+05:30 | Sessions: Global:Idle
+2026-02-26 10:16:20,064 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,064 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,064 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,263 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,263 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,264 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,463 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,464 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,464 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,664 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,664 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,664 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,911 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,911 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:20,911 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,112 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,112 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,112 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,511 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,511 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,511 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,811 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,811 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:21,811 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,012 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,012 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,012 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,411 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,411 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,411 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,719 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,719 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:22,719 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,011 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,011 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,011 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,462 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,463 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,463 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,663 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,664 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,664 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,911 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,911 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:23,911 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,112 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,112 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,112 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,510 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,510 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,510 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,811 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,811 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:24,811 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,012 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,013 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,013 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,263 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,263 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,263 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,464 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,465 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:25,465 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:26,010 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:26,011 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+2026-02-26 10:16:26,011 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
