@@ -1,0 +1,152 @@
+
+
+2026-02-26 13:52:16,598 - UpstoxApp - INFO - Logger has been successfully configured.
+2026-02-26 13:52:16,598 - UpstoxApp - INFO - ACTIVE STRATEGY: Entry TF: 1m | Exit TF: 1m
+2026-02-26 13:52:16,599 - UpstoxApp - INFO - Starting the multi-broker trading application...
+2026-02-26 13:52:16,599 - UpstoxApp - INFO - Using configuration file: config/config_trader.ini
+2026-02-26 13:52:16,599 - UpstoxApp - INFO - Starting configuration validation for context: 'trader'...
+2026-02-26 13:52:16,600 - UpstoxApp - INFO - Configuration validation for 'trader' successful.
+2026-02-26 13:52:16,600 - UpstoxApp - INFO - Initializing API Client Manager for data providers...
+2026-02-26 13:52:16,600 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_1]
+2026-02-26 13:52:16,600 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_1]
+2026-02-26 13:52:16,649 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_1].
+2026-02-26 13:52:16,650 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_2]
+2026-02-26 13:52:16,650 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_2]
+2026-02-26 13:52:16,690 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_2].
+2026-02-26 13:52:16,690 - UpstoxApp - INFO - API client pool initialized with 2 clients. Active client is set.
+2026-02-26 13:52:16,692 - UpstoxApp - ERROR - Failed to connect to database: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+2026-02-26 13:52:16,692 - UpstoxApp - WARNING - DATABASE WARNING: Connection failed ([Errno 111] Connect call failed ('127.0.0.1', 5432)). Proceeding in legacy mode (INI only).
+2026-02-26 13:52:16,692 - UpstoxApp - WARNING - TRADING_BOT_MASTER_KEY not found in environment. Sensitive data will be inaccessible.
+2026-02-26 13:52:16,693 - UpstoxApp - WARNING - Database broker discovery skipped or failed: 'NoneType' object has no attribute 'acquire'. Falling back to .ini
+2026-02-26 13:52:17,068 - UpstoxApp - INFO - Starting Zerodha authentication for section: Zerodha_Client_Live_1...
+2026-02-26 13:52:17,071 - UpstoxApp - INFO - Validating Zerodha access token for Zerodha_Client_Live_1...
+2026-02-26 13:52:17,117 - UpstoxApp - INFO - Zerodha access token for Zerodha_Client_Live_1 is valid.
+2026-02-26 13:52:17,137 - UpstoxApp - INFO - Zerodha authentication successful for user: SA5770 [Zerodha_Client_Live_1].
+2026-02-26 13:52:17,137 - UpstoxApp - INFO - Successfully loaded broker: Zerodha_Client_Live_1 (Client: Zerodha)
+2026-02-26 13:52:17,137 - UpstoxApp - INFO - Live mode enabled. Selected data provider: upstox
+2026-02-26 13:52:17,139 - UpstoxApp - INFO - WebSocket listener task created.
+2026-02-26 13:52:17,140 - UpstoxApp - INFO - Strategy logic loaded from /home/ec2-user/environment/AlgoSoft_March/utils/../config/strategy_logic.json
+2026-02-26 13:52:17,151 - UpstoxApp - INFO - Message handler handle_message registered.
+2026-02-26 13:52:17,151 - UpstoxApp - INFO - [NIFTY] IndicatorManager initialized on orchestrator.
+2026-02-26 13:52:17,152 - UpstoxApp - INFO - WebSocketManager starting connection loop.
+2026-02-26 13:52:17,153 - UpstoxApp - INFO - Attempting to authorize and connect... (Attempt 1)
+2026-02-26 13:52:17,153 - UpstoxApp - INFO - Authorizing WebSocket feed...
+2026-02-26 13:52:17,153 - UpstoxApp - INFO - Sending GET request to https://api.upstox.com/v3/feed/market-data-feed/authorize...
+2026-02-26 13:52:17,153 - UpstoxApp - INFO - Tick worker started for NIFTY.
+2026-02-26 13:52:17,202 - UpstoxApp - INFO - WebSocket authorization successful.
+2026-02-26 13:52:17,210 - UpstoxApp - INFO - Opening WebSocket connection to wss://wsfeeder-api.upstox.com/market-data-feeder/v...
+2026-02-26 13:52:17,239 - UpstoxApp - INFO - WebSocket connection established successfully.
+2026-02-26 13:52:17,240 - UpstoxApp - WARNING - V2 WebSocket: No existing instruments to re-subscribe to.
+2026-02-26 13:52:17,240 - UpstoxApp - INFO - WebSocket message processor started.
+2026-02-26 13:52:17,240 - UpstoxApp - INFO - First market data packet processed from queue. Data feed is active.
+2026-02-26 13:52:17,602 - UpstoxApp - INFO - ContractManager: Expiry day detected (2026-02-26) — today's contracts absent from standard endpoint. Fetching from expired-instruments API...
+2026-02-26 13:52:17,630 - UpstoxApp - WARNING - ContractManager: https://api.upstox.com/v2 returned 200 but data=[] for expiry=2026-02-26
+2026-02-26 13:52:17,653 - UpstoxApp - WARNING - ContractManager: https://api.upstox.com/v3 returned HTTP 404
+2026-02-26 13:52:17,653 - UpstoxApp - ERROR - ContractManager: All endpoints returned empty — no expiry-day contracts found for 2026-02-26 (key=NSE_INDEX|Nifty 50)
+2026-02-26 13:52:17,653 - UpstoxApp - WARNING - ContractManager: expired-instruments API returned no contracts. Bot may be unable to trade today's expiry.
+2026-02-26 13:52:17,654 - UpstoxApp - INFO - ContractManager: Near weekly expiry resolved to 2026-03-02 (day=Monday)
+2026-02-26 13:52:17,657 - UpstoxApp - INFO - [NIFTY] Default expiry resolved: signal=2026-03-02 (CURRENT_WEEK), trade=2026-03-02 (WEEKLY)
+2026-02-26 13:52:17,658 - UpstoxApp - INFO - [NIFTY] [BUY] Expiry resolved: signal=2026-03-02 (WEEKLY), trade=2026-03-02 (WEEKLY)
+2026-02-26 13:52:17,659 - UpstoxApp - INFO - [NIFTY] [SELL] Expiry resolved: signal=2026-03-02 (WEEKLY), trade=2026-03-02 (WEEKLY)
+2026-02-26 13:52:17,659 - UpstoxApp - INFO - UserSession Initialized: User=default_user@local | Instrument=NIFTY
+2026-02-26 13:52:17,660 - UpstoxApp - INFO - Successfully loaded state from config/state_NIFTY_1m_1m_CROSSOVER.json
+2026-02-26 13:52:17,667 - UpstoxApp - INFO - Trading bot is now live.
+2026-02-26 13:52:17,670 - UpstoxApp - INFO - V2: First INDEX price (Spot) received for NIFTY: 25427.85
+2026-02-26 13:52:17,670 - UpstoxApp - INFO - V2: First FUTURES price received for NIFTY: 25570.0
+2026-02-26 13:52:17,670 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.0s | Worker: ALIVE | Exchange: 2026-02-26 13:52:17.668000+05:30 | Sessions: Global:In Trade
+2026-02-26 13:52:28,113 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25500]: slope(V1:140.45 > V0:140.60 (Pct:-0.11%, Cons:0/1))=False | LTP: 102.80 | Formula: vwap_slope
+2026-02-26 13:52:29,117 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks, 9999s since last switch): 25500 -> 25550 (User: Global)
+2026-02-26 13:52:29,613 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25550 (SWITCHED) | Index: 25437.25 | CE: slope(V1:108.25 > V0:108.35 (Pct:-0.09%, Cons:0/1)):False (LTP: 81.75) | PE: (In Trade) [V:120.3, VP:120.3, LP:161.2] (LTP: 179.35)
+2026-02-26 13:52:30,235 - UpstoxApp - INFO - V2 MGMT: [PUT] Target strike switch: 25500 -> 25550. Performing Hot Handover.
+2026-02-26 13:52:30,239 - UpstoxApp - INFO - V2: Hot Handover [PUT] Peak Price updated to 194.90 (Duration: 13:48:00 - 13:52:30.207000)
+2026-02-26 13:52:30,240 - UpstoxApp - INFO - V2: Hot Handover [PUT] VWAP Peak updated to 137.07 (Calculated from 4 finalized candles between 2026-02-26 13:48:00+05:30 and 2026-02-26 13:51:00+05:30)
+2026-02-26 13:53:01,301 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -643.50 | LTP: 151.25 | VWAP: 137.17 (Peak: 137.17) | Initializing...
+2026-02-26 13:53:28,572 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25550]: slope(V1:108.15 > V0:108.25 (Pct:-0.09%, Cons:0/1))=False | LTP: 81.00 | Formula: vwap_slope
+2026-02-26 13:53:29,576 - UpstoxApp - INFO - V2: Target strike change confirmed (3 ticks, 60s since last switch): 25550 -> 25500 (User: Global)
+2026-02-26 13:53:29,576 - UpstoxApp - INFO - V2: Switching monitoring strike 25550 -> 25500
+2026-02-26 13:53:30,057 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25500 (SWITCHED) | Index: 25440.10 | CE: slope(V1:133.63 > V0:133.74 (Pct:-0.09%, Cons:0/1)):False (LTP: 101.95) | PE: (In Trade) [V:137.2, VP:137.2, LP:161.2] (LTP: 150.00)
+2026-02-26 13:53:30,675 - UpstoxApp - INFO - V2 MGMT: [PUT] Target strike switch: 25550 -> 25500. Performing Hot Handover.
+2026-02-26 13:53:30,678 - UpstoxApp - INFO - V2: Hot Handover [PUT] Peak Price updated to 164.70 (Duration: 13:48:00 - 13:53:30.657000)
+2026-02-26 13:53:30,680 - UpstoxApp - INFO - V2: Hot Handover [PUT] VWAP Peak updated to 120.28 (Calculated from 5 finalized candles between 2026-02-26 13:48:00+05:30 and 2026-02-26 13:52:00+05:30)
+2026-02-26 13:54:00,490 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25500 | Index: 25440.70 | CE: slope(V1:133.51 > V0:133.63 (Pct:-0.09%, Cons:0/1)):False (LTP: 101.10) | PE: (In Trade) [V:120.4, VP:120.4, LP:161.2] (LTP: 148.30)
+2026-02-26 13:54:00,490 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -835.25 | LTP: 148.30 | VWAP: 120.37 (Peak: 120.37) | Initializing...
+2026-02-26 13:54:05,659 - UpstoxApp - INFO - V2 MGMT: [PUT] VWAP EXIT CHECK: Current 124.99 vs Peak 124.99 | Drawdown: 0.00% | Threshold: -1.00% → HOLD
+2026-02-26 13:54:28,739 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25500]: slope(V1:133.51 > V0:133.63 (Pct:-0.09%, Cons:0/1))=False | LTP: 101.35 | Formula: vwap_slope
+2026-02-26 13:54:29,744 - UpstoxApp - INFO - V2: Target strike change confirmed (44 ticks, 60s since last switch): 25500 -> 25550 (User: Global)
+2026-02-26 13:54:29,744 - UpstoxApp - INFO - V2: Switching monitoring strike 25500 -> 25550
+2026-02-26 13:54:30,392 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25550 (SWITCHED) | Index: 25444.45 | CE: slope(V1:108.05 > V0:108.15 (Pct:-0.09%, Cons:0/1)):False (LTP: 79.85) | PE: (In Trade) [V:120.4, VP:120.4, LP:161.2] (LTP: 176.75)
+2026-02-26 13:54:30,810 - UpstoxApp - INFO - V2 MGMT: [PUT] Target strike switch: 25500 -> 25550. Performing Hot Handover.
+2026-02-26 13:54:30,814 - UpstoxApp - INFO - V2: Hot Handover [PUT] Peak Price updated to 194.90 (Duration: 13:48:00 - 13:54:30.807000)
+2026-02-26 13:54:30,816 - UpstoxApp - INFO - V2: Hot Handover [PUT] VWAP Peak updated to 137.18 (Calculated from 6 finalized candles between 2026-02-26 13:48:00+05:30 and 2026-02-26 13:53:00+05:30)
+2026-02-26 13:55:00,384 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -809.25 | LTP: 148.70 | VWAP: 137.26 (Peak: 137.26) | V1:124.99 < Ref:124.99 (Pct:0.00%)
+2026-02-26 13:55:29,483 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25550]: slope(V1:107.95 > V0:108.05 (Pct:-0.09%, Cons:0/1))=False | LTP: 80.15 | Formula: vwap_slope
+2026-02-26 13:55:42,830 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks, 73s since last switch): 25550 -> 25500 (User: Global)
+2026-02-26 13:55:42,831 - UpstoxApp - INFO - V2: Switching monitoring strike 25550 -> 25500
+2026-02-26 13:55:43,307 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25500 (SWITCHED) | Index: 25445.20 | CE: slope(V1:133.39 > V0:133.51 (Pct:-0.09%, Cons:0/1)):False (LTP: 100.90) | PE: (In Trade) [V:137.3, VP:137.3, LP:161.2] (LTP: 149.30)
+2026-02-26 13:56:00,385 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -958.75 | LTP: 146.40 | VWAP: 137.33 (Peak: 137.33) | V1:124.99 < Ref:124.99 (Pct:0.00%)
+2026-02-26 13:56:30,150 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25500]: slope(V1:133.28 > V0:133.39 (Pct:-0.08%, Cons:0/1))=False | LTP: 101.65 | Formula: vwap_slope
+2026-02-26 13:56:47,021 - UpstoxApp - INFO - V2: Target strike change confirmed (2 ticks, 64s since last switch): 25500 -> 25550 (User: Global)
+2026-02-26 13:56:47,021 - UpstoxApp - INFO - V2: Switching monitoring strike 25500 -> 25550
+2026-02-26 13:56:47,500 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25550 (SWITCHED) | Index: 25445.15 | CE: slope(V1:107.85 > V0:107.95 (Pct:-0.09%, Cons:0/1)):False (LTP: 79.50) | PE: (In Trade) [V:137.4, VP:137.4, LP:161.2] (LTP: 179.35)
+2026-02-26 13:57:00,373 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25550 | Index: 25447.70 | CE: slope(V1:107.75 > V0:107.85 (Pct:-0.09%, Cons:0/1)):False (LTP: 79.95) | PE: (In Trade) [V:137.4, VP:137.4, LP:161.2] (LTP: 177.50)
+2026-02-26 13:57:00,375 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -806.00 | LTP: 148.75 | VWAP: 137.37 (Peak: 137.37) | V1:124.99 < Ref:124.99 (Pct:0.00%)
+2026-02-26 13:57:01,353 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25550 | Index: 25447.30 | CE: slope(V1:107.75 > V0:107.85 (Pct:-0.09%, Cons:0/1)):False (LTP: 79.70) | PE: (In Trade) [V:137.4, VP:137.4, LP:161.2] (LTP: 178.25)
+2026-02-26 13:57:01,353 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -799.50 | LTP: 148.85 | VWAP: 137.37 (Peak: 137.37) | V1:124.99 < Ref:124.99 (Pct:0.00%)
+2026-02-26 13:57:05,443 - UpstoxApp - INFO - V2 MGMT: [PUT] VWAP EXIT CHECK: Current 149.84 vs Peak 149.84 | Drawdown: 0.00% | Threshold: -1.00% → HOLD
+2026-02-26 13:57:17,755 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.1s | Worker: ALIVE | Exchange: 2026-02-26 13:57:17.607000+05:30 | Sessions: Global:In Trade
+2026-02-26 13:57:30,172 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25550]: slope(V1:107.75 > V0:107.85 (Pct:-0.09%, Cons:0/1))=False | LTP: 78.95 | Formula: vwap_slope
+2026-02-26 13:57:47,339 - UpstoxApp - INFO - V2: Target strike change confirmed (10 ticks, 60s since last switch): 25550 -> 25500 (User: Global)
+2026-02-26 13:57:47,339 - UpstoxApp - INFO - V2: Switching monitoring strike 25550 -> 25500
+2026-02-26 13:57:47,825 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25500 (SWITCHED) | Index: 25439.75 | CE: slope(V1:133.17 > V0:133.28 (Pct:-0.09%, Cons:0/1)):False (LTP: 100.15) | PE: (In Trade) [V:137.4, VP:137.4, LP:161.2] (LTP: 151.75)
+2026-02-26 13:58:00,958 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -682.50 | LTP: 150.65 | VWAP: 137.44 (Peak: 137.44) | V1:149.84 < Ref:149.84 (Pct:0.00%)
+2026-02-26 13:58:30,828 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25500]: slope(V1:133.05 > V0:133.17 (Pct:-0.09%, Cons:0/1))=False | LTP: 100.60 | Formula: vwap_slope
+2026-02-26 13:59:00,501 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -412.75 | LTP: 154.80 | VWAP: 137.51 (Peak: 137.51) | V1:149.84 < Ref:149.84 (Pct:0.00%)
+2026-02-26 13:59:31,143 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25500]: slope(V1:132.93 > V0:133.05 (Pct:-0.09%, Cons:0/1))=False | LTP: 96.55 | Formula: vwap_slope
+2026-02-26 13:59:31,144 - UpstoxApp - INFO - V2 MGMT: [PUT] Target strike switch: 25550 -> 25500. Performing Hot Handover.
+2026-02-26 13:59:31,225 - UpstoxApp - INFO - V2: Hot Handover [PUT] Peak Price updated to 164.70 (Duration: 13:48:00 - 13:59:31.107000)
+2026-02-26 13:59:31,227 - UpstoxApp - INFO - V2: Hot Handover [PUT] VWAP Peak updated to 120.58 (Calculated from 11 finalized candles between 2026-02-26 13:48:00+05:30 and 2026-02-26 13:58:00+05:30)
+2026-02-26 14:00:00,145 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25500 | Index: 25440.80 | CE: slope(V1:132.80 > V0:132.93 (Pct:-0.09%, Cons:0/1)):False (LTP: 98.95) | PE: (In Trade) [V:120.7, VP:120.7, LP:161.2] (LTP: 152.30)
+2026-02-26 14:00:00,146 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -575.25 | LTP: 152.30 | VWAP: 120.68 (Peak: 120.68) | V1:149.84 < Ref:149.84 (Pct:0.00%)
+2026-02-26 14:00:01,127 - UpstoxApp - INFO - V2 MONITORING Status [Global]: Strike 25500 | Index: 25441.10 | CE: slope(V1:132.80 > V0:132.93 (Pct:-0.09%, Cons:0/1)):False (LTP: 99.40) | PE: (In Trade) [V:120.7, VP:120.7, LP:161.2] (LTP: 151.40)
+2026-02-26 14:00:01,128 - UpstoxApp - INFO - V2 MGMT: [PUT] PnL: -633.75 | LTP: 151.40 | VWAP: 120.68 (Peak: 120.68) | V1:149.84 < Ref:149.84 (Pct:0.00%)
+2026-02-26 14:00:05,175 - UpstoxApp - INFO - V2 MGMT: [PUT] EXIT CRITERIA MET (VWAP Slope): Current VWAP 125.52 vs Ref 149.84 (Drawdown: -16.23%, Threshold: -1.00%)
+2026-02-26 14:00:05,176 - UpstoxApp - INFO - V2 MGMT: [PUT] EXIT TRIGGERED: Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 14:00:05,176 - UpstoxApp - INFO - V2: Requesting EXIT for PUT at 153.20. Reason: Structural Exit: VWAP Slope < (CLOSE)
+2026-02-26 14:00:05,176 - UpstoxApp - INFO - V2 MGMT: [PUT] Exit (Structural Exit: VWAP Slope < (CLOSE)). Preserving 9:15 Breach flags for potential re-entry.
+2026-02-26 14:00:05,176 - UpstoxApp - INFO - V2 MGMT: [PUT] Re-entry cooldown active until 14:01:05 (60s)
+2026-02-26 14:00:05,176 - UpstoxApp - INFO - Executing exit on broker 'Zerodha_Client_Live_1' (User: None)
+2026-02-26 14:00:05,232 - UpstoxApp - INFO - Successfully placed SELL order to close PUT position for NIFTY2630225500PE with order_id: 260226191314887
+2026-02-26 14:00:05,234 - UpstoxApp - INFO - Closed PUT trade. Final PNL: -516.75, Total Session PNL: 289.25
+2026-02-26 14:00:06,152 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 59s remaining (until 14:01:05)
+2026-02-26 14:00:07,157 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 58s remaining (until 14:01:05)
+2026-02-26 14:00:08,160 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 57s remaining (until 14:01:05)
+2026-02-26 14:00:09,165 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 56s remaining (until 14:01:05)
+2026-02-26 14:00:10,168 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 55s remaining (until 14:01:05)
+2026-02-26 14:00:11,172 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 54s remaining (until 14:01:05)
+2026-02-26 14:00:12,176 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 53s remaining (until 14:01:05)
+2026-02-26 14:00:13,315 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 52s remaining (until 14:01:05)
+2026-02-26 14:00:14,319 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 51s remaining (until 14:01:05)
+2026-02-26 14:00:15,323 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 50s remaining (until 14:01:05)
+2026-02-26 14:00:16,326 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 49s remaining (until 14:01:05)
+2026-02-26 14:00:17,328 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 48s remaining (until 14:01:05)
+2026-02-26 14:00:18,335 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 47s remaining (until 14:01:05)
+2026-02-26 14:00:19,339 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 46s remaining (until 14:01:05)
+2026-02-26 14:00:20,344 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 45s remaining (until 14:01:05)
+2026-02-26 14:00:21,352 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 44s remaining (until 14:01:05)
+2026-02-26 14:00:22,359 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 43s remaining (until 14:01:05)
+2026-02-26 14:00:23,363 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 42s remaining (until 14:01:05)
+2026-02-26 14:00:24,511 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 40s remaining (until 14:01:05)
+2026-02-26 14:00:25,515 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 40s remaining (until 14:01:05)
+2026-02-26 14:00:26,521 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 39s remaining (until 14:01:05)
+2026-02-26 14:00:27,525 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 38s remaining (until 14:01:05)
+2026-02-26 14:00:28,531 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 37s remaining (until 14:01:05)
+2026-02-26 14:00:29,534 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 36s remaining (until 14:01:05)
+2026-02-26 14:00:30,539 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 34s remaining (until 14:01:05)
+2026-02-26 14:00:31,544 - UpstoxApp - INFO - V2: [CE] [BUY] Status [25500]: slope(V1:132.80 > V0:132.93 (Pct:-0.09%, Cons:0/1))=False | LTP: 97.85 | Formula: vwap_slope
+2026-02-26 14:00:31,545 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 34s remaining (until 14:01:05)
+2026-02-26 14:00:32,547 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 33s remaining (until 14:01:05)
+2026-02-26 14:00:33,551 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 32s remaining (until 14:01:05)
+2026-02-26 14:00:34,555 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 31s remaining (until 14:01:05)
+2026-02-26 14:00:35,559 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 30s remaining (until 14:01:05)
+2026-02-26 14:00:36,562 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 28s remaining (until 14:01:05)
+2026-02-26 14:00:37,567 - UpstoxApp - INFO - V2: [PE] Re-entry blocked by cooldown. 28s remaining (until 14:01:05)
