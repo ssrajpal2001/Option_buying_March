@@ -65,7 +65,8 @@ class ZerodhaClient(BaseBroker):
                 logger.info(f"  Quantity: {final_qty} | Price: {kwargs.get('ltp', 0)}")
                 order_id = "PAPER_ZERODHA_ORDER"
             else:
-                order_id = self.place_order(contract, transaction_type, final_qty, signal_expiry_date)
+                product_type = kwargs.get('product_type', 'NRML')
+                order_id = self.place_order(contract, transaction_type, final_qty, signal_expiry_date, product_type=product_type)
 
             if order_id:
                 if not self.paper_trade:
@@ -172,10 +173,11 @@ class ZerodhaClient(BaseBroker):
         except Exception as e:
             logger.error(f"Exception closing position for {contract.instrument_key}: {e}", exc_info=True)
 
-    def place_order(self, contract, transaction_type, quantity, signal_expiry_date):
+    def place_order(self, contract, transaction_type, quantity, signal_expiry_date, product_type='NRML'):
         """
         Places an order with Zerodha.
         Generates the Zerodha-specific symbol from the contract object.
+        product_type: 'NRML' for carry-forward (sell strangle legs), 'MIS' for intraday (buy hedge legs).
         """
         symbol = self.construct_zerodha_symbol(contract, signal_expiry_date)
         if not symbol:
@@ -192,6 +194,8 @@ class ZerodhaClient(BaseBroker):
         if hasattr(contract, 'exchange') and contract.exchange == 'BSE':
             exchange = self.kite.EXCHANGE_BFO
 
+        zerodha_product = self.kite.PRODUCT_NRML if product_type == 'NRML' else self.kite.PRODUCT_MIS
+
         try:
             order_id = self.kite.place_order(
                 tradingsymbol=symbol,
@@ -200,7 +204,7 @@ class ZerodhaClient(BaseBroker):
                 quantity=quantity,
                 variety=self.kite.VARIETY_REGULAR,
                 order_type=self.kite.ORDER_TYPE_MARKET,
-                product=self.kite.PRODUCT_NRML
+                product=zerodha_product
             )
             return order_id
         except Exception as e:
