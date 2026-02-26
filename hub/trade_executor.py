@@ -324,6 +324,14 @@ class TradeExecutor:
         if position is not None:
             position['exit_monitoring_strike'] = signal_strike
 
+            # Pre-seed the CLOSE-mode candle dedup to prevent immediate exit on entry candle.
+            # If entry happens inside a candle boundary window (minute%tf==0 AND second>=5),
+            # _vwap_close_last_candle=None would cause the exit evaluator to fire on the
+            # just-closed candle milliseconds after entry. Pre-seeding to current minute
+            # prevents this — the next candle boundary will be a clean evaluation.
+            position['_vwap_close_last_candle'] = timestamp.replace(second=0, microsecond=0)
+            logger.debug(f"V2: Pre-seeded _vwap_close_last_candle={position['_vwap_close_last_candle']} to block same-candle exit on entry.")
+
             # --- DYNAMIC TARGET INITIALIZATION ---
             # USER REQUIREMENT: Only calculate if target_exit is enabled
             position_manager = self._get_position_manager(user_id)
