@@ -7,3 +7,4 @@ class OrchestratorState:
         self.tick_history = defaultdict(lambda: deque(maxlen=100))
         self.v2_target_strike_pair = None
         self.current_target_strike = None
+        self.done_for_day = False

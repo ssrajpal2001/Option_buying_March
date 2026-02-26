@@ -118,7 +118,7 @@ class TradeExecutor:
                 return
 
             logger.info(f"V2 Hybrid [Backtest]: Discovered execution price: {trade_ltp:.2f}")
-            await self._finalize_trade_entry(direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log, user_id, entry_type)
+            await self._finalize_trade_entry(direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log, user_id, entry_type, quantity_multiplier)
         else:
             # HYBRID APPROACH
             # 1. Start dynamic WebSocket subscription for the contract
@@ -169,7 +169,7 @@ class TradeExecutor:
                     return
 
             # 3. Finalize entry using discovered LTP.
-            existing_pos = await self._finalize_trade_entry(direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log, user_id, entry_type)
+            existing_pos = await self._finalize_trade_entry(direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log, user_id, entry_type, quantity_multiplier)
 
             if is_fallback and existing_pos:
                 existing_pos['awaiting_real_price'] = True
@@ -204,11 +204,11 @@ class TradeExecutor:
                         logger.info(f"V2: Updated entry price for {side} from first real tick: {ltp:.2f}")
                     await state_manager.save_state()
 
-    async def _finalize_trade_entry(self, direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log="", user_id=None, entry_type='BUY'):
+    async def _finalize_trade_entry(self, direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log="", user_id=None, entry_type='BUY', quantity_multiplier=1):
         async with self._finalize_lock:
-            return await self._finalize_trade_entry_unlocked(direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log, user_id, entry_type)
+            return await self._finalize_trade_entry_unlocked(direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log, user_id, entry_type, quantity_multiplier)
 
-    async def _finalize_trade_entry_unlocked(self, direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log="", user_id=None, entry_type='BUY'):
+    async def _finalize_trade_entry_unlocked(self, direction, trade_instrument_key, trade_ltp, trade_strike, timestamp, signal_strike, strategy_log="", user_id=None, entry_type='BUY', quantity_multiplier=1):
         task_id = id(asyncio.current_task())
         state_manager = self._get_state_manager(user_id)
 
@@ -243,7 +243,8 @@ class TradeExecutor:
             s1_fast_tf=self.orchestrator.s1_low_fast_tf,
             s1_slow_tf=self.orchestrator.s1_low_slow_tf,
             entry_type=entry_type,
-            signal_expiry_date=signal_expiry
+            signal_expiry_date=signal_expiry,
+            quantity_multiplier=quantity_multiplier
         )
 
         # "STICKY PATTERN" LOGIC: We no longer reset entry_confirmed here.
@@ -257,6 +258,7 @@ class TradeExecutor:
 
         trade_entered = True
         if self.orchestrator.is_backtest:
+            base_qty = state_manager.quantity
             trade_entered = self.orchestrator.pnl_tracker.enter_trade(
                 side=direction,
                 instrument_key=trade_instrument_key,
@@ -264,7 +266,8 @@ class TradeExecutor:
                 timestamp=timestamp,
                 strike_price=trade_strike,
                 contract=contract,
-                strategy_log=strategy_log
+                strategy_log=strategy_log,
+                quantity=base_qty * quantity_multiplier
             )
 
         if not trade_entered:

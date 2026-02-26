@@ -154,10 +154,10 @@ class BaseOrchestrator(ABC):
         if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed:
             hedge_strike, hedge_key = self.sell_manager.get_buy_strike(direction)
             if hedge_strike and hedge_key:
-                logger.info(f"[{self.instrument_name}] Hedge override: {strike_price} -> {hedge_strike} (sell_hedge_{direction}) | qty x2")
+                logger.info(f"[{self.instrument_name}] Hedge override: {strike_price} -> {hedge_strike} (sell_hedge_{direction}) | qty x1")
                 strike_price = hedge_strike
                 instrument_key = hedge_key
-                quantity_multiplier = 2
+                quantity_multiplier = 1
 
         logger.debug(f"[{self.instrument_name}] Broadcasting {direction} signal ({entry_type}) to {len(self.user_sessions)} users.")
         tasks = []
@@ -197,12 +197,80 @@ class BaseOrchestrator(ABC):
         return instruments
 
     async def process_tick(self, backtest_previous_tick=None, backtest_current_tick=None):
+        if self.orchestrator_state.done_for_day:
+            return
         await self.tick_processor.process_tick(backtest_previous_tick, backtest_current_tick)
+        await self.check_overall_exit()
 
     def stop(self):
         logger.info("Stopping Orchestrator's components...")
         # No action needed here anymore as the scheduler is removed.
         pass
+
+    async def check_overall_exit(self):
+        """Checks if the overall point target for the day has been reached."""
+        config_path = f"{self.instrument_name}.overall_exit"
+        enabled = self.json_config.get_value(f"{config_path}.enabled")
+        if not enabled:
+            return
+
+        target_points = self.json_config.get_value(f"{config_path}.point_target")
+        if target_points is None:
+            return
+
+        total_points = await self.calculate_overall_points()
+        if total_points >= float(target_points):
+            logger.info(f"[{self.instrument_name}] OVERALL TARGET REACHED: {total_points:.2f} points >= {target_points}. Done for the day.")
+            self.orchestrator_state.done_for_day = True
+            await self.exit_all_trades(reason=f"Overall Target Reached ({total_points:.2f} pts)")
+
+    async def calculate_overall_points(self):
+        """Calculates total points PnL from all sources (User sessions and SellManager)."""
+        total_pnl_rs = 0.0
+
+        if self.is_backtest:
+            # Realized + Unrealized from pnl_tracker (Hedges and closed Strangle legs)
+            total_pnl_rs = self.pnl_tracker.get_total_pnl()
+            # Add Unrealized from active Strangle legs
+            if hasattr(self, 'sell_manager'):
+                total_pnl_rs += self.sell_manager.get_total_pnl()
+        else:
+            # 1. Sum from User Sessions (BUY trades)
+            for session in self.user_sessions.values():
+                # Realized
+                total_pnl_rs += session.state_manager.total_pnl
+                # Unrealized
+                for pos in [session.state_manager.call_position, session.state_manager.put_position]:
+                    if pos:
+                        total_pnl_rs += pos.get('pnl', 0)
+
+            # 2. Sum from SellManager (SELL legs)
+            if hasattr(self, 'sell_manager'):
+                total_pnl_rs += self.sell_manager.get_total_pnl()
+
+        # Convert to points relative to standard unit (Base Qty * Lot Size)
+        base_qty = self.state_manager.quantity
+        lot_size = self.state_manager.lot_size
+
+        if base_qty > 0 and lot_size > 0:
+            return total_pnl_rs / (base_qty * lot_size)
+        return 0.0
+
+    async def exit_all_trades(self, reason):
+        """Exits all active trades in all sessions and SellManager."""
+        timestamp = self._get_timestamp()
+
+        # 1. Exit session trades
+        for session in self.user_sessions.values():
+            for side in ['CALL', 'PUT']:
+                if session.is_in_trade(side):
+                    pos = session.state_manager.get_position(side)
+                    ltp = session.state_manager.get_ltp(pos.get('instrument_key')) or pos.get('ltp', 0)
+                    await session.position_manager._exit_trade(side, ltp, timestamp, reason)
+
+        # 2. Exit SellManager legs
+        if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed and not self.sell_manager.strangle_closed:
+            await self.sell_manager.close_all(timestamp)
 
     def clear_for_new_run(self):
         """Clears all state and aggregators for a fresh run (e.g. multi-day backtest)."""
@@ -231,3 +299,4 @@ class BaseOrchestrator(ABC):
             self.sell_manager = SellManager(self)
         if hasattr(self, '_backtest_strangle_triggered'):
             self._backtest_strangle_triggered = False
+        self.orchestrator_state.done_for_day = False

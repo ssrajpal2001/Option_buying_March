@@ -21,7 +21,7 @@ class BacktestPnLTracker:
     def get_active_trade(self, side):
         return self.active_call_trade if side == 'CALL' else self.active_put_trade
 
-    def enter_trade(self, side, instrument_key, entry_price, timestamp, strike_price, contract, strategy_log="", user_id=None, entry_type='BUY'):
+    def enter_trade(self, side, instrument_key, entry_price, timestamp, strike_price, contract, strategy_log="", user_id=None, entry_type='BUY', quantity=1):
         if self.is_trade_active(side):
             logger.warning(f"[{self.instrument_name}] Cannot enter new {side} trade; a trade is already active.")
             return False
@@ -38,7 +38,9 @@ class BacktestPnLTracker:
             'strike_price': strike_price,
             'contract': contract,
             'strategy_log': strategy_log,
-            'entry_type': entry_type
+            'entry_type': entry_type,
+            'quantity': quantity,
+            'lot_size': getattr(contract, 'lot_size', 1)
         }
 
         if side == 'CALL':
@@ -56,10 +58,13 @@ class BacktestPnLTracker:
             return
 
         entry_type = trade.get('entry_type', 'BUY')
+        qty = trade.get('quantity', 1)
+        lot = trade.get('lot_size', 1)
+
         if entry_type == 'SELL':
-            trade['pnl'] = trade['entry_price'] - current_ltp
+            trade['pnl'] = (trade['entry_price'] - current_ltp) * qty * lot
         else:
-            trade['pnl'] = current_ltp - trade['entry_price']
+            trade['pnl'] = (current_ltp - trade['entry_price']) * qty * lot
         trade['current_ltp'] = current_ltp
 
     def exit_trade(self, side, exit_price, timestamp, reason="", strategy_log="", user_id=None):
@@ -72,10 +77,13 @@ class BacktestPnLTracker:
         trade['exit_timestamp'] = timestamp
 
         entry_type = trade.get('entry_type', 'BUY')
+        qty = trade.get('quantity', 1)
+        lot = trade.get('lot_size', 1)
+
         if entry_type == 'SELL':
-            trade['pnl'] = trade['entry_price'] - exit_price
+            trade['pnl'] = (trade['entry_price'] - exit_price) * qty * lot
         else:
-            trade['pnl'] = exit_price - trade['entry_price']
+            trade['pnl'] = (exit_price - trade['entry_price']) * qty * lot
 
         trade['status'] = 'CLOSED'
         trade['exit_reason'] = reason
@@ -98,6 +106,11 @@ class BacktestPnLTracker:
         if self.active_put_trade:
             total_pnl += self.active_put_trade.get('pnl', 0)
         return total_pnl
+
+    def get_total_pnl(self):
+        """Returns the sum of realized and unrealized PnL."""
+        realized = sum(t['pnl'] for t in self.trade_history)
+        return realized + self.get_real_time_pnl()
 
     def generate_summary_report(self):
         if not self.trade_history:

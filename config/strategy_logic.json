@@ -1,6 +1,10 @@
 {
     "NIFTY": {
         "range_915_gate_enabled": false,
+        "overall_exit": {
+            "enabled": true,
+            "point_target": 60
+        },
         "buy": {
             "enabled": true,
             "entry_type": "BUY",

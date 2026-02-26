@@ -122,9 +122,15 @@ class LifecycleManager:
                         except Exception as e:
                             logger.warning(f"Could not construct symbol for a trade: {e}")
 
+                    side = trade.get('side', 'N/A')
+                    if trade.get('entry_type') == 'SELL':
+                        side = f"{side} (SELL)"
+                    else:
+                        side = f"{side} (BUY)"
+
                     log_message = (
                         f"Symbol: {symbol}, "
-                        f"Side: {trade.get('side', 'N/A')}, "
+                        f"Side: {side}, "
                         f"Entry Time: {trade.get('entry_timestamp', 'N/A')}, "
                         f"Entry Price: {trade.get('entry_price', 0):.2f}, "
                         f"Exit Time: {trade.get('exit_timestamp', 'N/A')}, "

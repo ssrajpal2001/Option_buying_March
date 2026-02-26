@@ -38,6 +38,9 @@ class BacktestOrchestrator(BaseOrchestrator):
         return self.pnl_tracker and self.pnl_tracker.is_trade_active()
 
     async def run_backtest_strategy_for_timestamp(self, timestamp, current_group):
+        if self.orchestrator_state.done_for_day:
+            return
+
         self.current_timestamp = timestamp
         await self._populate_state_for_tick(timestamp, current_group)
 
@@ -99,6 +102,8 @@ class BacktestOrchestrator(BaseOrchestrator):
         pnl = self.pnl_tracker.get_real_time_pnl() if self.pnl_tracker else 0
         log_trade_summary(f"Timestamp: {timestamp} | ATM: {current_atm} | Status: {'RUNNING' if self._is_trade_active() else 'IDLE'} | P&L: {pnl:.2f}{summary_extra_info}")
 
+        await self.check_overall_exit()
+
     def _get_keys_needing_ticks(self):
         keys = set()
         if self.orchestrator_state.v2_target_strike_pair:
@@ -116,6 +121,13 @@ class BacktestOrchestrator(BaseOrchestrator):
                         sd = 'CE' if p.get('direction') == 'CALL' else 'PE'
                         mk = self.atm_manager.find_instrument_key_by_strike(ms, sd, self.atm_manager.signal_expiry_date)
                         if mk: keys.add(mk)
+
+        # Ensure SellManager strikes are also tracked for display/PnL
+        if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed:
+            sm = self.sell_manager
+            for k in [sm.sell_ce_key, sm.sell_pe_key, sm.buy_ce_key, sm.buy_pe_key]:
+                if k: keys.add(k)
+
         return keys
 
     def _get_summary_extra(self, pos):

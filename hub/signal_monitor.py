@@ -417,9 +417,12 @@ class SignalMonitor:
                             ce_sell_ltp = float(self.state_manager.get_ltp(sm.sell_ce_key) or 0)
                             pe_sell_ltp = float(self.state_manager.get_ltp(sm.sell_pe_key) or 0)
                             sell_str = f" | SOLD CE {int(sm.sell_ce_strike)}@{ce_sell_ltp:.2f} | SOLD PE {int(sm.sell_pe_strike)}@{pe_sell_ltp:.2f}"
+                        ce_ltp_display = f" (LTP: {float(self.state_manager.get_ltp(ce_data['instrument_key']) or 0):.2f})" if not self.state_manager.is_in_trade('CALL') else ""
+                        pe_ltp_display = f" (LTP: {float(self.state_manager.get_ltp(pe_data['instrument_key']) or 0):.2f})" if not self.state_manager.is_in_trade('PUT') else ""
+
                         logger.info(f"V2 MONITORING Status [{user_display}]: Strike {ce_data['strike_price']}{sw_label} | Index: {idx_ltp:.2f}{gate_str} | "
-                                     f"CE: {ce_state} (LTP: {float(self.state_manager.get_ltp(ce_data['instrument_key']) or 0):.2f}) | "
-                                     f"PE: {pe_state} (LTP: {float(self.state_manager.get_ltp(pe_data['instrument_key']) or 0):.2f}){sell_str}")
+                                     f"CE: {ce_state}{ce_ltp_display} | "
+                                     f"PE: {pe_state}{pe_ltp_display}{sell_str}")
 
             # 4. RESUME MONITORING AFTER RESTART
             if currently_monitored_strike and not self._resumed_priming:
@@ -459,7 +462,11 @@ class SignalMonitor:
             pos = self.state_manager.call_position if direction == 'CALL' else self.state_manager.put_position
             ex_formula = self._get_user_setting('exit_formula', str, fallback='', mode=mode).lower()
             
-            telemetry = []
+            # Use the actual traded instrument key for LTP display when in trade
+            traded_ltp = float(self.state_manager.get_ltp(pos.get('instrument_key')) or 0)
+            traded_strike = pos.get('strike_price')
+
+            telemetry = [f"Traded:{int(traded_strike)}@{traded_ltp:.2f}"]
             if 'vwap_slope' in ex_formula:
                 v_curr = pos.get('monitoring_vwap')
                 if not v_curr or v_curr == 0:

@@ -185,13 +185,13 @@ class SellManager:
             return
 
         # Resolve hedge keys from the full chain (hedge may be outside the 5-strike window)
-        buy_ce_key = self._find_hedge_key_in_chain(chain, ce_strike + 100, 'CE')
-        buy_pe_key = self._find_hedge_key_in_chain(chain, pe_strike - 100, 'PE')
+        buy_ce_key = self._find_hedge_key_in_chain(chain, ce_strike + 150, 'CE')
+        buy_pe_key = self._find_hedge_key_in_chain(chain, pe_strike - 150, 'PE')
 
         if not buy_ce_key:
-            logger.warning(f"[SellManager] CE hedge strike {ce_strike + 100} not found in chain — hedge BUY may fail")
+            logger.warning(f"[SellManager] CE hedge strike {ce_strike + 150} not found in chain — hedge BUY may fail")
         if not buy_pe_key:
-            logger.warning(f"[SellManager] PE hedge strike {pe_strike - 100} not found in chain — hedge BUY may fail")
+            logger.warning(f"[SellManager] PE hedge strike {pe_strike - 150} not found in chain — hedge BUY may fail")
 
         # --- T002: Fetch hedge entry LTPs at strangle placement (backtest only) ---
         if self.orchestrator.is_backtest:
@@ -205,8 +205,8 @@ class SellManager:
             )
             logger.info(
                 f"[SellManager][Backtest] Hedge entry LTPs recorded: "
-                f"CE hedge {int(ce_strike + 100)}={self.buy_ce_entry_ltp} | "
-                f"PE hedge {int(pe_strike - 100)}={self.buy_pe_entry_ltp}"
+                f"CE hedge {int(ce_strike + 150)}={self.buy_ce_entry_ltp} | "
+                f"PE hedge {int(pe_strike - 150)}={self.buy_pe_entry_ltp}"
             )
 
         brokers = self.orchestrator.broker_manager.brokers
@@ -343,16 +343,16 @@ class SellManager:
                         self.buy_pe_key, timestamp)
                     if buy_ce_exit and buy_pe_exit:
                         hedge_lot = ce_lot
-                        hedge_qty = _broker_qty * 2
+                        hedge_qty = _broker_qty * 1
                         buy_ce_pnl = (buy_ce_exit - self.buy_ce_entry_ltp) * hedge_lot * hedge_qty
                         buy_pe_pnl = (buy_pe_exit - self.buy_pe_entry_ltp) * hedge_lot * hedge_qty
                         logger.info(
                             f"[SellManager] HEDGE EOD P&L (informational): "
-                            f"CE hedge {int(self.sell_ce_strike + 100)} "
+                            f"CE hedge {int(self.sell_ce_strike + 150)} "
                             f"entry={self.buy_ce_entry_ltp:.2f} exit={buy_ce_exit:.2f} "
                             f"PnL/share={buy_ce_exit - self.buy_ce_entry_ltp:+.2f} × "
                             f"lot={hedge_lot} × qty={hedge_qty} = ₹{buy_ce_pnl:+.2f} | "
-                            f"PE hedge {int(self.sell_pe_strike - 100)} "
+                            f"PE hedge {int(self.sell_pe_strike - 150)} "
                             f"entry={self.buy_pe_entry_ltp:.2f} exit={buy_pe_exit:.2f} "
                             f"PnL/share={buy_pe_exit - self.buy_pe_entry_ltp:+.2f} × "
                             f"lot={hedge_lot} × qty={hedge_qty} = ₹{buy_pe_pnl:+.2f} | "
@@ -366,18 +366,18 @@ class SellManager:
     def get_buy_strike(self, direction):
         """
         Returns the hedge (BUY) strike and instrument_key for the given signal direction.
-          CALL signal → buy CE at sell_ce_strike + 100  (key stored as buy_ce_key)
-          PUT  signal → buy PE at sell_pe_strike - 100  (key stored as buy_pe_key)
+          CALL signal → buy CE at sell_ce_strike + 150  (key stored as buy_ce_key)
+          PUT  signal → buy PE at sell_pe_strike - 150  (key stored as buy_pe_key)
         Returns (None, None) if strangle not placed or hedge key was not resolved.
         """
         if not self.strangle_placed:
             return None, None
 
         if direction == 'CALL':
-            hedge_strike = self.sell_ce_strike + 100
+            hedge_strike = self.sell_ce_strike + 150
             hedge_key = self.buy_ce_key
         elif direction == 'PUT':
-            hedge_strike = self.sell_pe_strike - 100
+            hedge_strike = self.sell_pe_strike - 150
             hedge_key = self.buy_pe_key
         else:
             return None, None
@@ -412,6 +412,38 @@ class SellManager:
             logger.debug(f"[SellManager] State saved to {self.state_file}")
         except Exception as e:
             logger.error(f"[SellManager] Failed to save state: {e}")
+
+    def get_total_pnl(self):
+        """Calculates total PnL (realized + unrealized) for the strangle legs."""
+        realized = 0.0
+        unrealized = 0.0
+
+        # Unpack info for calculation
+        _ref_broker = next(
+            (b for b in self.orchestrator.broker_manager.brokers
+             if b.is_configured_for_instrument(self.orchestrator.instrument_name)), None
+        )
+        _broker_qty = _ref_broker.config_manager.get_int(_ref_broker.instance_name, 'quantity', 1) if _ref_broker else 1
+
+        # 1. Unrealized for active legs
+        if self.strangle_placed and not self.strangle_closed:
+            for key, entry_ltp, strike, side in [
+                (self.sell_ce_key, self.sell_ce_entry_ltp, self.sell_ce_strike, 'CE'),
+                (self.sell_pe_key, self.sell_pe_entry_ltp, self.sell_pe_strike, 'PE')
+            ]:
+                if key and entry_ltp:
+                    curr_ltp = self.orchestrator.state_manager.get_ltp(key)
+                    if curr_ltp:
+                        # SELL leg: Entry - Current
+                        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
+                        contract = expiry_strikes.get(float(strike), {}).get(side)
+                        lot = contract.lot_size if contract else 1
+                        unrealized += (entry_ltp - curr_ltp) * lot * _broker_qty
+
+        # 2. Realized from closed legs (already added to trade_history in close_all if backtest)
+        # In live mode, we don't have a realized points tracker for SellManager yet.
+        # But for "overall points", we usually care about the current session.
+        return realized + unrealized
 
     def load_state(self):
         """Restores strangle state from JSON file if it exists and is from today's expiry."""
