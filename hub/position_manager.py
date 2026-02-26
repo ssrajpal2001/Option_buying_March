@@ -499,11 +499,12 @@ class PositionManager:
         pos_data = self.state_manager.call_position if side == 'CALL' else self.state_manager.put_position
         if pos_data: pos_data['exit_sent'] = True
 
-        # Set 60-second re-entry cooldown on the exited side
-        cooldown_attr = 'call_cooldown_until' if side == 'CALL' else 'put_cooldown_until'
-        cooldown_ts = timestamp + pd.Timedelta(seconds=60)
-        setattr(self.state_manager, cooldown_attr, cooldown_ts)
-        logger.info(f"V2 MGMT: [{side}] Re-entry cooldown active until {cooldown_ts.strftime('%H:%M:%S')} (60s)")
+        # Set 60-second re-entry cooldown on the exited side (live mode only)
+        if not self.orchestrator.is_backtest:
+            cooldown_attr = 'call_cooldown_until' if side == 'CALL' else 'put_cooldown_until'
+            cooldown_ts = timestamp + pd.Timedelta(seconds=60)
+            setattr(self.state_manager, cooldown_attr, cooldown_ts)
+            logger.info(f"V2 MGMT: [{side}] Re-entry cooldown active until {cooldown_ts.strftime('%H:%M:%S')} (60s)")
 
         if self.orchestrator.is_backtest:
             strategy_log = pos_data.get('exit_narrative', "") if pos_data else ""
