@@ -89,14 +89,14 @@ class RestApiClient:
 
         for base_url in [self.BASE_URL, "https://api.upstox.com/v3"]:
             full_url = f"{base_url}{endpoint}"
-            logger.info(f"ContractManager: Trying expired-instruments: {full_url} params={params}")
+            logger.debug(f"ContractManager: Trying expired-instruments: {full_url} params={params}")
             try:
                 session = await self._get_session()
                 atimeout = aiohttp.ClientTimeout(total=15)
                 async with session.request('get', full_url, params=params, timeout=atimeout) as response:
                     body = await response.json()
                     data = body.get('data', []) or []
-                    logger.info(f"ContractManager: expired-instruments response — status={response.status}, data_count={len(data)}, body_keys={list(body.keys()) if isinstance(body, dict) else type(body)}")
+                    logger.debug(f"ContractManager: expired-instruments response — status={response.status}, data_count={len(data)}, body_keys={list(body.keys()) if isinstance(body, dict) else type(body)}")
                     if response.status == 200 and data:
                         logger.info(f"ContractManager: Got {len(data)} expiry-day contracts from {base_url}")
                         return data
@@ -126,19 +126,19 @@ class RestApiClient:
 
         if to_date_str == today_str:
             if from_date_str == today_str:
-                logger.info(f"DATA_FETCH: Intraday-only request for '{instrument_key}' ({interval}).")
+                logger.debug(f"DATA_FETCH: Intraday-only request for '{instrument_key}' ({interval}).")
                 df = await self.get_intraday_candle_data(instrument_key, interval)
             else:
                 yesterday = (datetime.datetime.now(ist) - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
-                logger.info(f"DATA_FETCH: Merging historical (up to {yesterday}) + intraday for '{instrument_key}' ({interval}).")
+                logger.debug(f"DATA_FETCH: Merging historical (up to {yesterday}) + intraday for '{instrument_key}' ({interval}).")
 
                 hist_endpoint = f"/historical-candle/{instrument_key}/{interval}/{yesterday}/{from_date_str}"
                 try:
                     hist_response = await self._request('get', hist_endpoint)
                     hist_candles = hist_response.get('data', {}).get('candles', [])
                     hist_df = self._format_historical_data(hist_candles)
-                    logger.info(f"DATA_FETCH: Historical part returned {len(hist_candles)} candles for '{instrument_key}'.")
+                    logger.debug(f"DATA_FETCH: Historical part returned {len(hist_candles)} candles for '{instrument_key}'.")
                 except Exception as e:
                     logger.warning(f"Failed to fetch historical part of merged range: {e}")
                     hist_df = pd.DataFrame()
@@ -148,7 +148,7 @@ class RestApiClient:
                 df = pd.concat([hist_df, intra_df]).sort_index()
                 df = df[~df.index.duplicated(keep='last')]
         else:
-            logger.info(f"DATA_FETCH: Requesting historical data for '{instrument_key}' from {from_date_str} to {to_date_str} ({interval}).")
+            logger.debug(f"DATA_FETCH: Requesting historical data for '{instrument_key}' from {from_date_str} to {to_date_str} ({interval}).")
             endpoint = f"/historical-candle/{instrument_key}/{interval}/{to_date_str}/{from_date_str}"
             try:
                 response = await self._request('get', endpoint)
@@ -178,7 +178,7 @@ class RestApiClient:
         try:
             response = await self._request('get', endpoint)
             candles = response.get('data', {}).get('candles', [])
-            logger.info(f"DATA_FETCH: Intraday endpoint returned {len(candles)} candles for '{instrument_key}' ({interval}).")
+            logger.debug(f"DATA_FETCH: Intraday endpoint returned {len(candles)} candles for '{instrument_key}' ({interval}).")
             df = self._format_historical_data(candles)
 
             if self.backtest_mode:
