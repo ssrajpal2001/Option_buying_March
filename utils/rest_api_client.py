@@ -1,87 +1,263 @@
-2026-02-26 10:30:43,494 - UpstoxApp - INFO - Logger has been successfully configured.
-2026-02-26 10:30:43,496 - UpstoxApp - INFO - ACTIVE STRATEGY: Entry TF: 1m | Exit TF: 1m
-2026-02-26 10:30:43,497 - UpstoxApp - INFO - Starting the multi-broker trading application...
-2026-02-26 10:30:43,497 - UpstoxApp - INFO - Using configuration file: config/config_trader.ini
-2026-02-26 10:30:43,497 - UpstoxApp - INFO - Starting configuration validation for context: 'trader'...
-2026-02-26 10:30:43,499 - UpstoxApp - INFO - Configuration validation for 'trader' successful.
-2026-02-26 10:30:43,499 - UpstoxApp - INFO - Initializing API Client Manager for data providers...
-2026-02-26 10:30:43,499 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_1]
-2026-02-26 10:30:43,499 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_1]
-2026-02-26 10:30:43,548 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_1].
-2026-02-26 10:30:43,548 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_2]
-2026-02-26 10:30:43,548 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_2]
-2026-02-26 10:30:43,591 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_2].
-2026-02-26 10:30:43,593 - UpstoxApp - INFO - API client pool initialized with 2 clients. Active client is set.
-2026-02-26 10:30:43,597 - UpstoxApp - ERROR - Failed to connect to database: [Errno 111] Connect call failed ('127.0.0.1', 5432)
-2026-02-26 10:30:43,597 - UpstoxApp - WARNING - DATABASE WARNING: Connection failed ([Errno 111] Connect call failed ('127.0.0.1', 5432)). Proceeding in legacy mode (INI only).
-2026-02-26 10:30:43,598 - UpstoxApp - WARNING - TRADING_BOT_MASTER_KEY not found in environment. Sensitive data will be inaccessible.
-2026-02-26 10:30:43,598 - UpstoxApp - DEBUG - Listener handle_execute_trade_request subscribed to EXECUTE_TRADE_REQUEST
-2026-02-26 10:30:43,599 - UpstoxApp - DEBUG - Listener handle_exit_request subscribed to EXIT_TRADE_REQUEST
-2026-02-26 10:30:43,601 - UpstoxApp - DEBUG - BrokerManager: Discovering multi-tenant brokers from database...
-2026-02-26 10:30:43,601 - UpstoxApp - WARNING - Database broker discovery skipped or failed: 'NoneType' object has no attribute 'acquire'. Falling back to .ini
-2026-02-26 10:30:43,796 - UpstoxApp - INFO - Starting Zerodha authentication for section: Zerodha_Client_Live_1...
-2026-02-26 10:30:43,798 - UpstoxApp - INFO - Validating Zerodha access token for Zerodha_Client_Live_1...
-2026-02-26 10:30:43,832 - UpstoxApp - INFO - Zerodha access token for Zerodha_Client_Live_1 is valid.
-2026-02-26 10:30:43,850 - UpstoxApp - INFO - Zerodha authentication successful for user: SA5770 [Zerodha_Client_Live_1].
-2026-02-26 10:30:43,852 - UpstoxApp - INFO - Successfully loaded broker: Zerodha_Client_Live_1 (Client: Zerodha)
-2026-02-26 10:30:43,853 - UpstoxApp - INFO - Live mode enabled. Selected data provider: upstox
-2026-02-26 10:30:43,855 - UpstoxApp - INFO - WebSocket listener task created.
-2026-02-26 10:30:43,857 - UpstoxApp - INFO - Strategy logic loaded from /home/ec2-user/environment/AlgoSoft_March/utils/../config/strategy_logic.json
-2026-02-26 10:30:43,858 - UpstoxApp - DEBUG - Listener _handle_spot_price_update subscribed to SPOT_PRICE_UPDATE
-2026-02-26 10:30:43,870 - UpstoxApp - INFO - Message handler handle_message registered.
-2026-02-26 10:30:43,870 - UpstoxApp - DEBUG - Initializing V2 Logic Components...
-2026-02-26 10:30:43,872 - UpstoxApp - INFO - [NIFTY] IndicatorManager initialized on orchestrator.
-2026-02-26 10:30:43,872 - UpstoxApp - DEBUG - Listener handle_add_to_watchlist subscribed to ADD_TO_WATCHLIST
-2026-02-26 10:30:43,872 - UpstoxApp - DEBUG - Listener handle_remove_from_watchlist subscribed to REMOVE_FROM_WATCHLIST
-2026-02-26 10:30:43,873 - UpstoxApp - INFO - WebSocketManager starting connection loop.
-2026-02-26 10:30:43,873 - UpstoxApp - INFO - Attempting to authorize and connect... (Attempt 1)
-2026-02-26 10:30:43,873 - UpstoxApp - INFO - Authorizing WebSocket feed...
-2026-02-26 10:30:43,873 - UpstoxApp - INFO - Sending GET request to https://api.upstox.com/v3/feed/market-data-feed/authorize...
-2026-02-26 10:30:43,875 - UpstoxApp - INFO - Tick worker started for NIFTY.
-2026-02-26 10:30:43,912 - UpstoxApp - INFO - WebSocket authorization successful.
-2026-02-26 10:30:43,921 - UpstoxApp - INFO - Opening WebSocket connection to wss://wsfeeder-api.upstox.com/market-data-feeder/v...
-2026-02-26 10:30:43,949 - UpstoxApp - INFO - WebSocket connection established successfully.
-2026-02-26 10:30:43,950 - UpstoxApp - WARNING - V2 WebSocket: No existing instruments to re-subscribe to.
-2026-02-26 10:30:43,952 - UpstoxApp - INFO - WebSocket message processor started.
-2026-02-26 10:30:43,953 - UpstoxApp - INFO - First market data packet processed from queue. Data feed is active.
-2026-02-26 10:30:43,955 - UpstoxApp - DEBUG - Upstox API 400 (Expected/Silenced) at /market-quote/ltp. Body: {"status":"error","errors":[{"errorCode":"UDAPI1087","message":"One of either symbol or instrument_key is invalid.","propertyPath":null,"invalidValue":null,"error_code":"UDAPI1087","property_path":null,"invalid_value":null}]}
-2026-02-26 10:30:44,240 - UpstoxApp - INFO - ContractManager: Expiry day detected (2026-02-26) — today's contracts absent from standard endpoint. Fetching from expired-instruments API...
-2026-02-26 10:30:44,264 - UpstoxApp - WARNING - ContractManager: expired-instruments API returned no contracts. Bot may be unable to trade today's expiry.
-2026-02-26 10:30:44,266 - UpstoxApp - INFO - ContractManager: Near weekly expiry resolved to 2026-03-02 (day=Monday)
-2026-02-26 10:30:44,269 - UpstoxApp - DEBUG - AtmManager initialized with Expiry and Subscription managers.
-2026-02-26 10:30:44,270 - UpstoxApp - DEBUG - Orchestrator initialization finalized.
-2026-02-26 10:30:44,271 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
-2026-02-26 10:30:44,272 - UpstoxApp - WARNING - ExpiryManager: WEEKLY/EXPIRY mode — today 2026-02-26 (Thursday) not in future expiries. Using today as expiry.
-2026-02-26 10:30:44,273 - UpstoxApp - INFO - [NIFTY] Default expiry resolved: signal=2026-02-26 (CURRENT_WEEK), trade=2026-02-26 (WEEKLY)
-2026-02-26 10:30:44,275 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
-2026-02-26 10:30:44,276 - UpstoxApp - WARNING - [NIFTY] [BUY] EXPIRY MISMATCH: signal_expiry=2026-03-02 (NEXT_WEEK) vs trade_expiry=2026-03-10 (NEXT_WEEK). Console will show signal prices but trades will execute on trade expiry contract!
-2026-02-26 10:30:44,276 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
-2026-02-26 10:30:44,277 - UpstoxApp - WARNING - ExpiryManager: WEEKLY/EXPIRY mode — today 2026-02-26 (Thursday) not in future expiries. Using today as expiry.
-2026-02-26 10:30:44,277 - UpstoxApp - INFO - [NIFTY] [SELL] Expiry resolved: signal=2026-02-26 (WEEKLY), trade=2026-02-26 (WEEKLY)
-2026-02-26 10:30:44,277 - UpstoxApp - DEBUG - Listener handle_trade_confirmed subscribed to TRADE_CONFIRMED
-2026-02-26 10:30:44,277 - UpstoxApp - DEBUG - Listener handle_trade_closed subscribed to TRADE_CLOSED
-2026-02-26 10:30:44,277 - UpstoxApp - INFO - UserSession Initialized: User=default_user@local | Instrument=NIFTY
-2026-02-26 10:30:44,277 - UpstoxApp - INFO - No saved state file found. Starting with a fresh state.
-2026-02-26 10:30:44,277 - UpstoxApp - DEBUG - [NIFTY] User default_user@local added to monitoring.
-2026-02-26 10:30:44,277 - UpstoxApp - DEBUG - [NIFTY] Requesting initial subscriptions for: ['NSE_FO|51714', 'NSE_INDEX|Nifty 50']
-2026-02-26 10:30:44,281 - UpstoxApp - DEBUG - LifecycleManager started. Delegating startup sequence...
-2026-02-26 10:30:44,282 - UpstoxApp - INFO - Trading bot is now live.
-2026-02-26 10:30:44,283 - UpstoxApp - DEBUG - OHLC Aggregator [Pattern_Entry|1m]: Initialized first interval start at 10:30:00 (First tick at 10:30:43)
-2026-02-26 10:30:44,284 - UpstoxApp - DEBUG - OHLC Aggregator [Pattern_Exit|1m]: Initialized first interval start at 10:30:00 (First tick at 10:30:43)
-2026-02-26 10:30:44,284 - UpstoxApp - DEBUG - OHLC Aggregator [S1LOW_Fast|1m]: Initialized first interval start at 10:30:00 (First tick at 10:30:43)
-2026-02-26 10:30:44,284 - UpstoxApp - DEBUG - OHLC Aggregator [S1LOW_Slow|3m]: Initialized first interval start at 10:30:00 (First tick at 10:30:43)
-2026-02-26 10:30:44,284 - UpstoxApp - INFO - V2: First INDEX price (Spot) received for NIFTY: 25531.6
-2026-02-26 10:30:44,284 - UpstoxApp - INFO - V2: First FUTURES price received for NIFTY: 25682.2
-2026-02-26 10:30:44,284 - UpstoxApp - DEBUG - V2: Performing resubscription around ATM: 25700
-2026-02-26 10:30:44,284 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.0s | Worker: ALIVE | Exchange: 2026-02-26 10:30:44.282000+05:30 | Sessions: Global:Idle
-2026-02-26 10:30:44,284 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,284 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,284 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,485 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,486 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,486 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,686 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,686 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,686 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25750.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,928 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25650.0 - Missing Contract Keys: CE=None, PE=None
-2026-02-26 10:30:44,928 - UpstoxApp - DEBUG - V2: [NIFTY] Strike 25700.0 - Missing Contract Keys: CE=None, PE=None
+import aiohttp
+from .logger import logger
+import datetime
+import pandas as pd
+import asyncio
+
+class RestApiClient:
+    BASE_URL = "https://api.upstox.com/v2"
+
+    def __init__(self, auth_handler):
+        self.auth_handler = auth_handler
+        self.session = None
+        self.ohlc_cache = {}
+        self.backtest_mode = self.auth_handler.config_manager.get_boolean('backtest', 'enabled', fallback=False)
+
+    async def _get_session(self):
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession(headers=await self._get_headers())
+        return self.session
+
+    async def _get_headers(self):
+        return {
+            'Accept': 'application/json',
+            'Api-Version': '2.0',
+            'Authorization': f'Bearer {self.auth_handler.get_access_token()}'
+        }
+
+    async def _request(self, method, endpoint, params=None, retry=True, silence_error=False, timeout=15):
+        try:
+            session = await self._get_session()
+            url = f"{self.BASE_URL}{endpoint}"
+
+            atimeout = aiohttp.ClientTimeout(total=timeout)
+
+            async with session.request(method, url, params=params, timeout=atimeout) as response:
+                if response.status == 400:
+                    body = await response.text()
+                    if silence_error:
+                        logger.debug(f"Upstox API 400 (Expected/Silenced) at {endpoint}. Body: {body}")
+                    else:
+                        logger.error(f"Upstox API 400 Bad Request at {endpoint}. Body: {body}")
+
+                response.raise_for_status()
+                return await response.json()
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            status = getattr(e, 'status', None)
+            error_msg = str(e)
+            if isinstance(e, asyncio.TimeoutError):
+                status = 408
+                error_msg = f"Request timeout after {timeout}s"
+
+            if not silence_error:
+                logger.warning(f"API call to {endpoint} failed (Status: {status}). Reason: {error_msg}")
+
+            should_retry = retry and (status is None or status == 429 or status == 408 or status >= 500)
+
+            if should_retry:
+                logger.info(f"Attempting to switch client and retry API call to {endpoint}...")
+                switched = self.auth_handler.switch_client()
+                if switched:
+                    await asyncio.sleep(1)
+                    return await self._request(method, endpoint, params, retry=False, silence_error=silence_error, timeout=timeout)
+                else:
+                    logger.error("Failover to secondary client failed or no more clients available.")
+
+            raise e
+
+    async def get_option_contracts(self, instrument_key):
+        endpoint = "/option/contract"
+        params = {'instrument_key': instrument_key}
+        try:
+            response = await self._request('get', endpoint, params=params)
+            return response.get('data', [])
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"Error fetching option contracts: {e}")
+            return []
+
+    async def get_expiring_option_contracts(self, instrument_key, expiry_date):
+        """Fetch contracts expiring today from expired-instruments endpoint.
+        Tries Upstox v2 first, then v3 as fallback if v2 returns empty.
+        Logs full response details to diagnose API issues.
+        expiry_date: datetime.date or string 'YYYY-MM-DD'
+        """
+        params = {
+            'instrument_key': instrument_key,
+            'expiry_date': str(expiry_date)
+        }
+        endpoint = "/expired-instruments/option/contract"
+
+        for base_url in [self.BASE_URL, "https://api.upstox.com/v3"]:
+            full_url = f"{base_url}{endpoint}"
+            logger.info(f"ContractManager: Trying expired-instruments: {full_url} params={params}")
+            try:
+                session = await self._get_session()
+                atimeout = aiohttp.ClientTimeout(total=15)
+                async with session.request('get', full_url, params=params, timeout=atimeout) as response:
+                    body = await response.json()
+                    data = body.get('data', []) or []
+                    logger.info(f"ContractManager: expired-instruments response — status={response.status}, data_count={len(data)}, body_keys={list(body.keys()) if isinstance(body, dict) else type(body)}")
+                    if response.status == 200 and data:
+                        logger.info(f"ContractManager: Got {len(data)} expiry-day contracts from {base_url}")
+                        return data
+                    if response.status != 200:
+                        logger.warning(f"ContractManager: {base_url} returned HTTP {response.status}")
+                    else:
+                        logger.warning(f"ContractManager: {base_url} returned 200 but data=[] for expiry={expiry_date}")
+            except Exception as e:
+                logger.warning(f"ContractManager: expired-instruments call failed for {base_url}: {e}")
+
+        logger.error(f"ContractManager: All endpoints returned empty — no expiry-day contracts found for {expiry_date} (key={instrument_key})")
+        return []
+
+    async def get_historical_candle_data(self, instrument_key, interval, to_date, from_date):
+        import pytz
+        ist = pytz.timezone('Asia/Kolkata')
+        today_str = datetime.datetime.now(ist).strftime('%Y-%m-%d')
+        to_date_str = str(to_date)
+        from_date_str = str(from_date)
+
+        if self.backtest_mode:
+            cache_key = (instrument_key, interval, to_date_str, from_date_str)
+            if cache_key in self.ohlc_cache:
+                return self.ohlc_cache[cache_key]
+
+        df = pd.DataFrame()
+
+        if to_date_str == today_str:
+            if from_date_str == today_str:
+                logger.info(f"DATA_FETCH: Intraday-only request for '{instrument_key}' ({interval}).")
+                df = await self.get_intraday_candle_data(instrument_key, interval)
+            else:
+                yesterday = (datetime.datetime.now(ist) - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+
+                logger.info(f"DATA_FETCH: Merging historical (up to {yesterday}) + intraday for '{instrument_key}' ({interval}).")
+
+                hist_endpoint = f"/historical-candle/{instrument_key}/{interval}/{yesterday}/{from_date_str}"
+                try:
+                    hist_response = await self._request('get', hist_endpoint)
+                    hist_candles = hist_response.get('data', {}).get('candles', [])
+                    hist_df = self._format_historical_data(hist_candles)
+                    logger.info(f"DATA_FETCH: Historical part returned {len(hist_candles)} candles for '{instrument_key}'.")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch historical part of merged range: {e}")
+                    hist_df = pd.DataFrame()
+
+                intra_df = await self.get_intraday_candle_data(instrument_key, interval)
+
+                df = pd.concat([hist_df, intra_df]).sort_index()
+                df = df[~df.index.duplicated(keep='last')]
+        else:
+            logger.info(f"DATA_FETCH: Requesting historical data for '{instrument_key}' from {from_date_str} to {to_date_str} ({interval}).")
+            endpoint = f"/historical-candle/{instrument_key}/{interval}/{to_date_str}/{from_date_str}"
+            try:
+                response = await self._request('get', endpoint)
+                candles = response.get('data', {}).get('candles', [])
+                df = self._format_historical_data(candles)
+            except aiohttp.ClientResponseError as e:
+                logger.error(f"Error fetching historical candle data: {e}")
+                df = pd.DataFrame()
+
+        if self.backtest_mode and not df.empty:
+            self.ohlc_cache[cache_key] = df
+
+        return df
+
+    async def get_intraday_candle_data(self, instrument_key, interval):
+        today_str = datetime.date.today().strftime('%Y-%m-%d')
+        if self.backtest_mode:
+            cache_key = (instrument_key, interval, today_str)
+            if cache_key in self.ohlc_cache:
+                return self.ohlc_cache[cache_key]
+
+        valid_intervals = ['1minute', '30minute']
+        if interval not in valid_intervals:
+            logger.warning(f"Invalid interval '{interval}' for Upstox intraday candle API. Defaulting to '1minute'.")
+            interval = '1minute'
+        endpoint = f"/historical-candle/intraday/{instrument_key}/{interval}"
+        try:
+            response = await self._request('get', endpoint)
+            candles = response.get('data', {}).get('candles', [])
+            logger.info(f"DATA_FETCH: Intraday endpoint returned {len(candles)} candles for '{instrument_key}' ({interval}).")
+            df = self._format_historical_data(candles)
+
+            if self.backtest_mode:
+                self.ohlc_cache[cache_key] = df
+
+            return df
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"Error fetching intraday candle data: {e}")
+            return pd.DataFrame()
+
+    async def get_ltp(self, instrument_key, silence_error=False):
+        endpoint = f"/market-quote/ltp"
+        params = {'instrument_key': instrument_key}
+        try:
+            response = await self._request('get', endpoint, params=params, silence_error=silence_error)
+            return response.get('data', {}).get(instrument_key, {}).get('last_price', 0.0)
+        except aiohttp.ClientResponseError as e:
+            if not silence_error:
+                logger.error(f"Error fetching LTP: {e}")
+            return 0.0
+
+    async def get_ltps(self, instrument_keys, silence_error=False):
+        if not instrument_keys:
+            return {}
+
+        all_results = {}
+        chunk_size = 50
+        for i in range(0, len(instrument_keys), chunk_size):
+            chunk = instrument_keys[i:i + chunk_size]
+            endpoint = "/market-quote/ltp"
+            params = {'instrument_key': ','.join(chunk)}
+            try:
+                response = await self._request('get', endpoint, params=params, silence_error=silence_error)
+                data = response.get('data', {})
+                all_results.update({key: info.get('last_price', 0.0) for key, info in data.items()})
+            except aiohttp.ClientResponseError as e:
+                if not silence_error:
+                    logger.error(f"Error fetching batch LTPs for chunk {i//chunk_size}: {e}")
+
+        return all_results
+
+    async def get_full_market_quote(self, instrument_keys):
+        if not instrument_keys:
+            return {}
+
+        all_results = {}
+        chunk_size = 50
+        for i in range(0, len(instrument_keys), chunk_size):
+            chunk = instrument_keys[i:i + chunk_size]
+            endpoint = "/market-quote/quotes"
+            params = {'instrument_key': ','.join(chunk)}
+            try:
+                response = await self._request('get', endpoint, params=params)
+                all_results.update(response.get('data', {}))
+            except Exception as e:
+                logger.error(f"Error fetching full market quote for chunk {i//chunk_size}: {e}")
+
+        return all_results
+
+    async def verify_authentication(self):
+        try:
+            await self._request('get', '/user/profile')
+            return True
+        except aiohttp.ClientResponseError as e:
+            if e.status == 401:
+                return False
+            logger.warning(f"An unexpected error occurred during auth verification: {e}")
+            return False
+
+    def _format_historical_data(self, candles):
+        if not candles:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'oi'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+        df.sort_index(inplace=True)
+        return df
+
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()

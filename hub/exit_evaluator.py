@@ -1,54 +1,176 @@
-2026-02-26 09:59:05,119 - UpstoxApp - INFO - Logger has been successfully configured.
-2026-02-26 09:59:05,119 - UpstoxApp - INFO - ACTIVE STRATEGY: Entry TF: 1m | Exit TF: 1m
-2026-02-26 09:59:05,119 - UpstoxApp - INFO - Starting the multi-broker trading application...
-2026-02-26 09:59:05,119 - UpstoxApp - INFO - Using configuration file: config/config_trader.ini
-2026-02-26 09:59:05,119 - UpstoxApp - INFO - Starting configuration validation for context: 'trader'...
-2026-02-26 09:59:05,120 - UpstoxApp - INFO - Configuration validation for 'trader' successful.
-2026-02-26 09:59:05,120 - UpstoxApp - INFO - Initializing API Client Manager for data providers...
-2026-02-26 09:59:05,120 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_1]
-2026-02-26 09:59:05,120 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_1]
-2026-02-26 09:59:05,164 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_1].
-2026-02-26 09:59:05,164 - UpstoxApp - INFO - Initializing data provider client from section: [upstox_2]
-2026-02-26 09:59:05,164 - UpstoxApp - INFO - Attempting to authenticate Upstox account: [upstox_2]
-2026-02-26 09:59:05,210 - UpstoxApp - INFO - Authentication successful and token verified for [upstox_2].
-2026-02-26 09:59:05,211 - UpstoxApp - INFO - API client pool initialized with 2 clients. Active client is set.
-2026-02-26 09:59:05,212 - UpstoxApp - ERROR - Failed to connect to database: [Errno 111] Connect call failed ('127.0.0.1', 5432)
-2026-02-26 09:59:05,212 - UpstoxApp - WARNING - DATABASE WARNING: Connection failed ([Errno 111] Connect call failed ('127.0.0.1', 5432)). Proceeding in legacy mode (INI only).
-2026-02-26 09:59:05,212 - UpstoxApp - WARNING - TRADING_BOT_MASTER_KEY not found in environment. Sensitive data will be inaccessible.
-2026-02-26 09:59:05,213 - UpstoxApp - WARNING - Database broker discovery skipped or failed: 'NoneType' object has no attribute 'acquire'. Falling back to .ini
-2026-02-26 09:59:05,428 - UpstoxApp - INFO - Starting Zerodha authentication for section: Zerodha_Client_Live_1...
-2026-02-26 09:59:05,431 - UpstoxApp - INFO - Validating Zerodha access token for Zerodha_Client_Live_1...
-2026-02-26 09:59:05,471 - UpstoxApp - INFO - Zerodha access token for Zerodha_Client_Live_1 is valid.
-2026-02-26 09:59:05,491 - UpstoxApp - INFO - Zerodha authentication successful for user: SA5770 [Zerodha_Client_Live_1].
-2026-02-26 09:59:05,492 - UpstoxApp - INFO - Successfully loaded broker: Zerodha_Client_Live_1 (Client: Zerodha)
-2026-02-26 09:59:05,493 - UpstoxApp - INFO - Live mode enabled. Selected data provider: upstox
-2026-02-26 09:59:05,505 - UpstoxApp - INFO - WebSocket listener task created.
-2026-02-26 09:59:05,507 - UpstoxApp - INFO - Strategy logic loaded from /home/ec2-user/environment/AlgoSoft_March/utils/../config/strategy_logic.json
-2026-02-26 09:59:05,545 - UpstoxApp - INFO - Message handler handle_message registered.
-2026-02-26 09:59:05,546 - UpstoxApp - INFO - [NIFTY] IndicatorManager initialized on orchestrator.
-2026-02-26 09:59:05,549 - UpstoxApp - INFO - WebSocketManager starting connection loop.
-2026-02-26 09:59:05,550 - UpstoxApp - INFO - Attempting to authorize and connect... (Attempt 1)
-2026-02-26 09:59:05,550 - UpstoxApp - INFO - Authorizing WebSocket feed...
-2026-02-26 09:59:05,550 - UpstoxApp - INFO - Sending GET request to https://api.upstox.com/v3/feed/market-data-feed/authorize...
-2026-02-26 09:59:05,552 - UpstoxApp - INFO - Tick worker started for NIFTY.
-2026-02-26 09:59:05,585 - UpstoxApp - INFO - WebSocket authorization successful.
-2026-02-26 09:59:05,595 - UpstoxApp - INFO - Opening WebSocket connection to wss://wsfeeder-api.upstox.com/market-data-feeder/v...
-2026-02-26 09:59:05,642 - UpstoxApp - INFO - WebSocket connection established successfully.
-2026-02-26 09:59:05,644 - UpstoxApp - WARNING - V2 WebSocket: No existing instruments to re-subscribe to.
-2026-02-26 09:59:05,644 - UpstoxApp - INFO - WebSocket message processor started.
-2026-02-26 09:59:05,645 - UpstoxApp - INFO - First market data packet processed from queue. Data feed is active.
-2026-02-26 09:59:05,919 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
-2026-02-26 09:59:05,921 - UpstoxApp - WARNING - ExpiryManager: WEEKLY/EXPIRY mode — today 2026-02-26 (Thursday) not in future expiries. Using today as expiry.
-2026-02-26 09:59:05,923 - UpstoxApp - INFO - [NIFTY] Default expiry resolved: signal=2026-02-26 (CURRENT_WEEK), trade=2026-02-26 (WEEKLY)
-2026-02-26 09:59:05,924 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
-2026-02-26 09:59:05,925 - UpstoxApp - WARNING - ExpiryManager: WEEKLY/EXPIRY mode — today 2026-02-26 (Thursday) not in future expiries. Using today as expiry.
-2026-02-26 09:59:05,925 - UpstoxApp - INFO - [NIFTY] [BUY] Expiry resolved: signal=2026-02-26 (WEEKLY), trade=2026-02-26 (WEEKLY)
-2026-02-26 09:59:05,927 - UpstoxApp - WARNING - ExpiryManager: calculate_expiry_date — today 2026-02-26 (Thursday) excluded from contract list. Injecting as expiry.
-2026-02-26 09:59:05,928 - UpstoxApp - WARNING - ExpiryManager: WEEKLY/EXPIRY mode — today 2026-02-26 (Thursday) not in future expiries. Using today as expiry.
-2026-02-26 09:59:05,928 - UpstoxApp - INFO - [NIFTY] [SELL] Expiry resolved: signal=2026-02-26 (WEEKLY), trade=2026-02-26 (WEEKLY)
-2026-02-26 09:59:05,928 - UpstoxApp - INFO - UserSession Initialized: User=default_user@local | Instrument=NIFTY
-2026-02-26 09:59:05,928 - UpstoxApp - INFO - No saved state file found. Starting with a fresh state.
-2026-02-26 09:59:05,929 - UpstoxApp - INFO - Trading bot is now live.
-2026-02-26 09:59:05,932 - UpstoxApp - INFO - V2: First INDEX price (Spot) received for NIFTY: 25504.45
-2026-02-26 09:59:05,933 - UpstoxApp - INFO - V2: First FUTURES price received for NIFTY: 25647.4
-2026-02-26 09:59:05,933 - UpstoxApp - INFO - V2 HEARTBEAT: [NIFTY] Loop active. Feed Lag: 0.0s | Worker: ALIVE | Exchange: 2026-02-26 09:59:05.929000+05:30 | Sessions: Global:Idle
+import pandas as pd
+from utils.logger import logger
+
+class ExitEvaluator:
+    def __init__(self, orchestrator, indicator_manager):
+        self.orchestrator = orchestrator
+        self.indicator_manager = indicator_manager
+        self.config_manager = orchestrator.config_manager
+
+    def _get_user_setting(self, key, mode, category=None, type_func=str, fallback=None):
+        if category: path = f"{self.orchestrator.instrument_name}.{mode}.{category}.{key}"
+        else: path = f"{self.orchestrator.instrument_name}.{mode}.{key}"
+        val = self.orchestrator.json_config.get_value(path)
+
+        if val is None:
+            path = f"{self.orchestrator.instrument_name}.{key}"
+            val = self.orchestrator.json_config.get_value(path)
+
+        return type_func(val) if val is not None else fallback
+
+    async def evaluate_structural_exit_group(self, direction, position_data, timestamp, s1_breached, r1_breached, r1_target_hit, signal_inst_key, global_target_strike, primary_tf, current_ltp, entry_price, peak_price):
+        entry_type = position_data.get('entry_type', 'BUY')
+        mode = 'buy' if entry_type == 'BUY' else 'sell'
+        exit_formula = self._get_user_setting('exit_formula', mode, fallback='s1_low')
+        reasons, is_sl_exit = [], False
+        f_lower = exit_formula.lower()
+
+        eval_results = {
+            'pattern': bool(position_data.get('pattern_exit_triggered')),
+            's1_low': s1_breached, 'r1_high': r1_breached, 'r1_target': r1_target_hit,
+            'vwap_slope': False, 's1_confirm': False, 'tsl': False, 'atr_tsl': False,
+            'r1_falling': False, 'r1_stagnation': False, 'r1_low_breach': False,
+            's1_double_drop': bool(position_data.get('s1_double_drop_triggered'))
+        }
+
+        if 'r1_stagnation' in f_lower:
+            stag_mins = self._get_user_setting('minutes', mode, 'exit_indicators/r1_stagnation', type_func=int, fallback=15)
+            last_move = position_data.get('last_sr_move_time')
+            if last_move and (timestamp - last_move).total_seconds() / 60 >= stag_mins:
+                eval_results['r1_stagnation'] = True
+                reasons.append(f"SR Stagnation ({stag_mins}m)")
+
+        if 'r1_low_breach' in f_lower:
+            mon_ltp = position_data.get('monitoring_ltp', current_ltp)
+            if mode == 'buy':
+                b_lvl = position_data.get('r1_breach_low')
+                if b_lvl and mon_ltp < b_lvl:
+                    eval_results['r1_low_breach'] = True
+                    reasons.append(f"R1 Breach Low ({b_lvl:.2f})")
+            else:
+                b_lvl = position_data.get('s1_breach_high')
+                if b_lvl and mon_ltp > b_lvl:
+                    eval_results['r1_low_breach'] = True
+                    reasons.append(f"S1 Breach High ({b_lvl:.2f})")
+
+        if eval_results['pattern'] and 'pattern' in f_lower: reasons.append(position_data.get('pattern_exit_reason', 'Pattern Reversed'))
+        if eval_results['r1_target'] and 'r1_target' in f_lower: reasons.append(f"R1 Target Hit ({global_target_strike})")
+        if eval_results['s1_double_drop'] and 's1_double_drop' in f_lower:
+            reasons.append(position_data.get('s1_double_drop_reason', 'Double Drop'))
+        if eval_results['s1_low'] and 's1_low' in f_lower: reasons.append(f"S1 Breached ({primary_tf}m)")
+        if eval_results['r1_high'] and 'r1_high' in f_lower: reasons.append(f"R1 Breached ({primary_tf}m)")
+
+        if 'vwap_slope' in f_lower:
+            try:
+                s_mode = self._get_user_setting('check_mode', mode, 'exit_indicators/vwap_slope', fallback='TICK').upper()
+                s_tf = self._get_user_setting('tf', mode, 'exit_indicators/vwap_slope', type_func=int, fallback=1)
+                s_occ = self._get_user_setting('occurrences', mode, 'exit_indicators/vwap_slope', type_func=int, fallback=1)
+                s_op = self._get_user_setting('operator', mode, 'exit_indicators/vwap_slope', fallback='<')
+                s_thr = self._get_user_setting('threshold', mode, 'exit_indicators/vwap_slope', type_func=float, fallback=0.0)
+
+                can_eval, eval_ts, live_v = True, timestamp, None
+                if s_mode == 'CLOSE':
+                    at_candle_boundary = (timestamp.second >= 5 or self.orchestrator.is_backtest) and (timestamp.minute % s_tf == 0)
+                    if not at_candle_boundary:
+                        can_eval = False
+                    else:
+                        aligned_min = (timestamp.minute // s_tf) * s_tf
+                        candle_ref = timestamp.replace(minute=aligned_min, second=0, microsecond=0)
+                        last_checked = position_data.get('_vwap_close_last_candle')
+                        if last_checked == candle_ref:
+                            can_eval = False
+                        else:
+                            position_data['_vwap_close_last_candle'] = candle_ref
+                            eval_ts = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
+                else:
+                    live_v = position_data.get('monitoring_vwap')
+                    if live_v is None:
+                        live_v = await self.indicator_manager.calculate_vwap(signal_inst_key, timestamp)
+
+                if can_eval:
+                    res = await self.indicator_manager.get_vwap_slope_status(signal_inst_key, eval_ts, s_tf, s_occ, live_vwap=live_v)
+                    v_curr, v_prev = res[2], res[3]
+
+                    v_ref = position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough')
+                    if v_ref is None or v_ref == 0: v_ref = v_prev
+
+                    if v_curr is not None and v_ref:
+                        diff = (v_curr - v_ref) / v_ref
+                        if self.orchestrator.is_backtest:
+                            logger.info(f"V2 MGMT: [{direction}] VWAP EXIT CHECK: Current {v_curr:.2f} vs Peak {v_ref:.2f} | Drawdown: {diff*100:.2f}% | Threshold: {s_thr*100:.2f}%")
+
+                        passed = False
+                        if s_op == '>': passed = diff > s_thr
+                        elif s_op == '<': passed = diff < s_thr
+                        elif s_op == '>=': passed = diff >= s_thr
+                        elif s_op == '<=': passed = diff <= s_thr
+
+                        is_peak_ref = (v_ref == position_data.get('vwap_peak' if mode == 'buy' else 'vwap_trough'))
+                        if is_peak_ref:
+                            eval_results['vwap_slope'] = passed
+                        else:
+                            eval_results['vwap_slope'] = passed and (res[4] if s_op in ('>', '>=') else res[5]) >= s_occ
+
+                        position_data['slope_info'] = f"V1:{v_curr:.2f} {s_op} Ref:{v_ref:.2f} (Pct:{diff*100:.2f}%)"
+                        if eval_results['vwap_slope']:
+                            reasons.append(f"VWAP Slope {s_op} ({s_mode})")
+                            logger.info(f"V2 MGMT: [{direction}] EXIT CRITERIA MET (VWAP Slope): Current VWAP {v_curr:.2f} vs Ref {v_ref:.2f} (Drawdown: {diff*100:.2f}%, Threshold: {s_thr*100:.2f}%)")
+                    else:
+                        position_data['slope_info'] = f"Waiting for data (V:{v_curr}, Ref:{v_ref})"
+            except Exception as e:
+                position_data['slope_info'] = f"Error: {str(e)}"
+                eval_results['vwap_slope'] = False
+                logger.warning(f"V2 MGMT: [{direction}] Exit slope evaluation error: {e}", exc_info=True)
+
+        if 's1_confirm' in f_lower:
+            mon_ltp = position_data.get('monitoring_ltp', current_ltp)
+            if entry_type == 'BUY' and position_data.get('sl_confirm_pending_low') and mon_ltp < position_data['sl_confirm_pending_low']:
+                eval_results['s1_confirm'] = True
+                reasons.append(f"S1 Confirmation (LTP < Low)")
+            elif entry_type == 'SELL' and position_data.get('sl_confirm_pending_high') and mon_ltp > position_data['sl_confirm_pending_high']:
+                eval_results['s1_confirm'] = True
+                reasons.append(f"R1 Confirmation (LTP > High)")
+
+        if 'tsl' in f_lower:
+            offset = self._get_user_setting('offset', mode, 'exit_indicators/tsl', type_func=float, fallback=30.0)
+            trailing_sl = (peak_price + offset) if entry_type == 'SELL' else (peak_price - offset)
+            if (entry_type == 'SELL' and current_ltp > trailing_sl) or (entry_type == 'BUY' and current_ltp < trailing_sl):
+                eval_results['tsl'] = True
+                reasons.append(f"TSL Hit")
+            position_data['trailing_sl'] = trailing_sl
+
+        if 'atr_tsl' in f_lower:
+            atr_val = position_data.get('entry_atr')
+            if atr_val:
+                multiplier = self._get_user_setting('multiplier', mode, 'exit_indicators/atr_tsl', type_func=float, fallback=2.0)
+                check_mode = self._get_user_setting('check_mode', mode, 'exit_indicators/atr_tsl', fallback='TICK').upper()
+                atr_offset = atr_val * multiplier
+                atr_sl = (peak_price + atr_offset) if entry_type == 'SELL' else (peak_price - atr_offset)
+
+                is_breached = False
+                if check_mode == 'CLOSE':
+                    if (timestamp.second >= 5) or (self.orchestrator.is_backtest and timestamp.second == 0):
+                        if (entry_type == 'SELL' and current_ltp > atr_sl) or (entry_type == 'BUY' and current_ltp < atr_sl):
+                            is_breached = True
+                else:
+                    if (entry_type == 'SELL' and current_ltp > atr_sl) or (entry_type == 'BUY' and current_ltp < atr_sl):
+                        is_breached = True
+
+                if is_breached:
+                    eval_results['atr_tsl'] = True
+                    reasons.append(f"ATR TSL Hit ({check_mode})")
+                position_data['atr_trailing_sl'] = atr_sl
+
+        if 'r1_falling' in f_lower:
+            r1_tf = self._get_user_setting('tf', mode, 'exit_indicators/r1_falling', type_func=int, fallback=3)
+            _, r1_curr, _, _, _, _, _, _ = await self.indicator_manager.get_sr_status(signal_inst_key, r1_tf, timestamp)
+            if r1_curr and position_data.get('prev_r1_high') and r1_curr < position_data['prev_r1_high']:
+                eval_results['r1_falling'] = True
+                reasons.append("Falling R1")
+            if r1_curr: position_data['prev_r1_high'] = r1_curr
+
+        if self.orchestrator.json_config.evaluate_formula(exit_formula, eval_results):
+            sl_inds = ['s1_low', 'r1_high', 'tsl', 'atr_tsl', 's1_confirm', 'r1_falling', 'r1_stagnation', 'r1_low_breach', 's1_double_drop']
+            is_sl_exit = any(eval_results.get(ind) and ind in f_lower for ind in sl_inds)
+            return True, f"Structural Exit: {', '.join(reasons)}", is_sl_exit
+        return False, "", False

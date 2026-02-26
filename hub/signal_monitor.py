@@ -825,17 +825,6 @@ class SignalMonitor:
         task_id = id(asyncio.current_task())
         trade_direction = data['direction']
 
-        # Enforce structural-exit cooldown: after a VWAP slope / ATR / target exit, re-entry is
-        # blocked for 60 seconds so the closed-candle reference has time to reset. This prevents
-        # the rapid enter->immediate-exit loop observed when the exit VWAP reference is still
-        # below threshold right after a new trade is entered.
-        if self.state_manager:
-            cooldown = self.state_manager.put_cooldown_until if side == 'PE' else self.state_manager.call_cooldown_until
-            if cooldown and timestamp < cooldown:
-                remaining = (cooldown - timestamp).total_seconds()
-                logger.info(f"[Task {task_id}] V2: Re-entry for {side} BLOCKED by structural-exit cooldown. {remaining:.0f}s remaining (until {cooldown.strftime('%H:%M:%S')})")
-                return
-
         logger.info(f"[Task {task_id}] V2: SETTING entry_confirmed=True for {side} ({entry_type})")
         data['entry_confirmed'] = True
         data['waiting_for_buffer'] = False

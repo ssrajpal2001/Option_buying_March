@@ -486,18 +486,6 @@ class PositionManager:
         # User: "if tsl is hit tehn it will chekc that the current valeu is above 9.15 it will always take tarde in ce"
         is_hard_sl = ("Stop Loss" in reason or is_sl_exit) and "Trailing" not in reason
 
-        # Structural exits (VWAP slope, ATR, pattern) apply a 60-second re-entry cooldown.
-        # This prevents the enter→immediate-exit loop that occurs when the exit reference
-        # (closed candle VWAP) is still below threshold right after re-entry.
-        is_structural = any(kw in reason for kw in ('VWAP Slope', 'Structural', 'ATR', 'Target'))
-        if is_structural and not self.orchestrator.is_backtest:
-            cooldown_until = timestamp + datetime.timedelta(seconds=60)
-            if side == 'CALL':
-                self.state_manager.call_cooldown_until = cooldown_until
-            else:
-                self.state_manager.put_cooldown_until = cooldown_until
-            logger.info(f"V2 MGMT: [{side}] Structural exit — re-entry cooldown set until {cooldown_until.strftime('%H:%M:%S')} (60s)")
-
         gate_enabled = self._get_user_setting('range_915_gate_enabled', bool, fallback=True)
 
         if is_hard_sl:
