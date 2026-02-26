@@ -357,7 +357,7 @@ class SignalMonitor:
                         (timestamp - self._last_strike_switch_time).total_seconds()
                         if self._last_strike_switch_time is not None else 9999
                     )
-                    time_ok = elapsed_since_switch >= 60
+                    time_ok = self.orchestrator.is_backtest or elapsed_since_switch >= 60
 
                     if ticks_ok and time_ok:
                         user_display = self.user_id if self.user_id else "Global"
