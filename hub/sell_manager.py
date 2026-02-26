@@ -62,6 +62,50 @@ class SellManager:
 
         return strike, contract, inst_key, ltp
 
+    async def _find_from_chain_backtest(self, chain, side, timestamp):
+        """
+        Backtest version of _find_from_chain. Fetches the real historical LTP at
+        `timestamp` for each candidate strike via the Upstox REST OHLC API, then
+        applies the same 'closest to ₹100' selection logic on those historical prices.
+
+        This corrects two live-mode bugs in backtest:
+        1. Wrong strike selected (live chain LTPs are EOD prices, not 09:15 prices)
+        2. Wrong entry price stored (entry LTP must be the actual 09:15 open price)
+        """
+        options_key = 'call_options' if side == 'CE' else 'put_options'
+
+        candidates_raw = []
+        for entry in chain:
+            side_data = entry.get(options_key) or {}
+            inst_key = side_data.get('instrument_key')
+            strike_price = entry.get('strike_price')
+            if inst_key and strike_price is not None:
+                candidates_raw.append((float(strike_price), inst_key))
+
+        logger.info(f"[SellManager][Backtest] Fetching historical LTPs for {len(candidates_raw)} {side} candidates at {timestamp}...")
+
+        candidates = []
+        for strike, inst_key in candidates_raw:
+            hist_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(inst_key, timestamp)
+            if hist_ltp and hist_ltp > 100:
+                candidates.append((abs(hist_ltp - 100), hist_ltp, strike, inst_key))
+
+        if not candidates:
+            logger.error(f"[SellManager][Backtest] No {side} strikes with historical LTP > 100 found at {timestamp}")
+            return None, None, None, None
+
+        candidates.sort(key=lambda x: x[0])
+        _, hist_ltp, strike, inst_key = candidates[0]
+        logger.info(f"[SellManager][Backtest] Selected {side} sell strike: {strike} (Historical LTP at {timestamp}: {hist_ltp:.2f}, key: {inst_key})")
+
+        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
+        contract = expiry_strikes.get(float(strike), {}).get(side)
+        if not contract:
+            logger.error(f"[SellManager][Backtest] {side} strike {strike} not found in contract_lookup — cannot determine lot_size")
+            return None, None, None, None
+
+        return strike, contract, inst_key, hist_ltp
+
     def _find_hedge_key_in_chain(self, chain, hedge_strike, side):
         """
         Finds the instrument_key for hedge_strike on side ('CE' or 'PE') in the chain data.
@@ -101,8 +145,12 @@ class SellManager:
             logger.error(f"[SellManager] Option chain returned empty for {index_key} expiry {expiry}. Aborting strangle.")
             return
 
-        ce_strike, ce_contract, ce_sell_key, ce_entry_ltp = self._find_from_chain(chain, 'CE')
-        pe_strike, pe_contract, pe_sell_key, pe_entry_ltp = self._find_from_chain(chain, 'PE')
+        if self.orchestrator.is_backtest:
+            ce_strike, ce_contract, ce_sell_key, ce_entry_ltp = await self._find_from_chain_backtest(chain, 'CE', timestamp)
+            pe_strike, pe_contract, pe_sell_key, pe_entry_ltp = await self._find_from_chain_backtest(chain, 'PE', timestamp)
+        else:
+            ce_strike, ce_contract, ce_sell_key, ce_entry_ltp = self._find_from_chain(chain, 'CE')
+            pe_strike, pe_contract, pe_sell_key, pe_entry_ltp = self._find_from_chain(chain, 'PE')
 
         if ce_strike is None or pe_strike is None:
             logger.error("[SellManager] Could not find valid strikes for strangle. Aborting.")
