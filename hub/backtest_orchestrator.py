@@ -13,6 +13,7 @@ class BacktestOrchestrator(BaseOrchestrator):
         from hub.sell_manager import SellManager
         self.sell_manager = SellManager(self)
         self._backtest_strangle_triggered = False
+        self.profit_target_hit = False
 
     async def prepare_backtest(self):
         """Pre-fetches all necessary data before starting the backtest."""
@@ -41,7 +42,12 @@ class BacktestOrchestrator(BaseOrchestrator):
         self.current_timestamp = timestamp
         await self._populate_state_for_tick(timestamp, current_group)
 
-        if not self._backtest_strangle_triggered:
+        import datetime as _dt
+        _strangle_start = _dt.datetime.strptime(
+            self.config_manager.get('settings', 'strangle_start_time', fallback='09:16:00'),
+            '%H:%M:%S'
+        ).time()
+        if not self._backtest_strangle_triggered and timestamp.time() >= _strangle_start:
             await self.sell_manager.execute_short_strangle(timestamp)
             self._backtest_strangle_triggered = True
 
@@ -97,6 +103,26 @@ class BacktestOrchestrator(BaseOrchestrator):
 
         from utils.logger import log_trade_summary
         pnl = self.pnl_tracker.get_real_time_pnl() if self.pnl_tracker else 0
+
+        # --- Profit target exit check ---
+        if not self.profit_target_hit and self.pnl_tracker:
+            pt_cfg = (self.json_config.get_value(
+                f"{self.instrument_name}.profit_target_exit") or {})
+            if pt_cfg.get('enabled'):
+                realized = sum(t.get('pnl', 0) for t in self.pnl_tracker.trade_history)
+                total_pnl = realized + pnl
+                lot = self.config_manager.get_int(self.instrument_name, 'lot_size', 1)
+                threshold = pt_cfg.get('points', 60) * lot
+                if total_pnl >= threshold:
+                    logger.info(
+                        f"[{self.instrument_name}] PROFIT TARGET HIT: "
+                        f"₹{total_pnl:.2f} >= ₹{threshold:.2f} "
+                        f"({pt_cfg['points']} pts × lot={lot}). "
+                        f"Closing all positions — done for today."
+                    )
+                    self.profit_target_hit = True
+                    await self.close_open_backtest_positions(timestamp)
+
         log_trade_summary(f"Timestamp: {timestamp} | ATM: {current_atm} | Status: {'RUNNING' if self._is_trade_active() else 'IDLE'} | P&L: {pnl:.2f}{summary_extra_info}")
 
     def _get_keys_needing_ticks(self):

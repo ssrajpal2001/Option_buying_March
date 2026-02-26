@@ -15,8 +15,8 @@ class SellManager:
         self.sell_pe_strike = None
         self.sell_ce_key = None
         self.sell_pe_key = None
-        self.buy_ce_key = None   # instrument_key of sell_ce_strike + 100
-        self.buy_pe_key = None   # instrument_key of sell_pe_strike - 100
+        self.buy_ce_key = None   # instrument_key of sell_ce_strike + hedge_offset (CE leg)
+        self.buy_pe_key = None   # instrument_key of sell_pe_strike - hedge_offset (PE leg)
         self.sell_ce_entry_ltp = None
         self.sell_pe_entry_ltp = None
         self.buy_ce_entry_ltp = None   # hedge CE entry LTP at strangle placement
@@ -25,6 +25,7 @@ class SellManager:
         self.sell_ce_contract = None
         self.sell_pe_contract = None
         self.expiry = None
+        self.hedge_offset = None   # loaded from config at strangle placement
 
     # ------------------------------------------------------------------
     # Internal helpers — work directly on a pre-fetched chain list
@@ -72,8 +73,8 @@ class SellManager:
         `timestamp` for each candidate strike via the Upstox REST OHLC API, then
         applies the same 'closest to ₹100' selection logic on those historical prices.
 
-        Expects `chain` to already be filtered to the target ATM-anchored strikes
-        (typically 5 candidates) to minimise API calls.
+        Expects `chain` to already be the asymmetric ATM-anchored filtered list to
+        minimise API calls.
         """
         options_key = 'call_options' if side == 'CE' else 'put_options'
 
@@ -129,6 +130,10 @@ class SellManager:
 
     async def execute_short_strangle(self, timestamp):
         """Places SELL NRML orders for both CE and PE legs at market open."""
+        if getattr(self.orchestrator, 'profit_target_hit', False):
+            logger.info("[SellManager] Profit target hit — strangle placement skipped.")
+            return
+
         if self.strangle_placed:
             logger.info("[SellManager] Strangle already placed, skipping.")
             return
@@ -141,6 +146,10 @@ class SellManager:
         self.expiry = expiry
         index_key = self.orchestrator.index_instrument_key
 
+        # Read configurable hedge_offset (default 150)
+        self.hedge_offset = self.orchestrator.config_manager.get_int(
+            self.orchestrator.instrument_name, 'hedge_offset', 150)
+
         # Fetch the full option chain once for hedge key lookup
         logger.info(f"[SellManager] Fetching option chain for {index_key} expiry {expiry}")
         chain = await self.orchestrator.rest_client.get_option_chain(index_key, expiry)
@@ -148,20 +157,20 @@ class SellManager:
             logger.error(f"[SellManager] Option chain returned empty for {index_key} expiry {expiry}. Aborting strangle.")
             return
 
-        # --- T001: ATM-anchored strike filtering ---
-        # Only search the 5 strikes above ATM for CE and 5 below for PE.
-        # This reduces backtest historical LTP API calls from 63+ to 10.
+        # --- ATM-anchored asymmetric strike filtering ---
+        # CE: 3 strikes BELOW ATM + 8 strikes ABOVE ATM (captures ITM-to-OTM range)
+        # PE: 8 strikes BELOW ATM + 3 strikes ABOVE ATM (mirrors CE on the put side)
         atm = self.orchestrator.atm_manager.strikes.get('atm')
         interval = self.orchestrator.config_manager.get_int(
             self.orchestrator.instrument_name, 'strike_interval', 50)
 
         if atm and interval:
-            ce_targets = {float(atm + i * interval) for i in range(1, 10)}
-            pe_targets = {float(atm - i * interval) for i in range(1, 10)}
+            ce_targets = {float(atm + i * interval) for i in range(-3, 9) if i != 0}
+            pe_targets = {float(atm + i * interval) for i in range(-8, 4) if i != 0}
             logger.info(
-                f"[SellManager] ATM={atm} interval={interval} — "
-                f"CE search: {int(atm + interval)}–{int(atm + 5*interval)} | "
-                f"PE search: {int(atm - interval)}–{int(atm - 5*interval)}"
+                f"[SellManager] ATM={atm} interval={interval} hedge_offset={self.hedge_offset} — "
+                f"CE search: {int(atm - 3*interval)} to {int(atm + 8*interval)} (excl ATM, {len(ce_targets)} candidates) | "
+                f"PE search: {int(atm - 8*interval)} to {int(atm + 3*interval)} (excl ATM, {len(pe_targets)} candidates)"
             )
             ce_chain = [e for e in chain if float(e.get('strike_price', -1)) in ce_targets]
             pe_chain = [e for e in chain if float(e.get('strike_price', -1)) in pe_targets]
@@ -181,16 +190,16 @@ class SellManager:
             logger.error("[SellManager] Could not find valid strikes for strangle. Aborting.")
             return
 
-        # Resolve hedge keys from the full chain (hedge may be outside the 5-strike window)
-        buy_ce_key = self._find_hedge_key_in_chain(chain, ce_strike + 100, 'CE')
-        buy_pe_key = self._find_hedge_key_in_chain(chain, pe_strike - 100, 'PE')
+        # Resolve hedge keys from the full chain using configurable offset
+        buy_ce_key = self._find_hedge_key_in_chain(chain, ce_strike + self.hedge_offset, 'CE')
+        buy_pe_key = self._find_hedge_key_in_chain(chain, pe_strike - self.hedge_offset, 'PE')
 
         if not buy_ce_key:
-            logger.warning(f"[SellManager] CE hedge strike {ce_strike + 100} not found in chain — hedge BUY may fail")
+            logger.warning(f"[SellManager] CE hedge strike {ce_strike + self.hedge_offset} not found in chain — hedge BUY may fail")
         if not buy_pe_key:
-            logger.warning(f"[SellManager] PE hedge strike {pe_strike - 100} not found in chain — hedge BUY may fail")
+            logger.warning(f"[SellManager] PE hedge strike {pe_strike - self.hedge_offset} not found in chain — hedge BUY may fail")
 
-        # --- T002: Fetch hedge entry LTPs at strangle placement (backtest only) ---
+        # Fetch hedge entry LTPs at strangle placement (backtest only)
         if self.orchestrator.is_backtest:
             self.buy_ce_entry_ltp = (
                 await self.orchestrator._get_ltp_for_backtest_instrument(buy_ce_key, timestamp)
@@ -202,8 +211,8 @@ class SellManager:
             )
             logger.info(
                 f"[SellManager][Backtest] Hedge entry LTPs recorded: "
-                f"CE hedge {int(ce_strike + 100)}={self.buy_ce_entry_ltp} | "
-                f"PE hedge {int(pe_strike - 100)}={self.buy_pe_entry_ltp}"
+                f"CE hedge {int(ce_strike + self.hedge_offset)}={self.buy_ce_entry_ltp} | "
+                f"PE hedge {int(pe_strike - self.hedge_offset)}={self.buy_pe_entry_ltp}"
             )
 
         brokers = self.orchestrator.broker_manager.brokers
@@ -241,7 +250,8 @@ class SellManager:
         logger.info(
             f"[SellManager] Short strangle placed: "
             f"SELL CE {ce_strike} (key:{ce_sell_key}) | SELL PE {pe_strike} (key:{pe_sell_key}) | "
-            f"Hedge CE key:{buy_ce_key} | Hedge PE key:{buy_pe_key} | Expiry: {expiry}"
+            f"Hedge CE {int(ce_strike + self.hedge_offset)} key:{buy_ce_key} | "
+            f"Hedge PE {int(pe_strike - self.hedge_offset)} key:{buy_pe_key} | Expiry: {expiry}"
         )
 
     async def close_all(self, timestamp):
@@ -328,11 +338,9 @@ class SellManager:
                             'entry_type': 'SELL',
                         })
 
-                # --- T003: Hedge EOD P&L log (informational only — no double-count) ---
-                # BUY hedge positions are already tracked via the normal pnl_tracker lifecycle:
-                #   enter_trade at signal entry → exit_trade at SL hit → re-enter on new trade
-                #   → force-exit at EOD via close_open_backtest_positions.
-                # This block provides a consolidated log at EOD close for visibility.
+                # Hedge EOD P&L log (informational only — no double-count)
+                # BUY hedge positions are tracked via the normal pnl_tracker lifecycle.
+                hedge_offset = self.hedge_offset or 150
                 if self.buy_ce_key and self.buy_pe_key and self.buy_ce_entry_ltp and self.buy_pe_entry_ltp:
                     buy_ce_exit = await self.orchestrator._get_ltp_for_backtest_instrument(
                         self.buy_ce_key, timestamp)
@@ -340,16 +348,18 @@ class SellManager:
                         self.buy_pe_key, timestamp)
                     if buy_ce_exit and buy_pe_exit:
                         hedge_lot = ce_lot
-                        hedge_qty = _broker_qty * 2
+                        hedge_qty_mult = self.orchestrator.config_manager.get_int(
+                            self.orchestrator.instrument_name, 'hedge_quantity_multiplier', 2)
+                        hedge_qty = _broker_qty * hedge_qty_mult
                         buy_ce_pnl = (buy_ce_exit - self.buy_ce_entry_ltp) * hedge_lot * hedge_qty
                         buy_pe_pnl = (buy_pe_exit - self.buy_pe_entry_ltp) * hedge_lot * hedge_qty
                         logger.info(
                             f"[SellManager] HEDGE EOD P&L (informational): "
-                            f"CE hedge {int(self.sell_ce_strike + 100)} "
+                            f"CE hedge {int(self.sell_ce_strike + hedge_offset)} "
                             f"entry={self.buy_ce_entry_ltp:.2f} exit={buy_ce_exit:.2f} "
                             f"PnL/share={buy_ce_exit - self.buy_ce_entry_ltp:+.2f} × "
                             f"lot={hedge_lot} × qty={hedge_qty} = ₹{buy_ce_pnl:+.2f} | "
-                            f"PE hedge {int(self.sell_pe_strike - 100)} "
+                            f"PE hedge {int(self.sell_pe_strike - hedge_offset)} "
                             f"entry={self.buy_pe_entry_ltp:.2f} exit={buy_pe_exit:.2f} "
                             f"PnL/share={buy_pe_exit - self.buy_pe_entry_ltp:+.2f} × "
                             f"lot={hedge_lot} × qty={hedge_qty} = ₹{buy_pe_pnl:+.2f} | "
@@ -363,18 +373,21 @@ class SellManager:
     def get_buy_strike(self, direction):
         """
         Returns the hedge (BUY) strike and instrument_key for the given signal direction.
-          CALL signal → buy CE at sell_ce_strike + 100  (key stored as buy_ce_key)
-          PUT  signal → buy PE at sell_pe_strike - 100  (key stored as buy_pe_key)
+          CALL signal → buy CE at sell_ce_strike + hedge_offset  (key stored as buy_ce_key)
+          PUT  signal → buy PE at sell_pe_strike - hedge_offset  (key stored as buy_pe_key)
         Returns (None, None) if strangle not placed or hedge key was not resolved.
         """
         if not self.strangle_placed:
             return None, None
 
+        hedge_offset = self.orchestrator.config_manager.get_int(
+            self.orchestrator.instrument_name, 'hedge_offset', 150)
+
         if direction == 'CALL':
-            hedge_strike = self.sell_ce_strike + 100
+            hedge_strike = self.sell_ce_strike + hedge_offset
             hedge_key = self.buy_ce_key
         elif direction == 'PUT':
-            hedge_strike = self.sell_pe_strike - 100
+            hedge_strike = self.sell_pe_strike - hedge_offset
             hedge_key = self.buy_pe_key
         else:
             return None, None
@@ -400,6 +413,7 @@ class SellManager:
             'sell_pe_entry_ltp': self.sell_pe_entry_ltp,
             'buy_ce_entry_ltp': self.buy_ce_entry_ltp,
             'buy_pe_entry_ltp': self.buy_pe_entry_ltp,
+            'hedge_offset': self.hedge_offset,
             'expiry': self.expiry.isoformat() if self.expiry else None
         }
         try:
@@ -438,6 +452,7 @@ class SellManager:
             self.sell_pe_entry_ltp = state.get('sell_pe_entry_ltp')
             self.buy_ce_entry_ltp = state.get('buy_ce_entry_ltp')
             self.buy_pe_entry_ltp = state.get('buy_pe_entry_ltp')
+            self.hedge_offset = state.get('hedge_offset')
             self.expiry = expiry
 
             if self.strangle_placed:
@@ -445,7 +460,7 @@ class SellManager:
                     f"[SellManager] Restored state: "
                     f"CE {self.sell_ce_strike} | PE {self.sell_pe_strike} | "
                     f"Hedge CE key:{self.buy_ce_key} | Hedge PE key:{self.buy_pe_key} | "
-                    f"Expiry: {expiry} | Closed: {self.strangle_closed}"
+                    f"hedge_offset:{self.hedge_offset} | Expiry: {expiry} | Closed: {self.strangle_closed}"
                 )
         except Exception as e:
             logger.error(f"[SellManager] Failed to load state: {e}")
