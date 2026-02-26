@@ -76,12 +76,17 @@ class RestApiClient:
             logger.error(f"Error fetching option contracts: {e}")
             return []
 
-    async def get_expiring_option_contracts(self, instrument_key):
-        """Fetch contracts that are expiring today (or have already expired).
+    async def get_expiring_option_contracts(self, instrument_key, expiry_date):
+        """Fetch contracts expiring on a specific date.
         Upstox excludes today's expiry from /option/contract on expiry day;
-        this endpoint fills that gap."""
-        endpoint = "/v2/expired-instruments/option/contract"
-        params = {'instrument_key': instrument_key}
+        this endpoint fills that gap.
+        expiry_date: datetime.date or string 'YYYY-MM-DD'
+        """
+        endpoint = "/expired-instruments/option/contract"
+        params = {
+            'instrument_key': instrument_key,
+            'expiry_date': str(expiry_date)
+        }
         try:
             response = await self._request('get', endpoint, params=params)
             return response.get('data', [])
@@ -89,7 +94,7 @@ class RestApiClient:
             logger.error(f"Error fetching expiring option contracts: {e}")
             return []
         except Exception as e:
-            logger.warning(f"get_expiring_option_contracts failed (non-expiry day?): {e}")
+            logger.warning(f"get_expiring_option_contracts failed: {e}")
             return []
 
     async def get_historical_candle_data(self, instrument_key, interval, to_date, from_date):

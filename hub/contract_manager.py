@@ -91,7 +91,7 @@ class ContractManager:
             logger.warning("ContractManager: rest_client does not support get_expiring_option_contracts — cannot supplement.")
             return
 
-        expiring_raw = await self.rest_client.get_expiring_option_contracts(instrument_key)
+        expiring_raw = await self.rest_client.get_expiring_option_contracts(instrument_key, today)
         if not expiring_raw:
             logger.warning("ContractManager: expired-instruments API returned no contracts. Bot may be unable to trade today's expiry.")
             return
