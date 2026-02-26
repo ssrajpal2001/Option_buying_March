@@ -10,6 +10,9 @@ class BacktestOrchestrator(BaseOrchestrator):
         self.current_timestamp = None
         self.index_instrument_key = self.config_manager.get(self.instrument_name, 'instrument_symbol')
         self.backtest_data_mgr = BacktestDataManager(self)
+        from hub.sell_manager import SellManager
+        self.sell_manager = SellManager(self)
+        self._backtest_strangle_triggered = False
 
     async def prepare_backtest(self):
         """Pre-fetches all necessary data before starting the backtest."""
@@ -37,6 +40,10 @@ class BacktestOrchestrator(BaseOrchestrator):
     async def run_backtest_strategy_for_timestamp(self, timestamp, current_group):
         self.current_timestamp = timestamp
         await self._populate_state_for_tick(timestamp, current_group)
+
+        if not self._backtest_strangle_triggered:
+            await self.sell_manager.execute_short_strangle(timestamp)
+            self._backtest_strangle_triggered = True
 
         self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
             expiry=self.atm_manager.signal_expiry_date
@@ -222,3 +229,6 @@ class BacktestOrchestrator(BaseOrchestrator):
                 ohlc = await self.data_manager.get_historical_ohlc(trade['instrument_key'], 1, current_timestamp=timestamp, for_full_day=True)
                 ltp = ohlc.asof(timestamp)['close'] if ohlc is not None and not ohlc.empty else None
                 if ltp: self.pnl_tracker.exit_trade(side, ltp, timestamp, reason="End of backtest")
+
+        if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed and not self.sell_manager.strangle_closed:
+            await self.sell_manager.close_all(timestamp)

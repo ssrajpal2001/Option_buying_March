@@ -125,7 +125,7 @@ class SellManager:
             ce_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * ce_contract.lot_size
             pe_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * pe_contract.lot_size
 
-            if getattr(broker, 'paper_trade', False):
+            if self.orchestrator.is_backtest or getattr(broker, 'paper_trade', False):
                 logger.info(f"[SellManager][PAPER SELL NRML] CE: {ce_strike} qty={ce_qty} | PE: {pe_strike} qty={pe_qty}")
             else:
                 ce_order_id = broker.place_order(ce_contract, 'SELL', ce_qty, expiry, product_type='NRML')
@@ -179,7 +179,7 @@ class SellManager:
             ce_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * ce_contract.lot_size
             pe_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * pe_contract.lot_size
 
-            if getattr(broker, 'paper_trade', False):
+            if self.orchestrator.is_backtest or getattr(broker, 'paper_trade', False):
                 logger.info(f"[SellManager][PAPER BUY NRML CLOSE] CE: {self.sell_ce_strike} qty={ce_qty} | PE: {self.sell_pe_strike} qty={pe_qty}")
             else:
                 ce_order_id = broker.place_order(ce_contract, 'BUY', ce_qty, expiry, product_type='NRML')

@@ -149,7 +149,7 @@ class BaseOrchestrator(ABC):
     async def broadcast_signal(self, direction, instrument_key, signal_ltp, strike_price, timestamp, strategy_log, entry_type='BUY'):
         """Broadcasts a validated market signal to all isolated user sessions."""
         quantity_multiplier = 1
-        if not self.is_backtest and hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed:
+        if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed:
             hedge_strike, hedge_key = self.sell_manager.get_buy_strike(direction)
             if hedge_strike and hedge_key:
                 logger.info(f"[{self.instrument_name}] Hedge override: {strike_price} -> {hedge_strike} (sell_hedge_{direction}) | qty x2")
@@ -222,3 +222,9 @@ class BaseOrchestrator(ABC):
 
         if hasattr(self.data_manager, 'clear_caches'):
             self.data_manager.clear_caches()
+
+        if hasattr(self, 'sell_manager'):
+            from hub.sell_manager import SellManager
+            self.sell_manager = SellManager(self)
+        if hasattr(self, '_backtest_strangle_triggered'):
+            self._backtest_strangle_triggered = False
