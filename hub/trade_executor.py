@@ -284,7 +284,8 @@ class TradeExecutor:
                 "signal_strike": signal_strike,
                 "signal_expiry_date": signal_expiry,
                 "strategy_log": strategy_log,
-                "entry_type": entry_type
+                "entry_type": entry_type,
+                "product_type": "MIS"
             }
 
             # IDEMPOTENCY CHECK based on returned position or re-fetched position
