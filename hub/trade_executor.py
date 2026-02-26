@@ -216,7 +216,11 @@ class TradeExecutor:
 
         contract = self.atm_manager.get_contract_by_instrument_key(trade_instrument_key)
         if not contract:
-            logger.error(f"[Task {task_id}] V2: Could not find contract object for key {trade_instrument_key}")
+            contract = next((c for c in self.atm_manager.all_contracts if c.instrument_key == trade_instrument_key), None)
+            if contract:
+                logger.warning(f"[Task {task_id}] V2: contract_lookup miss for {trade_instrument_key} — recovered from all_contracts (re-strike race).")
+        if not contract:
+            logger.error(f"[Task {task_id}] V2: Could not find contract for key {trade_instrument_key}. Not in lookup or all_contracts. Trade aborted.")
             return
 
         # Resolve correct signal_expiry for the mode
