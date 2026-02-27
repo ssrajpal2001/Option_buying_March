@@ -139,7 +139,7 @@ class StateManager:
         self.waiting_for_resubscription_keys = set(keys)
         logger.debug(f"StateManager is now waiting for initial data from {len(keys)} instruments.")
 
-    async def enter_trade(self, direction, instrument_key, instrument_symbol, ltp, strike_price, timestamp=None, signal_strike=None, s1_fast_tf=1, s1_slow_tf=5, entry_type='BUY', signal_expiry_date=None):
+    async def enter_trade(self, direction, instrument_key, instrument_symbol, ltp, strike_price, timestamp=None, signal_strike=None, s1_fast_tf=1, s1_slow_tf=5, entry_type='BUY', signal_expiry_date=None, quantity_multiplier=1):
         if timestamp is None:
             timestamp = datetime.datetime.now()
 
@@ -158,7 +158,8 @@ class StateManager:
                 "s1_fast_tf": s1_fast_tf,
                 "s1_slow_tf": s1_slow_tf,
                 "entry_type": entry_type,
-                "signal_expiry_date": signal_expiry_date
+                "signal_expiry_date": signal_expiry_date,
+                "quantity_multiplier": quantity_multiplier
             }
             if ltp and ltp > 0:
                 update_data["entry_price"] = ltp
@@ -189,6 +190,7 @@ class StateManager:
                 "signal_expiry_date": signal_expiry_date,
                 "direction": direction,
                 "entry_type": entry_type,
+                "quantity_multiplier": quantity_multiplier,
                 "exit_monitoring_strike": signal_strike,
                 "s1_monitoring_strike": signal_strike,
                 "s1_fast_tf": s1_fast_tf,
@@ -240,13 +242,12 @@ class StateManager:
         
         entry_type = position.get('entry_type', 'BUY')
         if entry_type == 'SELL':
-            # Short position: Profit when price goes down
             point_pnl = position['entry_price'] - position['ltp']
         else:
-            # Long position: Profit when price goes up
             point_pnl = position['ltp'] - position['entry_price']
 
-        return point_pnl * self.quantity * self.lot_size
+        qty_mult = position.get('quantity_multiplier', 1)
+        return point_pnl * self.quantity * self.lot_size * qty_mult
 
     def update_pnl_for_tick(self, instrument_key, ltp):
         """
