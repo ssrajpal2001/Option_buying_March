@@ -625,9 +625,10 @@ class SignalMonitor:
         last_1m_completed_ts = current_minute_start - pd.Timedelta(minutes=1)
 
         # START OF DAY LOGIC:
-        # Trade will start ONLY AFTER 09:15 candle is formed (at 09:16:05).
-        if current_minute_start.hour == 9 and current_minute_start.minute <= 15:
-            # It's before or exactly 09:15:xx. The 09:15 candle hasn't finalized yet.
+        # Trade will start ONLY AFTER 09:16 candle is formed (at 09:17:05).
+        # This ensures we have 2 finalized candles (9:15 and 9:16) for slope comparison.
+        if current_minute_start.hour == 9 and current_minute_start.minute <= 16:
+            # It's before or exactly 09:16:xx. The 09:16 candle hasn't finalized yet.
             return
 
         # ITERATION THROTTLE: Wait for tf iterations (minutes/candles)
