@@ -314,6 +314,13 @@ class SignalMonitor:
         The main entry point for the TickProcessor. It checks for new signals, manages
         monitoring state, and triggers crossover checks.
         """
+        # START OF DAY LOGIC (STRICT 2-CANDLE RULE):
+        # To compare two closed candles (e.g., 09:16 vs 09:15), we must wait until
+        # the 09:16 candle completes. The first decision can only happen at 09:17:00.
+        if timestamp.hour == 9 and timestamp.minute <= 16:
+            # It's before or exactly 09:16:xx. We don't have 2 finalized candles yet.
+            return
+
         async with self._breach_lock:
             # Check JSON active modes
             active_modes = self.orchestrator.json_config.get_active_modes(self.orchestrator.instrument_name)
@@ -624,12 +631,6 @@ class SignalMonitor:
         current_minute_start = timestamp.replace(second=0, microsecond=0)
         last_1m_completed_ts = current_minute_start - pd.Timedelta(minutes=1)
 
-        # START OF DAY LOGIC:
-        # Trade will start ONLY AFTER 09:16 candle is formed (at 09:17:05).
-        # This ensures we have 2 finalized candles (9:15 and 9:16) for slope comparison.
-        if current_minute_start.hour == 9 and current_minute_start.minute <= 16:
-            # It's before or exactly 09:16:xx. The 09:16 candle hasn't finalized yet.
-            return
 
         # ITERATION THROTTLE: Wait for tf iterations (minutes/candles)
         # In Live: Align to clock boundaries (minute % tf == 0)

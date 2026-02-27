@@ -21,6 +21,10 @@ class SignalEvaluator:
 
     async def evaluate_tick_criteria(self, timestamp, active_modes):
         """Updates criteria_state for TICK indicators and evaluates formulas for both sides."""
+        # START OF DAY PROTECTION
+        if timestamp.hour == 9 and timestamp.minute <= 16:
+            return
+
         monitoring_data = self.state_manager.dual_sr_monitoring_data
         if not monitoring_data: return
         triggered = False
@@ -363,6 +367,10 @@ class SignalEvaluator:
 
     async def evaluate_close_criteria(self, timestamp, active_modes):
         """Evaluates entry formulas based on finalized 1-minute candles."""
+        # START OF DAY PROTECTION
+        if timestamp.hour == 9 and timestamp.minute <= 16:
+            return
+
         monitoring_data = self.state_manager.dual_sr_monitoring_data
         if not monitoring_data: return
         triggered = False
