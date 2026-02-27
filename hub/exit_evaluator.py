@@ -39,6 +39,8 @@ class ExitEvaluator:
             if last_move and (timestamp - last_move).total_seconds() / 60 >= stag_mins:
                 eval_results['r1_stagnation'] = True
                 reasons.append(f"SR Stagnation ({stag_mins}m)")
+                # CRITICAL: Prevent immediate re-stagnation after re-entry
+                position_data['last_sr_move_time'] = timestamp
 
         if 'r1_low_breach' in f_lower:
             mon_ltp = position_data.get('monitoring_ltp', current_ltp)

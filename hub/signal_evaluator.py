@@ -91,10 +91,17 @@ class SignalEvaluator:
 
                         can_eval_slope = True
                         if slope_mode == 'CLOSE':
-                            can_eval_slope = (
-                                (timestamp.second >= 5 or self.orchestrator.is_backtest) and
-                                (timestamp.minute % slope_tf == 0)
-                            )
+                            at_candle_boundary = (timestamp.second >= 5 or self.orchestrator.is_backtest) and (timestamp.minute % slope_tf == 0)
+                            if not at_candle_boundary:
+                                can_eval_slope = False
+                            else:
+                                aligned_min = (timestamp.minute // slope_tf) * slope_tf
+                                candle_ref = timestamp.replace(minute=aligned_min, second=0, microsecond=0)
+                                last_checked = data.get('_slope_close_last_candle')
+                                if last_checked == candle_ref:
+                                    can_eval_slope = False
+                                else:
+                                    data['_slope_close_last_candle'] = candle_ref
 
                         if can_eval_slope:
                             s_ts = timestamp if slope_mode == 'TICK' else (
@@ -165,14 +172,13 @@ class SignalEvaluator:
                     continue
                 if data.get('entry_confirmed'): continue
 
-                # Re-entry cooldown: block same-side entry for 60s after any exit (live mode only)
-                if not self.orchestrator.is_backtest:
-                    cooldown_attr = 'call_cooldown_until' if side == 'CE' else 'put_cooldown_until'
-                    cooldown_until = getattr(self.state_manager, cooldown_attr, None)
-                    if cooldown_until is not None and timestamp < cooldown_until:
-                        remaining = (cooldown_until - timestamp).total_seconds()
-                        logger.info(f"V2: [{side}] Re-entry blocked by cooldown. {remaining:.0f}s remaining (until {cooldown_until.strftime('%H:%M:%S')})")
-                        continue
+                # Re-entry cooldown: block same-side entry for 60s after any exit
+                cooldown_attr = 'call_cooldown_until' if side == 'CE' else 'put_cooldown_until'
+                cooldown_until = getattr(self.state_manager, cooldown_attr, None)
+                if cooldown_until is not None and timestamp < cooldown_until:
+                    remaining = (cooldown_until - timestamp).total_seconds()
+                    logger.info(f"V2: [{side}] Re-entry blocked by cooldown. {remaining:.0f}s remaining (until {cooldown_until.strftime('%H:%M:%S')})")
+                    continue
 
                 current_ltp = self.state_manager.get_ltp(inst_key)
                 if current_ltp is None or current_ltp <= 0: continue
