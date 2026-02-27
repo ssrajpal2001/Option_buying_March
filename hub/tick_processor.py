@@ -165,7 +165,17 @@ class TickProcessor:
         if not self.orchestrator.is_backtest and self.orchestrator.data_recorder:
             if now_ts - getattr(self, '_last_record_time', 0) >= 1.0:
                 self._last_record_time = now_ts
-                recording_strikes = self.strike_manager.get_recording_watchlist(current_atm)
+
+                # Ensure active trade strikes are ALWAYS recorded, even if outside ATM +/- 10
+                mandatory_strikes = []
+                for session in self.orchestrator.user_sessions.values():
+                    for pos in [session.state_manager.call_position, session.state_manager.put_position]:
+                        if pos and pos.get('strike_price'):
+                            mandatory_strikes.append(float(pos['strike_price']))
+                        if pos and pos.get('s1_monitoring_strike'):
+                            mandatory_strikes.append(float(pos['s1_monitoring_strike']))
+
+                recording_strikes = self.strike_manager.get_recording_watchlist(current_atm, additional_strikes=mandatory_strikes)
                 recording_data = {}
                 for strike in recording_strikes:
                     # Reuse from watchlist if possible
