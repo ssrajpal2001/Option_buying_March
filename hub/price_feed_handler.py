@@ -267,7 +267,28 @@ class PriceFeedHandler:
                             self.state_manager.atp_history = {}
                         if instrument_key not in self.state_manager.atp_history:
                             self.state_manager.atp_history[instrument_key] = {}
+                        prev_minute_ts = self.state_manager.atp_history[instrument_key].get('_last_minute')
                         self.state_manager.atp_history[instrument_key][minute_ts] = atp
+
+                        if prev_minute_ts and prev_minute_ts != minute_ts:
+                            prev_atp = self.state_manager.atp_history[instrument_key].get(prev_minute_ts)
+                            data_recorder = getattr(self.trade_orchestrator, 'data_recorder', None)
+                            if data_recorder and prev_atp:
+                                atm_mgr = getattr(self.trade_orchestrator, 'atm_manager', None)
+                                strike, side = None, None
+                                if atm_mgr:
+                                    contract = getattr(atm_mgr, 'contracts', {}).get(instrument_key)
+                                    if contract:
+                                        strike = getattr(contract, 'strike_price', None)
+                                        side = 'CE' if getattr(contract, 'instrument_type', '') in ('CE',) else 'PE'
+                                spot = getattr(self.state_manager, 'index_price', None)
+                                futures = getattr(self.state_manager, 'futures_price', None)
+                                data_recorder.record_atp_snapshot(
+                                    prev_minute_ts, instrument_key, strike, side,
+                                    prev_atp, ltp, spot, futures
+                                )
+
+                        self.state_manager.atp_history[instrument_key]['_last_minute'] = minute_ts
             
 
             # --- Throttle delta updates to once per 60 seconds per instrument ---

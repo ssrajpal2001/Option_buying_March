@@ -154,7 +154,7 @@ class IndicatorManager:
                     minute=(timestamp.minute // timeframe_minutes) * timeframe_minutes,
                     second=0, microsecond=0)
                 prev_boundary = current_interval_start - pd.Timedelta(minutes=timeframe_minutes)
-                candidates = {ts: v for ts, v in atp_hist.items() if ts <= prev_boundary}
+                candidates = {ts: v for ts, v in atp_hist.items() if isinstance(ts, type(prev_boundary)) and ts <= prev_boundary}
                 if candidates:
                     v0 = candidates[max(candidates.keys())]
                     v1 = live_vwap

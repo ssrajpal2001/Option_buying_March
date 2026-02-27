@@ -89,29 +89,37 @@ class SignalEvaluator:
                             mode=mode,
                             category='indicators/vwap_slope')
 
-                        s_ts = timestamp if slope_mode == 'TICK' else (
-                            timestamp.replace(second=0, microsecond=0) -
-                            pd.Timedelta(minutes=1))
-                        s_v = vwap_val if (slope_mode == 'TICK' or not self.orchestrator.is_backtest) else None
+                        can_eval_slope = True
+                        if slope_mode == 'CLOSE':
+                            can_eval_slope = (
+                                (timestamp.second >= 5 or self.orchestrator.is_backtest) and
+                                (timestamp.minute % slope_tf == 0)
+                            )
 
-                        is_r, is_f, v_curr, v_prev, c_r, c_f = await self.indicator_manager.get_vwap_slope_status(
-                            inst_key, s_ts, slope_tf, slope_occ, live_vwap=s_v)
-                        curr_cons = c_r if slope_operator in ('>', '>=') else c_f
-                        slope_passed = False
-                        if v_curr is not None and v_prev is not None and v_prev != 0:
-                            diff = (v_curr - v_prev) / v_prev
-                            if slope_operator == '>':
-                                slope_passed = (diff > slope_threshold and curr_cons >= slope_occ)
-                            elif slope_operator == '<':
-                                slope_passed = (diff < slope_threshold and curr_cons >= slope_occ)
-                            elif slope_operator == '>=':
-                                slope_passed = (diff >= slope_threshold and curr_cons >= slope_occ)
-                            elif slope_operator == '<=':
-                                slope_passed = (diff <= slope_threshold and curr_cons >= slope_occ)
-                            data['slope_info'] = f"V1:{float(v_curr):.2f} {slope_operator} V0:{float(v_prev):.2f} (Pct:{diff*100:.2f}%, Cons:{curr_cons}/{slope_occ})"
-                        else:
-                            data['slope_info'] = f"Waiting for data (V1:{v_curr}, V0:{v_prev})"
-                        data['criteria_state']['vwap_slope'] = slope_passed
+                        if can_eval_slope:
+                            s_ts = timestamp if slope_mode == 'TICK' else (
+                                timestamp.replace(second=0, microsecond=0) -
+                                pd.Timedelta(minutes=1))
+                            s_v = vwap_val if (slope_mode == 'TICK' or not self.orchestrator.is_backtest) else None
+
+                            is_r, is_f, v_curr, v_prev, c_r, c_f = await self.indicator_manager.get_vwap_slope_status(
+                                inst_key, s_ts, slope_tf, slope_occ, live_vwap=s_v)
+                            curr_cons = c_r if slope_operator in ('>', '>=') else c_f
+                            slope_passed = False
+                            if v_curr is not None and v_prev is not None and v_prev != 0:
+                                diff = (v_curr - v_prev) / v_prev
+                                if slope_operator == '>':
+                                    slope_passed = (diff > slope_threshold and curr_cons >= slope_occ)
+                                elif slope_operator == '<':
+                                    slope_passed = (diff < slope_threshold and curr_cons >= slope_occ)
+                                elif slope_operator == '>=':
+                                    slope_passed = (diff >= slope_threshold and curr_cons >= slope_occ)
+                                elif slope_operator == '<=':
+                                    slope_passed = (diff <= slope_threshold and curr_cons >= slope_occ)
+                                data['slope_info'] = f"V1:{float(v_curr):.2f} {slope_operator} V0:{float(v_prev):.2f} (Pct:{diff*100:.2f}%, Cons:{curr_cons}/{slope_occ})"
+                            else:
+                                data['slope_info'] = f"Waiting for data (V1:{v_curr}, V0:{v_prev})"
+                            data['criteria_state']['vwap_slope'] = slope_passed
                     except Exception as e:
                         data['slope_info'] = f"Error: {str(e)}"
                         data['criteria_state']['vwap_slope'] = False

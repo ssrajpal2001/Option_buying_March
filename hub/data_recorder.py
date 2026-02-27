@@ -70,3 +70,29 @@ class DataRecorder:
                     writer.writerow(row)
         except Exception as e:
             logger.error(f"Failed to record ticks to CSV: {e}")
+
+    def record_atp_snapshot(self, minute_ts, instrument_key, strike, side, atp, ltp, spot_price, futures_price):
+        """
+        Records the closed-minute ATP snapshot for a single instrument.
+        Called at minute rollover so values are frozen (not mid-candle).
+        File: atp_data_{instrument}_{date}.csv
+        """
+        try:
+            if not hasattr(self, '_atp_filepath'):
+                atp_filename = f"atp_data_{self.instrument_name}_{datetime.date.today().isoformat()}.csv"
+                self._atp_filepath = os.path.join(os.getcwd(), atp_filename)
+                if not os.path.exists(self._atp_filepath):
+                    with open(self._atp_filepath, 'w', newline='') as f:
+                        csv.writer(f).writerow([
+                            'minute_ts', 'instrument_key', 'strike', 'side',
+                            'atp', 'ltp', 'spot_price', 'futures_price'
+                        ])
+                    logger.info(f"Initialized ATP recorder: {self._atp_filepath}")
+
+            with open(self._atp_filepath, 'a', newline='') as f:
+                csv.writer(f).writerow([
+                    minute_ts.isoformat() if hasattr(minute_ts, 'isoformat') else str(minute_ts),
+                    instrument_key, strike, side, atp, ltp, spot_price, futures_price
+                ])
+        except Exception as e:
+            logger.error(f"Failed to record ATP snapshot to CSV: {e}")
