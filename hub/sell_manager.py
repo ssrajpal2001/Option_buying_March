@@ -169,6 +169,7 @@ class SellManager:
 
         # --- SPOT-anchored asymmetric strike filtering ---
         # SELL contract selection is anchored to the Index (Spot) price ATM.
+        logger.info(f"[SellManager] Anchoring SELL contract selection to Index (Spot) price.")
         index_price = self.orchestrator.state_manager.index_price or 0.0
         interval = self.orchestrator.config_manager.get_int(
             self.orchestrator.instrument_name, 'strike_interval', 50)
@@ -203,6 +204,7 @@ class SellManager:
             return
 
         # Resolve hedge keys from the full chain using configurable offset
+        logger.info(f"[SellManager] Anchoring Hedge positions to Spot-based Sell strikes ({ce_strike}, {pe_strike}).")
         buy_ce_key = self._find_hedge_key_in_chain(chain, ce_strike + self.hedge_offset, 'CE')
         buy_pe_key = self._find_hedge_key_in_chain(chain, pe_strike - self.hedge_offset, 'PE')
 
@@ -211,21 +213,6 @@ class SellManager:
         if not buy_pe_key:
             logger.warning(f"[SellManager] PE hedge strike {pe_strike - self.hedge_offset} not found in chain — hedge BUY may fail")
 
-        # Fetch hedge entry LTPs at strangle placement (backtest only)
-        if self.orchestrator.is_backtest:
-            self.buy_ce_entry_ltp = (
-                await self.orchestrator._get_ltp_for_backtest_instrument(buy_ce_key, timestamp)
-                if buy_ce_key else None
-            )
-            self.buy_pe_entry_ltp = (
-                await self.orchestrator._get_ltp_for_backtest_instrument(buy_pe_key, timestamp)
-                if buy_pe_key else None
-            )
-            logger.info(
-                f"[SellManager][Backtest] Hedge entry LTPs recorded: "
-                f"CE hedge {int(ce_strike + self.hedge_offset)}={self.buy_ce_entry_ltp} | "
-                f"PE hedge {int(pe_strike - self.hedge_offset)}={self.buy_pe_entry_ltp}"
-            )
 
         brokers = self.orchestrator.broker_manager.brokers
         for broker in brokers:

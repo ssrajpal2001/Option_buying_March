@@ -219,6 +219,11 @@ class BacktestOrchestrator(BaseOrchestrator):
 
         watchlist = set(self.strike_manager.get_strike_watchlist(atm_fut))
 
+        # Include sell legs in watchlist to ensure summary logs are populated
+        if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed:
+            if self.sell_manager.sell_ce_strike: watchlist.add(float(self.sell_manager.sell_ce_strike))
+            if self.sell_manager.sell_pe_strike: watchlist.add(float(self.sell_manager.sell_pe_strike))
+
         # Include strikes around Spot ATM for Sell selection to prevent "Data not found"
         interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
         atm_spot = float(round(idx_p / interval) * interval) if idx_p and interval else None
