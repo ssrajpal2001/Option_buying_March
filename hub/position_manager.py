@@ -114,7 +114,10 @@ class PositionManager:
 
             if self._target_strike_consensus_count >= self._get_user_setting('strike_switch_consensus', int, 2, mode=mode):
                 await self.handle_target_strike_switch(global_target, direction, timestamp)
-                position_data['last_sr_move_time'] = timestamp # Use current timestamp for stagnation
+                visited = position_data.setdefault('visited_strikes', set())
+                if global_target not in visited:
+                    visited.add(global_target)
+                    position_data['last_sr_move_time'] = timestamp
 
                 # Recalculate target if enabled
                 target_exit_en = self._get_user_setting('enabled', bool, False, mode=mode, category='exit_indicators/target_exit')
@@ -208,7 +211,11 @@ class PositionManager:
         inst_key = self.atm_manager.find_instrument_key_by_strike(strike, inst_side, sig_expiry)
         
         if self.orchestrator.is_backtest and inst_key:
-            return await self.orchestrator._get_ltp_for_backtest_instrument(inst_key, timestamp) or position_data.get('ltp', 0)
+            hist_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(inst_key, timestamp)
+            if hist_ltp is not None and hist_ltp > 0:
+                return hist_ltp
+            logger.warning(f"[Backtest] No historical LTP for {inst_key} at {timestamp} — recording exit at 0")
+            return 0
         
         if inst_key:
             live_val = self.state_manager.get_ltp(inst_key)
