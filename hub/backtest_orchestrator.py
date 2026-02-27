@@ -92,6 +92,11 @@ class BacktestOrchestrator(BaseOrchestrator):
         current_data_for_logic = self.state_manager.option_data
         current_atm_fut = self.atm_manager.strikes.get('atm')
 
+        # Calculate Spot ATM for summary log
+        interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
+        idx_p = self.state_manager.index_price
+        current_atm_spot = float(round(idx_p / interval) * interval) if idx_p else current_atm_fut
+
         summary_extra_info = ""
         for session in self.user_sessions.values():
             await session.signal_monitor.check_crossover_breach(timestamp=timestamp, current_atm=current_atm_fut)
@@ -124,7 +129,7 @@ class BacktestOrchestrator(BaseOrchestrator):
                     self.profit_target_hit = True
                     await self.close_open_backtest_positions(timestamp)
 
-        log_trade_summary(f"Timestamp: {timestamp} | ATM(F): {current_atm_fut} | Status: {'RUNNING' if self._is_trade_active() else 'IDLE'} | P&L: {pnl:.2f}{summary_extra_info}")
+        log_trade_summary(f"Timestamp: {timestamp} | ATM(F): {current_atm_fut} | ATM(S): {current_atm_spot} | Status: {'RUNNING' if self._is_trade_active() else 'IDLE'} | P&L: {pnl:.2f}{summary_extra_info}")
 
     def _get_keys_needing_ticks(self):
         keys = set()
