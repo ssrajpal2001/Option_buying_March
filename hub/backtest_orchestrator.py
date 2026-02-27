@@ -72,14 +72,15 @@ class BacktestOrchestrator(BaseOrchestrator):
 
         keys_needing_ticks = self._get_keys_needing_ticks()
         for inst_key in keys_needing_ticks:
-            ohlc_df = await self.data_manager.get_historical_ohlc(inst_key, 1, current_timestamp=timestamp, for_full_day=True)
+            ohlc_df = await self.data_manager.get_historical_ohlc(inst_key, 1, current_timestamp=timestamp, for_full_day=True, include_current=True)
             if ohlc_df is not None and timestamp in ohlc_df.index:
                 candle = ohlc_df.loc[timestamp]
-                prices = [candle['open'], candle['high'], candle['low'], candle['close']]
-                for i, price in enumerate(prices):
-                    v_inc = candle.get('volume', 0) if i == 0 else 0
-                    for agg in aggregators: agg.add_tick(inst_key, float(price), timestamp, volume_inc=v_inc)
-                self.state_manager.option_prices[inst_key] = float(candle['close'])
+                # To avoid look-ahead bias, we only feed the 'open' price to represent the tick at exactly the timestamp.
+                # In live market, at exactly 09:18:00, we don't know the High/Low/Close of the 09:18 minute yet.
+                price = float(candle['open'])
+                v_inc = 1 # Nominal volume for the first tick
+                for agg in aggregators: agg.add_tick(inst_key, price, timestamp, volume_inc=v_inc)
+                self.state_manager.option_prices[inst_key] = price
             else:
                 ltp = self.state_manager.option_prices.get(inst_key) or await self._get_ltp_for_backtest_instrument(inst_key, timestamp)
                 if ltp:
@@ -189,14 +190,31 @@ class BacktestOrchestrator(BaseOrchestrator):
                             pos['pnl'] = trade.get('pnl', 0)
 
     async def _get_ltp_for_backtest_instrument(self, instrument_key, timestamp):
+        """
+        Fetches the historical LTP for an instrument at a specific timestamp.
+        For normal market hours (before 15:30), uses the Open price of the current minute.
+        For EOD closure (15:30:00), uses the Close price of the final minute (15:29:00).
+        """
         import pytz
         kolkata = pytz.timezone('Asia/Kolkata')
         ts = kolkata.localize(timestamp) if timestamp.tzinfo is None else timestamp.astimezone(kolkata)
         bucket_ts = ts.replace(second=0, microsecond=0)
+
+        # Determine if this is EOD closure
+        is_eod = ts.time() >= datetime.time(15, 30)
+
         ohlc_df = await self.data_manager.get_historical_ohlc(instrument_key, 1, current_timestamp=bucket_ts, for_full_day=True)
         if ohlc_df is None or ohlc_df.empty: return None
         if ohlc_df.index.tz is None: ohlc_df.index = ohlc_df.index.tz_localize('Asia/Kolkata')
-        if bucket_ts in ohlc_df.index: return float(ohlc_df.loc[bucket_ts]['open'])
+
+        if is_eod:
+            # For 15:30, we want the LAST closed price of the day
+            relevant = ohlc_df[ohlc_df.index.time < datetime.time(15, 30)]
+            return float(relevant.iloc[-1]['close']) if not relevant.empty else None
+
+        if bucket_ts in ohlc_df.index:
+            return float(ohlc_df.loc[bucket_ts]['open'])
+
         relevant = ohlc_df[ohlc_df.index < bucket_ts]
         return float(relevant.iloc[-1]['close']) if not relevant.empty else None
 

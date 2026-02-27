@@ -128,21 +128,37 @@ class IndicatorManager:
         cum_vol = state['cum_vol'] if state else 0.0
 
         if self.orchestrator.is_backtest:
+            # In backtest, at the start of a minute (e.g. 09:18:00), we don't know the full minute's data yet.
+            # To avoid look-ahead bias and ensure parity with live ATP (which is the value at the start of the tick),
+            # we use the 'open' price of the current minute as a proxy for the first tick of that minute.
             all_candles = await self.data_manager.get_historical_ohlc(inst_key, 1, timestamp, for_full_day=True, include_current=True)
             if all_candles is not None and not all_candles.empty:
                 current_minute = timestamp.replace(second=0, microsecond=0)
                 live_matches = all_candles[all_candles.index == current_minute]
                 if not live_matches.empty:
                     live_candle = live_matches.iloc[0]
-                    tp = (live_candle['high'] + live_candle['low'] + live_candle['close']) / 3
-                    cum_pv += tp * live_candle['volume']
-                    cum_vol += live_candle['volume']
+                    # We use the open price and a nominal volume (1) to represent the start-of-minute state.
+                    # This prevents using the future High/Low/Close of the minute we are currently in.
+                    tp = float(live_candle['open'])
+                    cum_pv += tp * 1
+                    cum_vol += 1
 
         if cum_vol > 0:
             return cum_pv / cum_vol
         else:
+            # ROBUST FALLBACK: If volume is 0 (common in options), use the latest available price.
+            # This ensures parity with live ATP which starts from the first tick's price.
+            all_candles = await self.data_manager.get_historical_ohlc(inst_key, 1, timestamp, for_full_day=True, include_current=True)
+            if all_candles is not None and not all_candles.empty:
+                relevant = all_candles[all_candles.index <= timestamp]
+                if not relevant.empty:
+                    last_price = float(relevant.iloc[-1]['close'])
+                    if self.orchestrator.is_backtest:
+                        logger.debug(f"V2: VWAP fallback to Close price {last_price:.2f} for {inst_key} at {timestamp} (Vol: 0)")
+                    return last_price
+
             if self.orchestrator.is_backtest:
-                logger.warning(f"V2: VWAP fallback failed for {inst_key} at {timestamp}. No volume data available in OHLC. Backtest results may diverge from live.")
+                logger.warning(f"V2: VWAP fallback failed for {inst_key} at {timestamp}. No volume or price data available in OHLC. Backtest results may diverge from live.")
             return None
 
     async def get_vwap_slope_status(self, inst_key, timestamp, timeframe_minutes, count=1, live_vwap=None):
@@ -205,6 +221,19 @@ class IndicatorManager:
         def get_vwap_at(ts):
             d = df[df.index <= ts]
             if d.empty: return None
+
+            # To avoid look-ahead bias in backtests, if ts is exactly the current tick minute, use 'open'
+            if self.orchestrator.is_backtest and d.index[-1] == ts.replace(second=0, microsecond=0):
+                hist = d.iloc[:-1]
+                last_candle = d.iloc[-1]
+                tp_hist = (hist['high'] + hist['low'] + hist['close']) / 3
+                vol_hist = hist.get('volume', pd.Series(0, index=hist.index))
+
+                # Treat current tick as price=open, vol=1
+                sum_pv = (tp_hist * vol_hist).sum() + float(last_candle['open']) * 1
+                sum_vol = vol_hist.sum() + 1
+                return sum_pv / sum_vol
+
             tp = (d['high'] + d['low'] + d['close']) / 3
             vol = d.get('volume', pd.Series(0, index=d.index))
             return (tp * vol).sum() / vol.sum() if vol.sum() > 0 else tp.mean()

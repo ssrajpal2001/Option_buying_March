@@ -104,9 +104,11 @@ class RecordingOrchestrator:
             recording_data[strike] = {
                 'ce_symbol': ce_key,
                 'ce_ltp': self.state_manager.option_prices.get(ce_key),
+                'ce_atp': getattr(self.state_manager, 'option_atps', {}).get(ce_key),
                 'ce_delta': self.state_manager.option_deltas.get(ce_key),
                 'pe_symbol': pe_key,
                 'pe_ltp': self.state_manager.option_prices.get(pe_key),
+                'pe_atp': getattr(self.state_manager, 'option_atps', {}).get(pe_key),
                 'pe_delta': self.state_manager.option_deltas.get(pe_key),
             }
 

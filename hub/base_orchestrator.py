@@ -152,6 +152,9 @@ class BaseOrchestrator(ABC):
             logger.debug(f"[{self.instrument_name}] Profit target already hit — signal skipped.")
             return
 
+        signal_strike = strike_price # Original crossover strike
+        trade_strike = strike_price   # Strike to be actually traded
+        trade_key = instrument_key
         quantity_multiplier = self.config_manager.get_int(
             self.instrument_name, 'hedge_quantity_multiplier', 2)
 
@@ -159,11 +162,11 @@ class BaseOrchestrator(ABC):
             hedge_strike, hedge_key = self.sell_manager.get_buy_strike(direction)
             if hedge_strike and hedge_key:
                 logger.info(
-                    f"[{self.instrument_name}] Hedge override: signal strike {strike_price}"
+                    f"[{self.instrument_name}] Hedge override: signal strike {signal_strike}"
                     f" → hedge {hedge_strike} (key: {hedge_key}) | qty ×{quantity_multiplier}"
                 )
-                strike_price = hedge_strike
-                instrument_key = hedge_key
+                trade_strike = hedge_strike
+                trade_key = hedge_key
             else:
                 logger.warning(
                     f"[{self.instrument_name}] Strangle active but hedge key for "
@@ -176,13 +179,14 @@ class BaseOrchestrator(ABC):
         for session in self.user_sessions.values():
             tasks.append(session.evaluate_signal(
                 direction=direction,
-                instrument_key=instrument_key,
+                instrument_key=trade_key,
                 signal_ltp=signal_ltp,
-                strike_price=strike_price,
+                strike_price=trade_strike,
                 timestamp=timestamp,
                 strategy_log=strategy_log,
                 entry_type=entry_type,
-                quantity_multiplier=quantity_multiplier
+                quantity_multiplier=quantity_multiplier,
+                signal_strike=signal_strike
             ))
 
         if tasks:
