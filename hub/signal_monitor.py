@@ -314,13 +314,6 @@ class SignalMonitor:
         The main entry point for the TickProcessor. It checks for new signals, manages
         monitoring state, and triggers crossover checks.
         """
-        # START OF DAY LOGIC (STRICT 2-CANDLE RULE):
-        # To compare two closed candles (e.g., 09:16 vs 09:15), we must wait until
-        # the 09:16 candle completes. The first decision can only happen at 09:17:00.
-        if timestamp.hour == 9 and timestamp.minute <= 16:
-            # It's before or exactly 09:16:xx. We don't have 2 finalized candles yet.
-            return
-
         async with self._breach_lock:
             # Check JSON active modes
             active_modes = self.orchestrator.json_config.get_active_modes(self.orchestrator.instrument_name)
@@ -383,6 +376,12 @@ class SignalMonitor:
 
             # 2. EVALUATION & STATUS LOG
             if self.state_manager.dual_sr_monitoring_data:
+                # START OF DAY PROTECTION (Buying/Hedging only):
+                # To compare two closed candles (e.g., 09:16 vs 09:15), we must wait until
+                # the 09:16 candle completes. The first decision can only happen at 09:17:00.
+                if timestamp.hour == 9 and timestamp.minute <= 16:
+                    return
+
                 # REAL-TIME TICK EVALUATION: Update indicator states for TICK-mode components
                 await self._update_tick_criteria_and_evaluate(timestamp, active_modes)
 

@@ -42,14 +42,19 @@ class SellManager:
         options_key = 'call_options' if side == 'CE' else 'put_options'
 
         candidates = []
+        all_probed = []
         for entry in chain:
             side_data = entry.get(options_key) or {}
             market = side_data.get('market_data') or {}
             ltp = market.get('ltp', 0) or 0
             strike_price = entry.get('strike_price')
             inst_key = side_data.get('instrument_key')
-            if ltp > 100 and strike_price is not None and inst_key:
-                candidates.append((abs(ltp - 100), ltp, float(strike_price), inst_key))
+            if strike_price is not None and inst_key:
+                all_probed.append(f"{strike_price}:{ltp:.2f}")
+                if ltp > 100:
+                    candidates.append((abs(ltp - 100), ltp, float(strike_price), inst_key))
+
+        logger.debug(f"[SellManager] Probed {side} strikes: {', '.join(all_probed)}")
 
         if not candidates:
             logger.error(f"[SellManager] No {side} strikes with LTP > 100 found in option chain")
@@ -89,10 +94,15 @@ class SellManager:
         logger.info(f"[SellManager][Backtest] Fetching historical LTPs for {len(candidates_raw)} {side} candidates at {timestamp}...")
 
         candidates = []
+        all_probed = []
         for strike, inst_key in candidates_raw:
             hist_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(inst_key, timestamp)
-            if hist_ltp and hist_ltp > 100:
-                candidates.append((abs(hist_ltp - 100), hist_ltp, strike, inst_key))
+            if hist_ltp:
+                all_probed.append(f"{strike}:{hist_ltp:.2f}")
+                if hist_ltp > 100:
+                    candidates.append((abs(hist_ltp - 100), hist_ltp, strike, inst_key))
+
+        logger.info(f"[SellManager][Backtest] Probed {side} strikes: {', '.join(all_probed)}")
 
         if not candidates:
             logger.error(f"[SellManager][Backtest] No {side} strikes with historical LTP > 100 found at {timestamp}")
@@ -157,21 +167,22 @@ class SellManager:
             logger.error(f"[SellManager] Option chain returned empty for {index_key} expiry {expiry}. Aborting strangle.")
             return
 
-        # --- ATM-anchored asymmetric strike filtering ---
-        # CE: 3 strikes BELOW ATM + 8 strikes ABOVE ATM (captures ITM-to-OTM range)
-        # PE: 8 strikes BELOW ATM + 3 strikes ABOVE ATM (mirrors CE on the put side)
-        atm = self.orchestrator.atm_manager.strikes.get('atm')
+        # --- SPOT-anchored asymmetric strike filtering ---
+        # SELL contract selection is anchored to the Index (Spot) price ATM.
+        index_price = self.orchestrator.state_manager.index_price or 0.0
         interval = self.orchestrator.config_manager.get_int(
             self.orchestrator.instrument_name, 'strike_interval', 50)
+        atm_spot = int(round(index_price / interval) * interval) if index_price and interval else None
 
-        if atm and interval:
+        if atm_spot and interval:
             # WIDENED RANGE: CE -5 to +15, PE -15 to +5 (ensures finding strike closest to 100)
-            ce_targets = {float(atm + i * interval) for i in range(-5, 16) if i != 0}
-            pe_targets = {float(atm + i * interval) for i in range(-15, 6) if i != 0}
+            # Includes Spot ATM (i=0) and both ITM/OTM candidates.
+            ce_targets = {float(atm_spot + i * interval) for i in range(-5, 16)}
+            pe_targets = {float(atm_spot + i * interval) for i in range(-15, 6)}
             logger.info(
-                f"[SellManager] ATM={atm} interval={interval} hedge_offset={self.hedge_offset} — "
-                f"CE search: {int(atm - 5*interval)} to {int(atm + 15*interval)} (excl ATM, {len(ce_targets)} candidates) | "
-                f"PE search: {int(atm - 15*interval)} to {int(atm + 5*interval)} (excl ATM, {len(pe_targets)} candidates)"
+                f"[SellManager] Spot ATM={atm_spot} (Index: {index_price:.2f}) interval={interval} hedge_offset={self.hedge_offset} — "
+                f"CE search: {int(atm_spot - 5*interval)} to {int(atm_spot + 15*interval)} ({len(ce_targets)} candidates) | "
+                f"PE search: {int(atm_spot - 15*interval)} to {int(atm_spot + 5*interval)} ({len(pe_targets)} candidates)"
             )
             ce_chain = [e for e in chain if float(e.get('strike_price', -1)) in ce_targets]
             pe_chain = [e for e in chain if float(e.get('strike_price', -1)) in pe_targets]

@@ -40,29 +40,30 @@ class BacktestOrchestrator(BaseOrchestrator):
 
     async def run_backtest_strategy_for_timestamp(self, timestamp, current_group):
         self.current_timestamp = timestamp
+        # 1. Populate market state and ATM/Strike watchlist (anchored to Futures)
         await self._populate_state_for_tick(timestamp, current_group)
 
+        # 2. Execute short strangle if time (anchored to Spot inside sell_manager)
         import datetime as _dt
         _strangle_start = _dt.datetime.strptime(
-            self.config_manager.get('settings', 'strangle_start_time', fallback='09:16:00'),
+            self.config_manager.get('settings', 'strangle_start_time', fallback='09:15:00'),
             '%H:%M:%S'
         ).time()
         if not self._backtest_strangle_triggered and timestamp.time() >= _strangle_start:
             await self.sell_manager.execute_short_strangle(timestamp)
             self._backtest_strangle_triggered = True
 
+        # 3. Find and sync target crossover strike (anchored to Futures)
         self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
             expiry=self.atm_manager.signal_expiry_date
         )
         if self.orchestrator_state.v2_target_strike_pair:
-             target_strike = self.orchestrator_state.v2_target_strike_pair['strike']
+             target_strike = float(self.orchestrator_state.v2_target_strike_pair['strike'])
              self.state_manager.target_strike = target_strike
              for session in self.user_sessions.values():
                  session.state_manager.target_strike = target_strike
 
-        await self._populate_state_for_tick(timestamp, current_group)
-
-        # Feeding aggregators
+        # 4. Feeding aggregators
         aggregators = [self.entry_aggregator, self.exit_aggregator, self.one_min_aggregator, self.five_min_aggregator]
         if self.index_instrument_key and self.state_manager.index_price:
             for agg in aggregators: agg.add_tick(self.index_instrument_key, self.state_manager.index_price, timestamp)
@@ -89,15 +90,15 @@ class BacktestOrchestrator(BaseOrchestrator):
             current_group = current_group.drop_duplicates(subset='strike_price', keep='first')
 
         current_data_for_logic = self.state_manager.option_data
-        current_atm = self.atm_manager.strikes.get('atm')
+        current_atm_fut = self.atm_manager.strikes.get('atm')
 
         summary_extra_info = ""
         for session in self.user_sessions.values():
-            await session.signal_monitor.check_crossover_breach(timestamp=timestamp, current_atm=current_atm)
+            await session.signal_monitor.check_crossover_breach(timestamp=timestamp, current_atm=current_atm_fut)
             if session.is_in_trade():
                 pos = session.state_manager.call_position or session.state_manager.put_position
                 if self.pnl_tracker.is_trade_active(): await self._update_pnl_for_active_trades(timestamp)
-                await session.manage_active_trades(timestamp=timestamp, current_ticks=current_data_for_logic, current_atm=current_atm)
+                await session.manage_active_trades(timestamp=timestamp, current_ticks=current_data_for_logic, current_atm=current_atm_fut)
                 if pos and not summary_extra_info:
                     summary_extra_info = self._get_summary_extra(pos)
 
@@ -123,7 +124,7 @@ class BacktestOrchestrator(BaseOrchestrator):
                     self.profit_target_hit = True
                     await self.close_open_backtest_positions(timestamp)
 
-        log_trade_summary(f"Timestamp: {timestamp} | ATM: {current_atm} | Status: {'RUNNING' if self._is_trade_active() else 'IDLE'} | P&L: {pnl:.2f}{summary_extra_info}")
+        log_trade_summary(f"Timestamp: {timestamp} | ATM(F): {current_atm_fut} | Status: {'RUNNING' if self._is_trade_active() else 'IDLE'} | P&L: {pnl:.2f}{summary_extra_info}")
 
     def _get_keys_needing_ticks(self):
         keys = set()
@@ -206,11 +207,21 @@ class BacktestOrchestrator(BaseOrchestrator):
         self.state_manager.index_price = idx_p
         self.state_manager.option_data.clear()
 
+        # ATM and Target Strike calculation should be anchored to the Futures price
         await self.atm_manager.update_strikes_and_subscribe(fut_p)
-        atm = self.atm_manager.strikes.get('atm')
-        self.state_manager.atm_strike = atm
+        atm_fut = self.atm_manager.strikes.get('atm')
+        self.state_manager.atm_strike = atm_fut
 
-        watchlist = set(self.strike_manager.get_strike_watchlist(atm))
+        watchlist = set(self.strike_manager.get_strike_watchlist(atm_fut))
+
+        # Include strikes around Spot ATM for Sell selection to prevent "Data not found"
+        interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
+        atm_spot = float(round(idx_p / interval) * interval) if idx_p and interval else None
+        if atm_spot:
+            # Add range to watchlist
+            for i in range(-15, 16):
+                watchlist.add(float(atm_spot + i * interval))
+
         for session in self.user_sessions.values():
             if session.state_manager.dual_sr_monitoring_data: watchlist.add(float(session.state_manager.dual_sr_monitoring_data['target_strike']))
             for p in [session.state_manager.call_position, session.state_manager.put_position]:
