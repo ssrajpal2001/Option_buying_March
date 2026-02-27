@@ -512,17 +512,6 @@ class PositionManager:
                 self.state_manager.range_915_breached_up = False
                 self.state_manager.range_915_breached_down = False
 
-        # MANDATORY FRESH BREACH: After a structural exit, require a new crossover/dip (Live Mode)
-        if not self.orchestrator.is_backtest:
-            monitoring_data = self.state_manager.dual_sr_monitoring_data
-            if monitoring_data:
-                side_key = 'ce_data' if side == 'CALL' else 'pe_data'
-                side_data = monitoring_data.get(side_key)
-                if side_data:
-                    side_data['criteria_state']['pattern'] = False
-                    monitoring_data['awaiting_fresh_vwap_breach'] = True
-                    monitoring_data['sticky_dip_confirmed'] = False
-                    logger.info(f"V2 MGMT: [{side}] Structural exit complete. Mandatory fresh breach requirement activated.")
         elif gate_enabled:
             logger.info(f"V2 MGMT: [{side}] Exit ({reason}). Preserving 9:15 Breach flags for potential re-entry.")
 
@@ -539,18 +528,6 @@ class PositionManager:
         if self.orchestrator.is_backtest:
             strategy_log = pos_data.get('exit_narrative', "") if pos_data else ""
             await self.state_manager.reset_trade_state(side, is_backtest=True)
-
-            # MANDATORY FRESH BREACH: After a structural exit, require a new crossover/dip
-            monitoring_data = self.state_manager.dual_sr_monitoring_data
-            if monitoring_data:
-                side_key = 'ce_data' if side == 'CALL' else 'pe_data'
-                side_data = monitoring_data.get(side_key)
-                if side_data:
-                    side_data['criteria_state']['pattern'] = False
-                    monitoring_data['awaiting_fresh_vwap_breach'] = True
-                    monitoring_data['sticky_dip_confirmed'] = False
-                    logger.info(f"V2 MGMT: [{side}] Structural exit complete. Mandatory fresh breach requirement activated.")
-
             if self.pnl_tracker.is_trade_active(side): self.pnl_tracker.exit_trade(side, ltp, timestamp, reason, strategy_log=strategy_log)
             self.state_manager.trade_closed_event.set()
         else:
