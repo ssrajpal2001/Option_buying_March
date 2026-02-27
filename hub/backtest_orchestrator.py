@@ -235,11 +235,21 @@ class BacktestOrchestrator(BaseOrchestrator):
             if ck and ce_p: self.state_manager.option_prices[ck] = ce_p
             if pk and pe_p: self.state_manager.option_prices[pk] = pe_p
 
+            # POPULATE ATP FROM EXTERNAL CSV OR TICK DATA
+            ce_atp = s_data.get('ce_atp') if pd.notna(s_data.get('ce_atp')) else self.backtest_data_mgr.get_atp(ck, timestamp)
+            pe_atp = s_data.get('pe_atp') if pd.notna(s_data.get('pe_atp')) else self.backtest_data_mgr.get_atp(pk, timestamp)
+
+            if not hasattr(self.state_manager, 'option_atps'): self.state_manager.option_atps = {}
+            if ck and ce_atp: self.state_manager.option_atps[ck] = float(ce_atp)
+            if pk and pe_atp: self.state_manager.option_atps[pk] = float(pe_atp)
+
         for session in self.user_sessions.values():
             session.state_manager.timestamp = timestamp
             session.state_manager.spot_price = fut_p
             session.state_manager.index_price = idx_p
             session.state_manager.option_prices.update(self.state_manager.option_prices)
+            if not hasattr(session.state_manager, 'option_atps'): session.state_manager.option_atps = {}
+            session.state_manager.option_atps.update(getattr(self.state_manager, 'option_atps', {}))
             session.state_manager.option_data.update(self.state_manager.option_data)
 
     async def _get_ltp_for_strike(self, strike, side, timestamp):

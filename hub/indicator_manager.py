@@ -98,11 +98,12 @@ class IndicatorManager:
     async def calculate_vwap(self, inst_key, timestamp):
         if not inst_key:
             return None
-        if not self.orchestrator.is_backtest:
-            atps = getattr(self.state_manager, 'option_atps', {})
-            live_atp = atps.get(inst_key)
-            if live_atp and live_atp > 0:
-                return float(live_atp)
+
+        # ALWAYS PRIORITIZE BROKER ATP (Live or Loaded from Backtest CSV)
+        atps = getattr(self.state_manager, 'option_atps', {})
+        live_atp = atps.get(inst_key)
+        if live_atp and live_atp > 0:
+            return float(live_atp)
 
         current_day = timestamp.date()
         state_key = (inst_key, current_day)
@@ -137,7 +138,12 @@ class IndicatorManager:
                     cum_pv += tp * live_candle['volume']
                     cum_vol += live_candle['volume']
 
-        return cum_pv / cum_vol if cum_vol > 0 else None
+        if cum_vol > 0:
+            return cum_pv / cum_vol
+        else:
+            if self.orchestrator.is_backtest:
+                logger.warning(f"V2: VWAP fallback failed for {inst_key} at {timestamp}. No volume data available in OHLC. Backtest results may diverge from live.")
+            return None
 
     async def get_vwap_slope_status(self, inst_key, timestamp, timeframe_minutes, count=1, live_vwap=None):
         if not inst_key:

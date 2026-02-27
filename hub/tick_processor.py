@@ -43,8 +43,10 @@ class TickProcessor:
                 pe_data = backtest_current_tick.get(pe_strike, {})
                 tick_data.update({
                     'ce_ltp': ce_data.get('ce_ltp'),
+                    'ce_atp': ce_data.get('ce_atp'),
                     'ce_delta': ce_data.get('ce_delta'),
                     'pe_ltp': pe_data.get('pe_ltp'),
+                    'pe_atp': pe_data.get('pe_atp'),
                     'pe_delta': pe_data.get('pe_delta'),
                 })
         else: # Live Mode
@@ -65,9 +67,11 @@ class TickProcessor:
 
             tick_data.update({
                 'ce_ltp': ce_ltp,
+                'ce_atp': getattr(self.state_manager, 'option_atps', {}).get(ce_key),
                 'ce_delta': self.state_manager.option_deltas.get(ce_key),
                 'ce_symbol': ce_key,
                 'pe_ltp': self.state_manager.option_prices.get(pe_key),
+                'pe_atp': getattr(self.state_manager, 'option_atps', {}).get(pe_key),
                 'pe_delta': self.state_manager.option_deltas.get(pe_key),
                 'pe_symbol': pe_key,
             })
