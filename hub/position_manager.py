@@ -511,7 +511,6 @@ class PositionManager:
                 logger.info(f"V2 MGMT: [{side}] Stop Loss detected. Resetting 9:15 Range Breach flags for re-evaluation.")
                 self.state_manager.range_915_breached_up = False
                 self.state_manager.range_915_breached_down = False
-
         elif gate_enabled:
             logger.info(f"V2 MGMT: [{side}] Exit ({reason}). Preserving 9:15 Breach flags for potential re-entry.")
 

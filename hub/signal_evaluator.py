@@ -102,7 +102,8 @@ class SignalEvaluator:
                                 last_checked = data.get('_slope_close_last_candle')
                                 if last_checked == candle_ref:
                                     can_eval_slope = False
-                                    # DO NOT RESET criteria_state here, keep last finalized result
+                                    # Signal already sent for this candle. Reset to False for subsequent ticks to prevent multiple entries.
+                                    data['criteria_state']['vwap_slope'] = False
                                 else:
                                     data['_slope_close_last_candle'] = candle_ref
 

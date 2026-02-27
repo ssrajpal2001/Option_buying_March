@@ -153,17 +153,21 @@ class IndicatorManager:
         if cached and (timestamp - cached['ts']).total_seconds() < 5.0:
             return cached['val']
 
-        if not self.orchestrator.is_backtest and live_vwap is not None:
+        if not self.orchestrator.is_backtest:
             atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
             if atp_hist:
                 current_interval_start = timestamp.replace(
                     minute=(timestamp.minute // timeframe_minutes) * timeframe_minutes,
                     second=0, microsecond=0)
-                prev_boundary = current_interval_start - pd.Timedelta(minutes=timeframe_minutes)
-                candidates = {ts: v for ts, v in atp_hist.items() if isinstance(ts, type(prev_boundary)) and ts <= prev_boundary}
-                if candidates:
-                    v0 = candidates[max(candidates.keys())]
-                    v1 = live_vwap
+
+                # V1: Current reference (either live tick or last finalized candle)
+                v1 = live_vwap if live_vwap is not None else atp_hist.get(current_interval_start)
+
+                # V0: Previous finalized candle
+                v0_ts = current_interval_start - pd.Timedelta(minutes=timeframe_minutes)
+                v0 = atp_hist.get(v0_ts)
+
+                if v1 is not None and v0 is not None:
                     is_rising = v1 > v0
                     is_falling = v1 < v0
                     cons_r = 1 if is_rising else 0

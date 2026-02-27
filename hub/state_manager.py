@@ -119,10 +119,7 @@ class StateManager:
         side_key = 'ce_data' if direction == 'CALL' else 'pe_data'
         if self.dual_sr_monitoring_data and side_key in self.dual_sr_monitoring_data:
             self.dual_sr_monitoring_data[side_key]['entry_confirmed'] = False
-            # RE-ENTRY RULE: Clear pattern state so fresh slope/indicator check is required
-            # Note: We do NOT set awaiting_fresh_vwap_breach here to avoid introducing patterns
-            self.dual_sr_monitoring_data[side_key]['criteria_state']['pattern'] = False
-            logger.debug(f"V2: Reset entry_confirmed and pattern for {direction} in monitoring data on trade exit.")
+            logger.debug(f"V2: Reset entry_confirmed for {direction} in monitoring data on trade exit.")
 
         if is_backtest:
             logger.debug(f"[Backtest] Cleared {direction} position in StateManager.")
