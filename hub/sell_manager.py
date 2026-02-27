@@ -165,12 +165,13 @@ class SellManager:
             self.orchestrator.instrument_name, 'strike_interval', 50)
 
         if atm and interval:
-            ce_targets = {float(atm + i * interval) for i in range(-3, 9) if i != 0}
-            pe_targets = {float(atm + i * interval) for i in range(-8, 4) if i != 0}
+            # WIDENED RANGE: CE -5 to +15, PE -15 to +5 (ensures finding strike closest to 100)
+            ce_targets = {float(atm + i * interval) for i in range(-5, 16) if i != 0}
+            pe_targets = {float(atm + i * interval) for i in range(-15, 6) if i != 0}
             logger.info(
                 f"[SellManager] ATM={atm} interval={interval} hedge_offset={self.hedge_offset} — "
-                f"CE search: {int(atm - 3*interval)} to {int(atm + 8*interval)} (excl ATM, {len(ce_targets)} candidates) | "
-                f"PE search: {int(atm - 8*interval)} to {int(atm + 3*interval)} (excl ATM, {len(pe_targets)} candidates)"
+                f"CE search: {int(atm - 5*interval)} to {int(atm + 15*interval)} (excl ATM, {len(ce_targets)} candidates) | "
+                f"PE search: {int(atm - 15*interval)} to {int(atm + 5*interval)} (excl ATM, {len(pe_targets)} candidates)"
             )
             ce_chain = [e for e in chain if float(e.get('strike_price', -1)) in ce_targets]
             pe_chain = [e for e in chain if float(e.get('strike_price', -1)) in pe_targets]
