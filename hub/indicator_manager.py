@@ -147,6 +147,25 @@ class IndicatorManager:
         if cached and (timestamp - cached['ts']).total_seconds() < 5.0:
             return cached['val']
 
+        if not self.orchestrator.is_backtest and live_vwap is not None:
+            atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
+            if atp_hist:
+                current_interval_start = timestamp.replace(
+                    minute=(timestamp.minute // timeframe_minutes) * timeframe_minutes,
+                    second=0, microsecond=0)
+                prev_boundary = current_interval_start - pd.Timedelta(minutes=timeframe_minutes)
+                candidates = {ts: v for ts, v in atp_hist.items() if ts <= prev_boundary}
+                if candidates:
+                    v0 = candidates[max(candidates.keys())]
+                    v1 = live_vwap
+                    is_rising = v1 > v0
+                    is_falling = v1 < v0
+                    cons_r = 1 if is_rising else 0
+                    cons_f = 1 if is_falling else 0
+                    res = (is_rising, is_falling, v1, v0, cons_r, cons_f)
+                    self._vwap_slope_cache[cache_key] = {'ts': timestamp, 'val': res}
+                    return res
+
         ohlc_1m = await self.get_robust_ohlc(inst_key, 1, timestamp)
         if ohlc_1m is None or ohlc_1m.empty:
             return None, None, None, None, 0, 0

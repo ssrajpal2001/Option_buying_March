@@ -92,7 +92,7 @@ class SignalEvaluator:
                         s_ts = timestamp if slope_mode == 'TICK' else (
                             timestamp.replace(second=0, microsecond=0) -
                             pd.Timedelta(minutes=1))
-                        s_v = vwap_val if slope_mode == 'TICK' else None
+                        s_v = vwap_val if (slope_mode == 'TICK' or not self.orchestrator.is_backtest) else None
 
                         is_r, is_f, v_curr, v_prev, c_r, c_f = await self.indicator_manager.get_vwap_slope_status(
                             inst_key, s_ts, slope_tf, slope_occ, live_vwap=s_v)

@@ -259,6 +259,15 @@ class PriceFeedHandler:
                         self.state_manager.option_atps = {}
                     self.state_manager.option_atps[instrument_key] = atp
                     self._sync_market_data('option_atps', instrument_key, atp)
+
+                    minute_ts = timestamp.replace(second=0, microsecond=0) \
+                        if hasattr(timestamp, 'replace') else None
+                    if minute_ts:
+                        if not hasattr(self.state_manager, 'atp_history'):
+                            self.state_manager.atp_history = {}
+                        if instrument_key not in self.state_manager.atp_history:
+                            self.state_manager.atp_history[instrument_key] = {}
+                        self.state_manager.atp_history[instrument_key][minute_ts] = atp
             
 
             # --- Throttle delta updates to once per 60 seconds per instrument ---

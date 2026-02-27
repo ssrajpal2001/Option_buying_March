@@ -188,9 +188,9 @@ class DisplayManager:
                             status_parts.append(f"1M_CLOSE({ce_close:.1f}v{pe_close:.1f})")
 
                         if ce_vwap:
-                            status_parts.append(f"CE_VWAP:{ce_vwap:.1f}")
+                            status_parts.append(f"CE_ATP:{ce_vwap:.1f}")
                         if pe_vwap:
-                            status_parts.append(f"PE_VWAP:{pe_vwap:.1f}")
+                            status_parts.append(f"PE_ATP:{pe_vwap:.1f}")
 
                         ce_r1 = sm.dual_sr_monitoring_data.get('ce_data', {}).get('r1_high')
                         pe_r1 = sm.dual_sr_monitoring_data.get('pe_data', {}).get('r1_high')

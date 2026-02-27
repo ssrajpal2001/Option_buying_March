@@ -82,6 +82,8 @@ class ExitEvaluator:
                         else:
                             position_data['_vwap_close_last_candle'] = candle_ref
                             eval_ts = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
+                            if not self.orchestrator.is_backtest:
+                                live_v = await self.indicator_manager.calculate_vwap(signal_inst_key, timestamp)
                 else:
                     live_v = position_data.get('monitoring_vwap')
                     if live_v is None:

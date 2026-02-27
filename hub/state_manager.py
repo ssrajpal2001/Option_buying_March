@@ -34,6 +34,7 @@ class StateManager:
         # Live Market Data
         self.option_prices = {}
         self.option_atps = {}
+        self.atp_history = {}
         self.option_deltas = {}
         self.option_data = {}
         self.option_gammas = {}
@@ -455,6 +456,7 @@ class StateManager:
         """Clears all market data and positions for a fresh start."""
         self.option_prices.clear()
         self.option_atps.clear()
+        self.atp_history.clear()
         self.option_deltas.clear()
         self.option_data.clear()
         self.option_gammas.clear()
