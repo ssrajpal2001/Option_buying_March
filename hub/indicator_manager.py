@@ -153,28 +153,28 @@ class IndicatorManager:
         if cached and (timestamp - cached['ts']).total_seconds() < 5.0:
             return cached['val']
 
-        if not self.orchestrator.is_backtest:
-            atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
-            if atp_hist:
-                current_interval_start = timestamp.replace(
-                    minute=(timestamp.minute // timeframe_minutes) * timeframe_minutes,
-                    second=0, microsecond=0)
+        # PREFER ATP HISTORY FOR BOTH LIVE AND BACKTEST (if available)
+        atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
+        if atp_hist:
+            current_interval_start = timestamp.replace(
+                minute=(timestamp.minute // timeframe_minutes) * timeframe_minutes,
+                second=0, microsecond=0)
 
-                # V1: Current reference (either live tick or last finalized candle)
-                v1 = live_vwap if live_vwap is not None else atp_hist.get(current_interval_start)
+            # V1: Decision candle close (e.g., at 9:17:00, use 9:16:00 close ATP)
+            v1 = live_vwap if live_vwap is not None else atp_hist.get(current_interval_start)
 
-                # V0: Previous finalized candle
-                v0_ts = current_interval_start - pd.Timedelta(minutes=timeframe_minutes)
-                v0 = atp_hist.get(v0_ts)
+            # V0: Previous finalized candle (e.g., at 9:17:00, compare 9:16:00 vs 9:15:00)
+            v0_ts = current_interval_start - pd.Timedelta(minutes=timeframe_minutes)
+            v0 = atp_hist.get(v0_ts)
 
-                if v1 is not None and v0 is not None:
-                    is_rising = v1 > v0
-                    is_falling = v1 < v0
-                    cons_r = 1 if is_rising else 0
-                    cons_f = 1 if is_falling else 0
-                    res = (is_rising, is_falling, v1, v0, cons_r, cons_f)
-                    self._vwap_slope_cache[cache_key] = {'ts': timestamp, 'val': res}
-                    return res
+            if v1 is not None and v0 is not None:
+                is_rising = v1 > v0
+                is_falling = v1 < v0
+                cons_r = 1 if is_rising else 0
+                cons_f = 1 if is_falling else 0
+                res = (is_rising, is_falling, v1, v0, cons_r, cons_f)
+                self._vwap_slope_cache[cache_key] = {'ts': timestamp, 'val': res}
+                return res
 
         ohlc_1m = await self.get_robust_ohlc(inst_key, 1, timestamp)
         if ohlc_1m is None or ohlc_1m.empty:

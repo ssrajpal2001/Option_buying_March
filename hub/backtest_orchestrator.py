@@ -240,8 +240,19 @@ class BacktestOrchestrator(BaseOrchestrator):
             pe_atp = s_data.get('pe_atp') if pd.notna(s_data.get('pe_atp')) else self.backtest_data_mgr.get_atp(pk, timestamp)
 
             if not hasattr(self.state_manager, 'option_atps'): self.state_manager.option_atps = {}
-            if ck and ce_atp: self.state_manager.option_atps[ck] = float(ce_atp)
-            if pk and pe_atp: self.state_manager.option_atps[pk] = float(pe_atp)
+            if ck and ce_atp:
+                self.state_manager.option_atps[ck] = float(ce_atp)
+                # POPULATE ATP HISTORY FOR SLOPE LOGIC
+                if not hasattr(self.state_manager, 'atp_history'): self.state_manager.atp_history = {}
+                if ck not in self.state_manager.atp_history: self.state_manager.atp_history[ck] = {}
+                self.state_manager.atp_history[ck][timestamp.replace(second=0, microsecond=0)] = float(ce_atp)
+
+            if pk and pe_atp:
+                self.state_manager.option_atps[pk] = float(pe_atp)
+                # POPULATE ATP HISTORY FOR SLOPE LOGIC
+                if not hasattr(self.state_manager, 'atp_history'): self.state_manager.atp_history = {}
+                if pk not in self.state_manager.atp_history: self.state_manager.atp_history[pk] = {}
+                self.state_manager.atp_history[pk][timestamp.replace(second=0, microsecond=0)] = float(pe_atp)
 
         for session in self.user_sessions.values():
             session.state_manager.timestamp = timestamp
@@ -250,6 +261,8 @@ class BacktestOrchestrator(BaseOrchestrator):
             session.state_manager.option_prices.update(self.state_manager.option_prices)
             if not hasattr(session.state_manager, 'option_atps'): session.state_manager.option_atps = {}
             session.state_manager.option_atps.update(getattr(self.state_manager, 'option_atps', {}))
+            if not hasattr(session.state_manager, 'atp_history'): session.state_manager.atp_history = {}
+            session.state_manager.atp_history.update(getattr(self.state_manager, 'atp_history', {}))
             session.state_manager.option_data.update(self.state_manager.option_data)
 
     async def _get_ltp_for_strike(self, strike, side, timestamp):
