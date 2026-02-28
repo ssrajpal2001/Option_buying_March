@@ -67,7 +67,7 @@ class IndicatorManager:
 
         if ohlc is not None and not ohlc.empty:
             first_ts = ohlc.index[0]
-            if first_ts.time() > time(9, 15):
+            if first_ts.time() > datetime.time(9, 15):
                 ohlc = None
 
         if (ohlc is None or ohlc.empty) and parsed_minutes > 1:
