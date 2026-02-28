@@ -3,7 +3,7 @@ from utils.support_resistance import SupportResistanceCalculator
 import pandas as pd
 import asyncio
 import pytz
-from datetime import time
+import datetime
 
 class IndicatorManager:
     def __init__(self, orchestrator):
@@ -276,10 +276,10 @@ class IndicatorManager:
             return self._index_915_range[cache_key]
 
         # Fetch 1m data for the index
-        ohlc = await self.data_manager.get_historical_ohlc(index_key, 1, timestamp, for_full_day=True)
+        ohlc = await self.data_manager.get_historical_ohlc(index_key, 1, timestamp, for_full_day=True, include_current=True)
         if ohlc is not None and not ohlc.empty:
             day_data = ohlc[ohlc.index.date == current_date]
-            target_time = time(9, 15)
+            target_time = datetime.time(9, 15)
             anchor = day_data[day_data.index.time == target_time]
             if not anchor.empty:
                 res = (float(anchor.iloc[0]['high']), float(anchor.iloc[0]['low']))
@@ -312,7 +312,7 @@ class IndicatorManager:
             if current_min_ts >= anchor_ts:
                 mins_since_anchor = int((current_min_ts - anchor_ts).total_seconds() / 60)
                 last_end_ts = anchor_ts + pd.Timedelta(minutes=(mins_since_anchor // tf) * tf)
-                hist = await self.data_manager.get_historical_ohlc(inst_key, tf, last_end_ts + pd.Timedelta(seconds=1), for_full_day=True)
+                hist = await self.data_manager.get_historical_ohlc(inst_key, tf, last_end_ts + pd.Timedelta(seconds=1), for_full_day=True, include_current=True)
                 if hist is not None and not hist.empty:
                     relevant = hist[hist.index <= last_end_ts]
                     if not relevant.empty:

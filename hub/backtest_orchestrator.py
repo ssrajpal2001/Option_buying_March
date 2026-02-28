@@ -1,6 +1,8 @@
 from .base_orchestrator import BaseOrchestrator
 from utils.logger import logger
 import pandas as pd
+from datetime import datetime, time
+import pytz
 from .backtest_data_manager import BacktestDataManager
 
 class BacktestOrchestrator(BaseOrchestrator):
@@ -44,11 +46,8 @@ class BacktestOrchestrator(BaseOrchestrator):
         await self._populate_state_for_tick(timestamp, current_group)
 
         # 2. Execute short strangle if time (anchored to Spot inside sell_manager)
-        import datetime as _dt
-        _strangle_start = _dt.datetime.strptime(
-            self.config_manager.get('settings', 'strangle_start_time', fallback='09:15:00'),
-            '%H:%M:%S'
-        ).time()
+        _strangle_start_str = self.config_manager.get('settings', 'strangle_start_time', fallback='09:15:00')
+        _strangle_start = datetime.strptime(_strangle_start_str, '%H:%M:%S').time()
         if not self._backtest_strangle_triggered and timestamp.time() >= _strangle_start:
             await self.sell_manager.execute_short_strangle(timestamp)
             self._backtest_strangle_triggered = True
@@ -195,21 +194,20 @@ class BacktestOrchestrator(BaseOrchestrator):
         For normal market hours (before 15:30), uses the Open price of the current minute.
         For EOD closure (15:30:00), uses the Close price of the final minute (15:29:00).
         """
-        import pytz
         kolkata = pytz.timezone('Asia/Kolkata')
         ts = kolkata.localize(timestamp) if timestamp.tzinfo is None else timestamp.astimezone(kolkata)
         bucket_ts = ts.replace(second=0, microsecond=0)
 
         # Determine if this is EOD closure
-        is_eod = ts.time() >= datetime.time(15, 30)
+        is_eod = ts.time() >= time(15, 30)
 
-        ohlc_df = await self.data_manager.get_historical_ohlc(instrument_key, 1, current_timestamp=bucket_ts, for_full_day=True)
+        ohlc_df = await self.data_manager.get_historical_ohlc(instrument_key, 1, current_timestamp=bucket_ts, for_full_day=True, include_current=True)
         if ohlc_df is None or ohlc_df.empty: return None
         if ohlc_df.index.tz is None: ohlc_df.index = ohlc_df.index.tz_localize('Asia/Kolkata')
 
         if is_eod:
             # For 15:30, we want the LAST closed price of the day
-            relevant = ohlc_df[ohlc_df.index.time < datetime.time(15, 30)]
+            relevant = ohlc_df[ohlc_df.index.time < time(15, 30)]
             return float(relevant.iloc[-1]['close']) if not relevant.empty else None
 
         if bucket_ts in ohlc_df.index:
@@ -314,7 +312,7 @@ class BacktestOrchestrator(BaseOrchestrator):
         for side in ['CALL', 'PUT']:
             trade = self.pnl_tracker.active_call_trade if side == 'CALL' else self.pnl_tracker.active_put_trade
             if trade:
-                ohlc = await self.data_manager.get_historical_ohlc(trade['instrument_key'], 1, current_timestamp=timestamp, for_full_day=True)
+                ohlc = await self.data_manager.get_historical_ohlc(trade['instrument_key'], 1, current_timestamp=timestamp, for_full_day=True, include_current=True)
                 ltp = ohlc.asof(timestamp)['close'] if ohlc is not None and not ohlc.empty else None
                 if ltp: self.pnl_tracker.exit_trade(side, ltp, timestamp, reason="End of backtest")
 
