@@ -3,7 +3,8 @@ from utils.support_resistance import SupportResistanceCalculator
 import pandas as pd
 import asyncio
 import pytz
-import datetime
+from datetime import datetime, time
+import datetime as dt
 
 class IndicatorManager:
     def __init__(self, orchestrator):
@@ -67,7 +68,7 @@ class IndicatorManager:
 
         if ohlc is not None and not ohlc.empty:
             first_ts = ohlc.index[0]
-            if first_ts.time() > datetime.time(9, 15):
+            if first_ts.time() > time(9, 15):
                 ohlc = None
 
         if (ohlc is None or ohlc.empty) and parsed_minutes > 1:
@@ -279,7 +280,7 @@ class IndicatorManager:
         ohlc = await self.data_manager.get_historical_ohlc(index_key, 1, timestamp, for_full_day=True, include_current=True)
         if ohlc is not None and not ohlc.empty:
             day_data = ohlc[ohlc.index.date == current_date]
-            target_time = datetime.time(9, 15)
+            target_time = time(9, 15)
             anchor = day_data[day_data.index.time == target_time]
             if not anchor.empty:
                 res = (float(anchor.iloc[0]['high']), float(anchor.iloc[0]['low']))
