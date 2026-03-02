@@ -4,8 +4,8 @@ from utils.trade_logger import TradeLogger
 from hub.event_bus import event_bus
 
 class PaperTradeClient(BaseBroker):
-    def __init__(self, broker_instance_name, config_manager):
-        super().__init__(broker_instance_name, config_manager)
+    def __init__(self, broker_instance_name, config_manager, **kwargs):
+        super().__init__(broker_instance_name, config_manager, **kwargs)
         logger.info(f"{self.instance_name} initialized for instruments: {list(self.instruments)}")
 
     def connect(self):

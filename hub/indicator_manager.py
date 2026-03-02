@@ -3,7 +3,8 @@ from utils.support_resistance import SupportResistanceCalculator
 import pandas as pd
 import asyncio
 import pytz
-from datetime import time
+from datetime import datetime, time
+import datetime as dt
 
 class IndicatorManager:
     def __init__(self, orchestrator):
@@ -98,11 +99,12 @@ class IndicatorManager:
     async def calculate_vwap(self, inst_key, timestamp):
         if not inst_key:
             return None
-        if not self.orchestrator.is_backtest:
-            atps = getattr(self.state_manager, 'option_atps', {})
-            live_atp = atps.get(inst_key)
-            if live_atp and live_atp > 0:
-                return float(live_atp)
+
+        # ALWAYS PRIORITIZE BROKER ATP (Live or Loaded from Backtest CSV)
+        atps = getattr(self.state_manager, 'option_atps', {})
+        live_atp = atps.get(inst_key)
+        if live_atp and live_atp > 0:
+            return float(live_atp)
 
         current_day = timestamp.date()
         state_key = (inst_key, current_day)
@@ -127,17 +129,38 @@ class IndicatorManager:
         cum_vol = state['cum_vol'] if state else 0.0
 
         if self.orchestrator.is_backtest:
+            # In backtest, at the start of a minute (e.g. 09:18:00), we don't know the full minute's data yet.
+            # To avoid look-ahead bias and ensure parity with live ATP (which is the value at the start of the tick),
+            # we use the 'open' price of the current minute as a proxy for the first tick of that minute.
             all_candles = await self.data_manager.get_historical_ohlc(inst_key, 1, timestamp, for_full_day=True, include_current=True)
             if all_candles is not None and not all_candles.empty:
                 current_minute = timestamp.replace(second=0, microsecond=0)
                 live_matches = all_candles[all_candles.index == current_minute]
                 if not live_matches.empty:
                     live_candle = live_matches.iloc[0]
-                    tp = (live_candle['high'] + live_candle['low'] + live_candle['close']) / 3
-                    cum_pv += tp * live_candle['volume']
-                    cum_vol += live_candle['volume']
+                    # We use the open price and a nominal volume (1) to represent the start-of-minute state.
+                    # This prevents using the future High/Low/Close of the minute we are currently in.
+                    tp = float(live_candle['open'])
+                    cum_pv += tp * 1
+                    cum_vol += 1
 
-        return cum_pv / cum_vol if cum_vol > 0 else None
+        if cum_vol > 0:
+            return cum_pv / cum_vol
+        else:
+            # ROBUST FALLBACK: If volume is 0 (common in options), use the latest available price.
+            # This ensures parity with live ATP which starts from the first tick's price.
+            all_candles = await self.data_manager.get_historical_ohlc(inst_key, 1, timestamp, for_full_day=True, include_current=True)
+            if all_candles is not None and not all_candles.empty:
+                relevant = all_candles[all_candles.index <= timestamp]
+                if not relevant.empty:
+                    last_price = float(relevant.iloc[-1]['close'])
+                    if self.orchestrator.is_backtest:
+                        logger.debug(f"V2: VWAP fallback to Close price {last_price:.2f} for {inst_key} at {timestamp} (Vol: 0)")
+                    return last_price
+
+            if self.orchestrator.is_backtest:
+                logger.warning(f"V2: VWAP fallback failed for {inst_key} at {timestamp}. No volume or price data available in OHLC. Backtest results may diverge from live.")
+            return None
 
     async def get_vwap_slope_status(self, inst_key, timestamp, timeframe_minutes, count=1, live_vwap=None):
         if not inst_key:
@@ -147,24 +170,28 @@ class IndicatorManager:
         if cached and (timestamp - cached['ts']).total_seconds() < 5.0:
             return cached['val']
 
-        if not self.orchestrator.is_backtest and live_vwap is not None:
-            atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
-            if atp_hist:
-                current_interval_start = timestamp.replace(
-                    minute=(timestamp.minute // timeframe_minutes) * timeframe_minutes,
-                    second=0, microsecond=0)
-                prev_boundary = current_interval_start - pd.Timedelta(minutes=timeframe_minutes)
-                candidates = {ts: v for ts, v in atp_hist.items() if isinstance(ts, type(prev_boundary)) and ts <= prev_boundary}
-                if candidates:
-                    v0 = candidates[max(candidates.keys())]
-                    v1 = live_vwap
-                    is_rising = v1 > v0
-                    is_falling = v1 < v0
-                    cons_r = 1 if is_rising else 0
-                    cons_f = 1 if is_falling else 0
-                    res = (is_rising, is_falling, v1, v0, cons_r, cons_f)
-                    self._vwap_slope_cache[cache_key] = {'ts': timestamp, 'val': res}
-                    return res
+        # PREFER ATP HISTORY FOR BOTH LIVE AND BACKTEST (if available)
+        atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
+        if atp_hist:
+            current_interval_start = timestamp.replace(
+                minute=(timestamp.minute // timeframe_minutes) * timeframe_minutes,
+                second=0, microsecond=0)
+
+            # V1: Decision candle close (e.g., at 9:17:00, use 9:16:00 close ATP)
+            v1 = live_vwap if live_vwap is not None else atp_hist.get(current_interval_start)
+
+            # V0: Previous finalized candle (e.g., at 9:17:00, compare 9:16:00 vs 9:15:00)
+            v0_ts = current_interval_start - pd.Timedelta(minutes=timeframe_minutes)
+            v0 = atp_hist.get(v0_ts)
+
+            if v1 is not None and v0 is not None:
+                is_rising = v1 > v0
+                is_falling = v1 < v0
+                cons_r = 1 if is_rising else 0
+                cons_f = 1 if is_falling else 0
+                res = (is_rising, is_falling, v1, v0, cons_r, cons_f)
+                self._vwap_slope_cache[cache_key] = {'ts': timestamp, 'val': res}
+                return res
 
         ohlc_1m = await self.get_robust_ohlc(inst_key, 1, timestamp)
         if ohlc_1m is None or ohlc_1m.empty:
@@ -195,6 +222,19 @@ class IndicatorManager:
         def get_vwap_at(ts):
             d = df[df.index <= ts]
             if d.empty: return None
+
+            # To avoid look-ahead bias in backtests, if ts is exactly the current tick minute, use 'open'
+            if self.orchestrator.is_backtest and d.index[-1] == ts.replace(second=0, microsecond=0):
+                hist = d.iloc[:-1]
+                last_candle = d.iloc[-1]
+                tp_hist = (hist['high'] + hist['low'] + hist['close']) / 3
+                vol_hist = hist.get('volume', pd.Series(0, index=hist.index))
+
+                # Treat current tick as price=open, vol=1
+                sum_pv = (tp_hist * vol_hist).sum() + float(last_candle['open']) * 1
+                sum_vol = vol_hist.sum() + 1
+                return sum_pv / sum_vol
+
             tp = (d['high'] + d['low'] + d['close']) / 3
             vol = d.get('volume', pd.Series(0, index=d.index))
             return (tp * vol).sum() / vol.sum() if vol.sum() > 0 else tp.mean()
@@ -237,7 +277,7 @@ class IndicatorManager:
             return self._index_915_range[cache_key]
 
         # Fetch 1m data for the index
-        ohlc = await self.data_manager.get_historical_ohlc(index_key, 1, timestamp, for_full_day=True)
+        ohlc = await self.data_manager.get_historical_ohlc(index_key, 1, timestamp, for_full_day=True, include_current=True)
         if ohlc is not None and not ohlc.empty:
             day_data = ohlc[ohlc.index.date == current_date]
             target_time = time(9, 15)
@@ -273,7 +313,7 @@ class IndicatorManager:
             if current_min_ts >= anchor_ts:
                 mins_since_anchor = int((current_min_ts - anchor_ts).total_seconds() / 60)
                 last_end_ts = anchor_ts + pd.Timedelta(minutes=(mins_since_anchor // tf) * tf)
-                hist = await self.data_manager.get_historical_ohlc(inst_key, tf, last_end_ts + pd.Timedelta(seconds=1), for_full_day=True)
+                hist = await self.data_manager.get_historical_ohlc(inst_key, tf, last_end_ts + pd.Timedelta(seconds=1), for_full_day=True, include_current=True)
                 if hist is not None and not hist.empty:
                     relevant = hist[hist.index <= last_end_ts]
                     if not relevant.empty:

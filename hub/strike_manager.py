@@ -27,16 +27,21 @@ class StrikeManager:
             
         return sorted(list(set(watchlist)))
 
-    def get_recording_watchlist(self, atm_strike):
+    def get_recording_watchlist(self, atm_strike, additional_strikes=None):
         """
         Generates a wide watchlist for recording purposes (ATM +/- 10).
+        Includes any additional strikes (e.g., active trade strikes) to ensure
+        data continuity even if they move outside the ATM +/- 10 range.
         """
         if not atm_strike:
-            return []
+            return sorted(list(set(additional_strikes or [])))
 
         strike_interval = self.config.get_int(self.instrument_name, 'strike_interval', fallback=50)
         num_strikes = 10
         watchlist = [atm_strike]
+
+        if additional_strikes:
+            watchlist.extend(additional_strikes)
 
         for i in range(1, num_strikes + 1):
             watchlist.append(atm_strike + (i * strike_interval))

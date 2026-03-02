@@ -16,8 +16,8 @@ class DataRecorder:
         self.filepath = os.path.join(os.getcwd(), self.filename)
         self.headers = [
             'timestamp', 'spot_price', 'index_price', 'atm_strike',
-            'ce_strike', 'ce_symbol', 'ce_ltp', 'ce_delta', 'ce_vega', 'ce_theta', 'ce_gamma', 'ce_open', 'ce_high', 'ce_low', 'ce_close',
-            'pe_strike', 'pe_symbol', 'pe_ltp', 'pe_delta', 'pe_vega', 'pe_theta', 'pe_gamma', 'pe_open', 'pe_high', 'pe_low', 'pe_close'
+            'ce_strike', 'ce_symbol', 'ce_ltp', 'ce_atp', 'ce_delta', 'ce_vega', 'ce_theta', 'ce_gamma', 'ce_open', 'ce_high', 'ce_low', 'ce_close',
+            'pe_strike', 'pe_symbol', 'pe_ltp', 'pe_atp', 'pe_delta', 'pe_vega', 'pe_theta', 'pe_gamma', 'pe_open', 'pe_high', 'pe_low', 'pe_close'
         ]
         self._initialize_csv()
 
@@ -46,6 +46,7 @@ class DataRecorder:
                         strike,
                         data.get('ce_symbol', ''),
                         data.get('ce_ltp', ''),
+                        data.get('ce_atp', ''),
                         data.get('ce_delta', ''),
                         data.get('ce_vega', ''),
                         data.get('ce_theta', ''),
@@ -58,6 +59,7 @@ class DataRecorder:
                         strike,
                         data.get('pe_symbol', ''),
                         data.get('pe_ltp', ''),
+                        data.get('pe_atp', ''),
                         data.get('pe_delta', ''),
                         data.get('pe_vega', ''),
                         data.get('pe_theta', ''),

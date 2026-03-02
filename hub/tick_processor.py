@@ -43,8 +43,10 @@ class TickProcessor:
                 pe_data = backtest_current_tick.get(pe_strike, {})
                 tick_data.update({
                     'ce_ltp': ce_data.get('ce_ltp'),
+                    'ce_atp': ce_data.get('ce_atp'),
                     'ce_delta': ce_data.get('ce_delta'),
                     'pe_ltp': pe_data.get('pe_ltp'),
+                    'pe_atp': pe_data.get('pe_atp'),
                     'pe_delta': pe_data.get('pe_delta'),
                 })
         else: # Live Mode
@@ -65,9 +67,11 @@ class TickProcessor:
 
             tick_data.update({
                 'ce_ltp': ce_ltp,
+                'ce_atp': getattr(self.state_manager, 'option_atps', {}).get(ce_key),
                 'ce_delta': self.state_manager.option_deltas.get(ce_key),
                 'ce_symbol': ce_key,
                 'pe_ltp': self.state_manager.option_prices.get(pe_key),
+                'pe_atp': getattr(self.state_manager, 'option_atps', {}).get(pe_key),
                 'pe_delta': self.state_manager.option_deltas.get(pe_key),
                 'pe_symbol': pe_key,
             })
@@ -143,16 +147,23 @@ class TickProcessor:
 
         strike_interval = self.config_manager.get_int(self.atm_manager.instrument_name, 'strike_interval')
         # Ensure ATM is a float to match the strike price data type from contracts
-        current_atm = float(round(futures_price / strike_interval) * strike_interval)
-        self.state_manager.atm_strike = current_atm
+        current_atm_fut = float(round(futures_price / strike_interval) * strike_interval)
+        current_atm_spot = float(round(index_price / strike_interval) * strike_interval) if index_price else current_atm_fut
 
-        if not current_atm:
+        self.state_manager.atm_strike = current_atm_fut # Primary ATM is Futures-based
+
+        if not current_atm_fut:
             logger.debug("V2: ATM could not be calculated. Skipping tick.")
             return
 
         current_ticks_for_watchlist = {}
-        watchlist_strikes = self.strike_manager.get_strike_watchlist(current_atm)
-        for strike in watchlist_strikes:
+        # Watchlist should include strikes around BOTH Futures ATM (for signals) and Spot ATM (for Sell selection)
+        watchlist_strikes = set(self.strike_manager.get_strike_watchlist(current_atm_fut))
+        if current_atm_spot != current_atm_fut:
+            spot_range = self.strike_manager.get_strike_watchlist(current_atm_spot)
+            watchlist_strikes.update(spot_range)
+
+        for strike in sorted(list(watchlist_strikes)):
             tick_data = self.orchestrator.get_current_tick_data(strike, strike, self.orchestrator.is_backtest, backtest_current_tick)
             if tick_data:
                 current_ticks_for_watchlist[strike] = tick_data
@@ -161,9 +172,23 @@ class TickProcessor:
         if not self.orchestrator.is_backtest and self.orchestrator.data_recorder:
             if now_ts - getattr(self, '_last_record_time', 0) >= 1.0:
                 self._last_record_time = now_ts
-                recording_strikes = self.strike_manager.get_recording_watchlist(current_atm)
+
+                # Ensure active trade strikes are ALWAYS recorded, even if outside ATM +/- 10
+                mandatory_strikes = []
+                for session in self.orchestrator.user_sessions.values():
+                    for pos in [session.state_manager.call_position, session.state_manager.put_position]:
+                        if pos and pos.get('strike_price'):
+                            mandatory_strikes.append(float(pos['strike_price']))
+                        if pos and pos.get('s1_monitoring_strike'):
+                            mandatory_strikes.append(float(pos['s1_monitoring_strike']))
+
+                # Recording watchlist also covers both ATMs
+                recording_strikes = set(self.strike_manager.get_recording_watchlist(current_atm_fut, additional_strikes=mandatory_strikes))
+                if current_atm_spot != current_atm_fut:
+                    recording_strikes.update(self.strike_manager.get_recording_watchlist(current_atm_spot))
+
                 recording_data = {}
-                for strike in recording_strikes:
+                for strike in sorted(list(recording_strikes)):
                     # Reuse from watchlist if possible
                     if strike in current_ticks_for_watchlist:
                         recording_data[strike] = current_ticks_for_watchlist[strike]
@@ -172,7 +197,7 @@ class TickProcessor:
                         if t_data: recording_data[strike] = t_data
 
                 if recording_data:
-                    self.orchestrator.data_recorder.record_ticks(timestamp, futures_price, index_price, current_atm, recording_data)
+                    self.orchestrator.data_recorder.record_ticks(timestamp, futures_price, index_price, current_atm_fut, recording_data)
 
         # 1. THROTTLE Target Strike Check to 60 seconds (1 minute)
         # Strategy logic: We only need to re-evaluate the target strike every minute once one is found.
@@ -180,6 +205,9 @@ class TickProcessor:
         target_throttle = 60.0 if self.state.v2_target_strike_pair else 2.0
         if self.orchestrator.is_backtest or (now_ts - self.last_target_strike_check_time >= target_throttle):
             self.last_target_strike_check_time = now_ts
+
+            # Ensure ATM is synced to Futures before identifying target strike pair
+            await self.atm_manager.update_strikes_and_subscribe(futures_price)
 
             # Use StrikeManager to find the best strike pair (using default signal expiry)
             self.state.v2_target_strike_pair = self.orchestrator.strike_manager.find_and_get_target_strike_pair(
@@ -211,7 +239,7 @@ class TickProcessor:
             if self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0):
                 await session.signal_monitor.check_crossover_breach(
                     timestamp=timestamp,
-                    current_atm=current_atm
+                    current_atm=current_atm_fut
                 )
 
             if session.signal_monitor.is_monitoring():
@@ -223,7 +251,7 @@ class TickProcessor:
         if not any_monitoring:
             # Periodic status log while scanning for a target strike
             if now_ts - self.last_crossover_check_time >= 60.0:
-                logger.debug(f"V2: Scanning watchlist around ATM {current_atm} for target strike...")
+                logger.debug(f"V2: Scanning watchlist around ATM {current_atm_fut} for target strike...")
 
         # Condition 3: Manage any active trades for ALL isolated users.
         # Throttled to avoid excessive processing on every tick.
@@ -234,7 +262,7 @@ class TickProcessor:
                     await session.manage_active_trades(
                         timestamp=timestamp,
                         current_ticks=current_ticks_for_watchlist,
-                        current_atm=current_atm
+                        current_atm=current_atm_fut
                     )
 
         for strike, tick_data in current_ticks_for_watchlist.items():

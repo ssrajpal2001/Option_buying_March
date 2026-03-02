@@ -115,16 +115,20 @@ class LifecycleManager:
                 logger.info(f"--- Detailed Backtest Trade Log for {current_date or data_feeder.backtest_date} ---")
                 for trade in all_trades:
                     symbol = "N/A"
-                    if temp_broker_for_reporting and 'contract' in trade:
+                    if 'contract' in trade and trade['contract']:
+                        c = trade['contract']
+                        symbol = f"{self.trade_orchestrator.instrument_name} {c.strike_price} {c.instrument_type}"
+                    elif temp_broker_for_reporting and 'contract' in trade:
                         try:
                             signal_expiry = self.trade_orchestrator.atm_manager.signal_expiry_date
                             symbol = temp_broker_for_reporting.construct_zerodha_symbol(trade['contract'], signal_expiry)
                         except Exception as e:
                             logger.warning(f"Could not construct symbol for a trade: {e}")
 
+                    side_label = f"{trade.get('side', 'N/A')} ({trade.get('entry_type', 'BUY')})"
                     log_message = (
                         f"Symbol: {symbol}, "
-                        f"Side: {trade.get('side', 'N/A')}, "
+                        f"Side: {side_label}, "
                         f"Entry Time: {trade.get('entry_timestamp', 'N/A')}, "
                         f"Entry Price: {trade.get('entry_price', 0):.2f}, "
                         f"Exit Time: {trade.get('exit_timestamp', 'N/A')}, "

@@ -132,6 +132,7 @@ class SignalMonitor:
         pe_reason = old_data.get('pe_data', {}).get('confirmed_pattern_reason')
 
         # PRE-INITIALIZE state to signal monitoring is in progress
+        logger.info(f"V2: Anchoring Target Strike search to Futures price ({self.state_manager.spot_price}).")
         self.state_manager.dual_sr_monitoring_data = {
             'target_strike': target_strike_pair['strike'],
             'status': 'starting',
@@ -376,6 +377,12 @@ class SignalMonitor:
 
             # 2. EVALUATION & STATUS LOG
             if self.state_manager.dual_sr_monitoring_data:
+                # START OF DAY PROTECTION (Buying/Hedging only):
+                # To ensure stability and wait for valid slope calculation, we wait until
+                # the 09:17 candle completes. The first decision can only happen at 09:18:00.
+                if timestamp.hour == 9 and timestamp.minute <= 17:
+                    return
+
                 # REAL-TIME TICK EVALUATION: Update indicator states for TICK-mode components
                 await self._update_tick_criteria_and_evaluate(timestamp, active_modes)
 
@@ -624,11 +631,6 @@ class SignalMonitor:
         current_minute_start = timestamp.replace(second=0, microsecond=0)
         last_1m_completed_ts = current_minute_start - pd.Timedelta(minutes=1)
 
-        # START OF DAY LOGIC:
-        # Trade will start ONLY AFTER 09:15 candle is formed (at 09:16:05).
-        if current_minute_start.hour == 9 and current_minute_start.minute <= 15:
-            # It's before or exactly 09:15:xx. The 09:15 candle hasn't finalized yet.
-            return
 
         # ITERATION THROTTLE: Wait for tf iterations (minutes/candles)
         # In Live: Align to clock boundaries (minute % tf == 0)
@@ -728,9 +730,6 @@ class SignalMonitor:
                     pe_data['criteria_state']['pattern'] = True
                     ce_data['criteria_state']['pattern'] = False
                 monitoring_data['baseline_side'] = current_side
-
-        # 4. PRE-EVALUATE INDICATORS FOR CLOSE MODE
-        await self.evaluator.evaluate_close_criteria(timestamp, active_modes)
 
         # Update monitoring data with entry sequence for display
         monitoring_data['current_sequence'] = sides_entry

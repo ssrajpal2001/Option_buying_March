@@ -39,6 +39,8 @@ class ExitEvaluator:
             if last_move and (timestamp - last_move).total_seconds() / 60 >= stag_mins:
                 eval_results['r1_stagnation'] = True
                 reasons.append(f"SR Stagnation ({stag_mins}m)")
+                # CRITICAL: Prevent immediate re-stagnation after re-entry
+                position_data['last_sr_move_time'] = timestamp
 
         if 'r1_low_breach' in f_lower:
             mon_ltp = position_data.get('monitoring_ltp', current_ltp)
@@ -81,7 +83,7 @@ class ExitEvaluator:
                             can_eval = False
                         else:
                             position_data['_vwap_close_last_candle'] = candle_ref
-                            eval_ts = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
+                            eval_ts = timestamp.replace(second=0, microsecond=0)
                             if not self.orchestrator.is_backtest:
                                 live_v = await self.indicator_manager.calculate_vwap(signal_inst_key, timestamp)
                 else:
