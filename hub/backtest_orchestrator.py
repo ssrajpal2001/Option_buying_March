@@ -67,7 +67,8 @@ class BacktestOrchestrator(BaseOrchestrator):
             '%H:%M:%S'
         ).time()
         if not self._backtest_strangle_triggered and timestamp.time() >= _strangle_start:
-            await self.sell_manager.execute_short_strangle(timestamp)
+            await self.sell_manager.build_candidates_for_all_sides(timestamp)
+            await self.sell_manager.execute_short_strangle_backtest(timestamp)
             self._backtest_strangle_triggered = True
 
         self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
