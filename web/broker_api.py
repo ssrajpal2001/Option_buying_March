@@ -105,14 +105,16 @@ async def update_credentials(broker_name: str, body: CredentialsUpdate):
 
 @router.get("/brokers/zerodha/accounts")
 async def list_zerodha_accounts():
-    cfg = _load_creds()
+    creds = _load_creds()
     trader_cfg = configparser.ConfigParser()
     trader_cfg.read(str(CONFIG_FILE))
-    zerodha_sections = []
-    for section in cfg.sections():
-        if cfg.has_option(section, 'api_key') and cfg.has_option(section, 'api_secret'):
-            zerodha_sections.append(section)
-    return JSONResponse({"accounts": zerodha_sections})
+    zerodha_cred_sections = set()
+    for section in trader_cfg.sections():
+        if trader_cfg.get(section, 'client', fallback='').strip().lower() == 'zerodha':
+            cred_section = trader_cfg.get(section, 'credentials', fallback=section).strip()
+            if cred_section in creds:
+                zerodha_cred_sections.add(cred_section)
+    return JSONResponse({"accounts": sorted(zerodha_cred_sections)})
 
 
 @router.get("/brokers/zerodha/login-url")
