@@ -4,11 +4,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 router = APIRouter()
-CREDS_FILE = Path("config/credentials.ini")
-CONFIG_FILE = Path("config/config_trader.ini")
+PROJECT_ROOT = Path(__file__).parent.parent
+CREDS_FILE = PROJECT_ROOT / "config" / "credentials.ini"
+CONFIG_FILE = PROJECT_ROOT / "config" / "config_trader.ini"
 
 SENSITIVE_KEYS = {"api_secret", "totp", "pin", "password", "client_secret"}
 MASK = "***"
@@ -100,3 +101,64 @@ async def update_credentials(broker_name: str, body: CredentialsUpdate):
             cfg[broker_name][key] = val.strip()
     _save_creds(cfg)
     return JSONResponse({"success": True, "message": f"Credentials updated for {broker_name}. Restart bot to apply."})
+
+
+@router.get("/brokers/zerodha/accounts")
+async def list_zerodha_accounts():
+    cfg = _load_creds()
+    trader_cfg = configparser.ConfigParser()
+    trader_cfg.read(str(CONFIG_FILE))
+    zerodha_sections = []
+    for section in cfg.sections():
+        if cfg.has_option(section, 'api_key') and cfg.has_option(section, 'api_secret'):
+            zerodha_sections.append(section)
+    return JSONResponse({"accounts": zerodha_sections})
+
+
+@router.get("/brokers/zerodha/login-url")
+async def zerodha_login_url(account: str):
+    cfg = _load_creds()
+    if account not in cfg:
+        raise HTTPException(status_code=404, detail=f"Account '{account}' not found in credentials")
+    api_key = cfg[account].get("api_key", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail=f"No api_key found for '{account}'")
+    try:
+        from kiteconnect import KiteConnect
+        kite = KiteConnect(api_key=api_key)
+        url = kite.login_url()
+        return JSONResponse({"success": True, "login_url": url, "account": account})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ZerodhaTokenExchange(BaseModel):
+    account: str
+    request_token: str
+
+
+@router.post("/brokers/zerodha/exchange-token")
+async def zerodha_exchange_token(body: ZerodhaTokenExchange):
+    cfg = _load_creds()
+    account = body.account.strip()
+    request_token = body.request_token.strip()
+    if account not in cfg:
+        raise HTTPException(status_code=404, detail=f"Account '{account}' not found in credentials")
+    api_key = cfg[account].get("api_key", "").strip()
+    api_secret = cfg[account].get("api_secret", "").strip()
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail=f"api_key or api_secret missing for '{account}'")
+    try:
+        from kiteconnect import KiteConnect
+        kite = KiteConnect(api_key=api_key)
+        data = kite.generate_session(request_token, api_secret=api_secret)
+        access_token = data["access_token"]
+        cfg[account]["access_token"] = access_token
+        _save_creds(cfg)
+        return JSONResponse({
+            "success": True,
+            "message": f"Zerodha access token generated and saved for {account}. Restart bot to apply.",
+            "token_preview": access_token[:10] + "..."
+        })
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Token exchange failed: {str(e)}")

@@ -13,7 +13,7 @@
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 
   <div class="card p-5">
-    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Daily Token Refresh</div>
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Upstox — Daily Token Refresh</div>
     <p class="text-xs mb-3" style="color:#94a3b8">Paste today's Upstox access token here. The bot will restart automatically.</p>
     <div class="mb-3">
       <label class="block text-xs mb-1" style="color:#94a3b8">Select Broker Account</label>
@@ -28,6 +28,33 @@
     </div>
     <button onclick="updateToken(true)" class="btn-primary w-full py-2 text-sm">Update Token &amp; Restart Bot</button>
     <button onclick="updateToken(false)" class="btn-ghost w-full py-2 text-sm mt-2">Update Token Only (no restart)</button>
+  </div>
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Zerodha — Daily Login</div>
+    <p class="text-xs mb-3" style="color:#94a3b8">Zerodha tokens expire every night. Follow the two steps below each morning before starting the bot.</p>
+
+    <div class="rounded-lg p-3 mb-4" style="background:#0f172a;border:1px solid #1e293b">
+      <div class="text-xs font-semibold mb-2" style="color:#94a3b8">Step 1 — Open Zerodha login page</div>
+      <div class="mb-3">
+        <label class="block text-xs mb-1" style="color:#94a3b8">Account</label>
+        <select id="zerodha-account" class="input-field text-xs">
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <button onclick="openZerodhaLogin()" class="btn-ghost w-full py-2 text-sm">Open Kite Login Page ↗</button>
+      <p class="text-xs mt-2" style="color:#64748b">After logging in, Kite will redirect you to a URL containing <code style="color:#00d4aa">request_token=XXXXXXX</code>. Copy that value.</p>
+    </div>
+
+    <div class="rounded-lg p-3" style="background:#0f172a;border:1px solid #1e293b">
+      <div class="text-xs font-semibold mb-2" style="color:#94a3b8">Step 2 — Paste request_token &amp; generate access token</div>
+      <div class="mb-3">
+        <label class="block text-xs mb-1" style="color:#94a3b8">Request Token (from redirect URL)</label>
+        <input type="text" id="zerodha-request-token" class="input-field text-xs font-mono" placeholder="e.g. KSd7fGHj2nXq..."/>
+      </div>
+      <button onclick="zerodhaExchangeToken(true)" class="btn-primary w-full py-2 text-sm">Generate Token &amp; Restart Bot</button>
+      <button onclick="zerodhaExchangeToken(false)" class="btn-ghost w-full py-2 text-sm mt-2">Generate Token Only (no restart)</button>
+    </div>
   </div>
 
   <div class="card p-5">
@@ -224,5 +251,58 @@ async function restartBot() {
 }
 
 loadBrokers();
+loadZerodhaAccounts();
+
+async function loadZerodhaAccounts() {
+  try {
+    const r = await fetch('/api/brokers/zerodha/accounts');
+    const d = await r.json();
+    const sel = document.getElementById('zerodha-account');
+    if (d.accounts && d.accounts.length) {
+      sel.innerHTML = d.accounts.map(a => `<option value="${a}">${a}</option>`).join('');
+    } else {
+      sel.innerHTML = '<option value="">No Zerodha accounts found</option>';
+    }
+  } catch(e) {
+    document.getElementById('zerodha-account').innerHTML = '<option value="">Error loading accounts</option>';
+  }
+}
+
+async function openZerodhaLogin() {
+  const account = document.getElementById('zerodha-account').value;
+  if (!account) { showToast('Select a Zerodha account first', 'error'); return; }
+  try {
+    const r = await fetch(`/api/brokers/zerodha/login-url?account=${encodeURIComponent(account)}`);
+    const d = await r.json();
+    if (d.success && d.login_url) {
+      window.open(d.login_url, '_blank');
+      showToast('Kite login page opened. After login, copy the request_token from the redirect URL.', 'success');
+    } else {
+      showToast(d.detail || 'Failed to get login URL', 'error');
+    }
+  } catch(e) { showToast('Request failed', 'error'); }
+}
+
+async function zerodhaExchangeToken(withRestart) {
+  const account = document.getElementById('zerodha-account').value;
+  const requestToken = document.getElementById('zerodha-request-token').value.trim();
+  if (!account) { showToast('Select a Zerodha account first', 'error'); return; }
+  if (!requestToken) { showToast('Paste the request_token first', 'error'); return; }
+  try {
+    const r = await fetch('/api/brokers/zerodha/exchange-token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({account, request_token: requestToken})
+    });
+    const d = await r.json();
+    if (r.ok && d.success) {
+      showToast(d.message, 'success');
+      document.getElementById('zerodha-request-token').value = '';
+      if (withRestart) setTimeout(restartBot, 800);
+    } else {
+      showToast(d.detail || d.message || 'Token exchange failed', 'error');
+    }
+  } catch(e) { showToast('Request failed', 'error'); }
+}
 </script>
 {% endblock %}
