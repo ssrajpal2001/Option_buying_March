@@ -5,462 +5,676 @@ from utils.logger import logger
 
 
 class SellManager:
+    """
+    Manages the short-strangle sell legs.
+
+    New design (individual, slope-driven):
+    - CE and PE are searched and entered INDEPENDENTLY.
+    - Entry: pick strike from ATM + N ITM candidates whose LTP >= ltp_min
+      and is closest to ltp_target; enter only if VWAP slope is decreasing.
+    - Per tick (untraded side): re-select candidate if current LTP < ltp_min.
+    - Exit: (a) individual LTP < ltp_exit_min, or (b) combined VWAP sum slope
+      rising + individual VWAP slope rising above threshold → exit that leg
+      → restart search on that side.
+    - EOD: close_all() closes any open legs.
+    """
+
     def __init__(self, orchestrator):
         self.orchestrator = orchestrator
         self.state_file = f'config/sell_state_{orchestrator.instrument_name}.json'
 
-        self.strangle_placed = False
+        # ── Per-side trade state ──────────────────────────────────────────
+        self.ce_placed = False
+        self.pe_placed = False
+        self.ce_strike = None
+        self.pe_strike = None
+        self.ce_key = None
+        self.pe_key = None
+        self.ce_entry_ltp = None
+        self.pe_entry_ltp = None
+        self.ce_entry_timestamp = None
+        self.pe_entry_timestamp = None
+        self.ce_contract = None
+        self.pe_contract = None
+
+        # ── Search state ──────────────────────────────────────────────────
+        self.ce_searching = False   # True after candidates built
+        self.pe_searching = False
+        self.ce_candidates = []     # list of (strike, inst_key)
+        self.pe_candidates = []
+
+        # ── Combined VWAP tracking ────────────────────────────────────────
+        self.prev_combined_vwap = None
+
+        # ── EOD / misc state ─────────────────────────────────────────────
         self.strangle_closed = False
-        self.sell_ce_strike = None
-        self.sell_pe_strike = None
-        self.sell_ce_key = None
-        self.sell_pe_key = None
-        self.buy_ce_key = None   # instrument_key of sell_ce_strike + hedge_offset (CE leg)
-        self.buy_pe_key = None   # instrument_key of sell_pe_strike - hedge_offset (PE leg)
-        self.sell_ce_entry_ltp = None
-        self.sell_pe_entry_ltp = None
-        self.buy_ce_entry_ltp = None   # hedge CE entry LTP at strangle placement
-        self.buy_pe_entry_ltp = None   # hedge PE entry LTP at strangle placement
-        self.sell_entry_timestamp = None
-        self.sell_ce_contract = None
-        self.sell_pe_contract = None
         self.expiry = None
-        self.hedge_offset = None   # loaded from config at strangle placement
+        self.hedge_offset = None    # kept for potential future use
 
-    # ------------------------------------------------------------------
-    # Internal helpers — work directly on a pre-fetched chain list
-    # ------------------------------------------------------------------
+        # Backward-compat aliases (engine_manager uses buy_ce_key / buy_pe_key)
+        self.buy_ce_key = None
+        self.buy_pe_key = None
 
-    def _find_from_chain(self, chain, side):
+    # ─────────────────────────────────────────────────────────────────────
+    # Backward-compat properties (engine_manager checks .strangle_placed)
+    # ─────────────────────────────────────────────────────────────────────
+
+    @property
+    def strangle_placed(self):
+        return self.ce_placed or self.pe_placed
+
+    @property
+    def sell_ce_strike(self):
+        return self.ce_strike
+
+    @property
+    def sell_pe_strike(self):
+        return self.pe_strike
+
+    @property
+    def sell_ce_key(self):
+        return self.ce_key
+
+    @property
+    def sell_pe_key(self):
+        return self.pe_key
+
+    @property
+    def sell_ce_entry_ltp(self):
+        return self.ce_entry_ltp
+
+    @property
+    def sell_pe_entry_ltp(self):
+        return self.pe_entry_ltp
+
+    # ─────────────────────────────────────────────────────────────────────
+    # JSON config helpers
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _cfg(self, key, type_func=float, fallback=None):
+        """Read a value from NIFTY.sell.<key> in strategy_logic.json."""
+        val = self.orchestrator.json_config.get_value(
+            f"{self.orchestrator.instrument_name}.sell.{key}")
+        return type_func(val) if val is not None else fallback
+
+    def _exit_cfg(self, key, type_func=float, fallback=None):
+        """Read a value from NIFTY.sell.exit_indicators.<key>."""
+        val = self.orchestrator.json_config.get_value(
+            f"{self.orchestrator.instrument_name}.sell.exit_indicators.{key}")
+        return type_func(val) if val is not None else fallback
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Candidate building  (called once at sell start time)
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _build_candidate_list(self, chain, side, atm, interval, itm_count):
         """
-        Scans option chain data for the strike with LTP > 100 closest to ₹100
-        on the given side ('CE' or 'PE').
-
-        Returns (float(strike_price), contract, instrument_key, ltp) or (None, None, None, None).
-        The contract object is looked up from contract_lookup for its lot_size.
+        Return [(strike, inst_key)] for ATM + `itm_count` ITM strikes.
+        CE ITM = strikes BELOW spot: ATM, ATM-interval, ATM-2*interval, …
+        PE ITM = strikes ABOVE spot: ATM, ATM+interval, ATM+2*interval, …
+        List is sorted ATM-first.
         """
         options_key = 'call_options' if side == 'CE' else 'put_options'
+        if side == 'CE':
+            target_strikes = {float(atm + i * interval)
+                              for i in range(0, -(itm_count + 1), -1)}
+        else:
+            target_strikes = {float(atm + i * interval)
+                              for i in range(0, itm_count + 1)}
 
         candidates = []
         for entry in chain:
-            side_data = entry.get(options_key) or {}
-            market = side_data.get('market_data') or {}
-            ltp = market.get('ltp', 0) or 0
-            strike_price = entry.get('strike_price')
-            inst_key = side_data.get('instrument_key')
-            if ltp > 100 and strike_price is not None and inst_key:
-                candidates.append((abs(ltp - 100), ltp, float(strike_price), inst_key))
-
-        if not candidates:
-            logger.error(f"[SellManager] No {side} strikes with LTP > 100 found in option chain")
-            return None, None, None, None
-
-        candidates.sort(key=lambda x: x[0])
-        _, ltp, strike, inst_key = candidates[0]
-        logger.info(f"[SellManager] Selected {side} sell strike: {strike} (LTP: {ltp:.2f}, key: {inst_key})")
-
-        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
-        contract = expiry_strikes.get(float(strike), {}).get(side)
-        if not contract:
-            logger.error(f"[SellManager] {side} strike {strike} not found in contract_lookup — cannot determine lot_size")
-            return None, None, None, None
-
-        return strike, contract, inst_key, ltp
-
-    async def _find_from_chain_backtest(self, chain, side, timestamp):
-        """
-        Backtest version of _find_from_chain. Fetches the real historical LTP at
-        `timestamp` for each candidate strike via the Upstox REST OHLC API, then
-        applies the same 'closest to ₹100' selection logic on those historical prices.
-
-        Expects `chain` to already be the asymmetric ATM-anchored filtered list to
-        minimise API calls.
-        """
-        options_key = 'call_options' if side == 'CE' else 'put_options'
-
-        candidates_raw = []
-        for entry in chain:
+            strike = entry.get('strike_price')
+            if strike is None or float(strike) not in target_strikes:
+                continue
             side_data = entry.get(options_key) or {}
             inst_key = side_data.get('instrument_key')
-            strike_price = entry.get('strike_price')
-            if inst_key and strike_price is not None:
-                candidates_raw.append((float(strike_price), inst_key))
+            if inst_key:
+                candidates.append((float(strike), inst_key))
 
-        logger.info(f"[SellManager][Backtest] Fetching historical LTPs for {len(candidates_raw)} {side} candidates at {timestamp}...")
+        candidates.sort(key=lambda x: abs(x[0] - atm))
+        logger.info(
+            f"[SellManager] {side} candidates (ATM={atm}, ITM={itm_count}): "
+            f"{[(int(s), k[:25]) for s, k in candidates]}")
+        return candidates
 
-        candidates = []
-        for strike, inst_key in candidates_raw:
-            hist_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(inst_key, timestamp)
-            if hist_ltp and hist_ltp > 100:
-                candidates.append((abs(hist_ltp - 100), hist_ltp, strike, inst_key))
-
-        if not candidates:
-            logger.error(f"[SellManager][Backtest] No {side} strikes with historical LTP > 100 found at {timestamp}")
-            return None, None, None, None
-
-        candidates.sort(key=lambda x: x[0])
-        _, hist_ltp, strike, inst_key = candidates[0]
-        logger.info(f"[SellManager][Backtest] Selected {side} sell strike: {strike} (Historical LTP at {timestamp}: {hist_ltp:.2f}, key: {inst_key})")
-
-        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
-        contract = expiry_strikes.get(float(strike), {}).get(side)
-        if not contract:
-            logger.error(f"[SellManager][Backtest] {side} strike {strike} not found in contract_lookup — cannot determine lot_size")
-            return None, None, None, None
-
-        return strike, contract, inst_key, hist_ltp
-
-    def _find_hedge_key_in_chain(self, chain, hedge_strike, side):
+    async def build_candidates_for_all_sides(self, timestamp):
         """
-        Finds the instrument_key for hedge_strike on side ('CE' or 'PE') in the chain data.
-        Returns instrument_key string or None.
+        Fetch option chain and build ATM+ITM candidate lists for CE and PE.
+        Called once when the clock reaches sell.start_time.
         """
-        options_key = 'call_options' if side == 'CE' else 'put_options'
-        for entry in chain:
-            if float(entry.get('strike_price', -1)) == float(hedge_strike):
-                inst_key = (entry.get(options_key) or {}).get('instrument_key')
-                if inst_key:
-                    return inst_key
-        logger.warning(f"[SellManager] Hedge strike {hedge_strike} {side} not found in option chain")
-        return None
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    async def execute_short_strangle(self, timestamp):
-        """Places SELL NRML orders for both CE and PE legs at market open."""
-        if getattr(self.orchestrator, 'profit_target_hit', False):
-            logger.info("[SellManager] Profit target hit — strangle placement skipped.")
-            return
-
-        if self.strangle_placed:
-            logger.info("[SellManager] Strangle already placed, skipping.")
-            return
-
         expiry = self.orchestrator.atm_manager.signal_expiry_date
         if not expiry:
-            logger.error("[SellManager] Cannot place strangle — signal_expiry_date not set.")
+            logger.error("[SellManager] Cannot build candidates — signal_expiry_date not set.")
             return
 
         self.expiry = expiry
         index_key = self.orchestrator.index_instrument_key
-
-        # Read configurable hedge_offset (default 150)
-        self.hedge_offset = self.orchestrator.config_manager.get_int(
-            self.orchestrator.instrument_name, 'hedge_offset', 150)
-
-        # Fetch the full option chain once for hedge key lookup
-        logger.info(f"[SellManager] Fetching option chain for {index_key} expiry {expiry}")
-        chain = await self.orchestrator.rest_client.get_option_chain(index_key, expiry)
-        if not chain:
-            logger.error(f"[SellManager] Option chain returned empty for {index_key} expiry {expiry}. Aborting strangle.")
-            return
-
-        # --- ATM-anchored asymmetric strike filtering ---
-        # CE: 3 strikes BELOW ATM + 8 strikes ABOVE ATM (captures ITM-to-OTM range)
-        # PE: 8 strikes BELOW ATM + 3 strikes ABOVE ATM (mirrors CE on the put side)
         atm = self.orchestrator.atm_manager.strikes.get('atm')
         interval = self.orchestrator.config_manager.get_int(
             self.orchestrator.instrument_name, 'strike_interval', 50)
+        itm_count = self._cfg('itm_count', int, 2)
 
-        if atm and interval:
-            ce_targets = {float(atm + i * interval) for i in range(-3, 9) if i != 0}
-            pe_targets = {float(atm + i * interval) for i in range(-8, 4) if i != 0}
-            logger.info(
-                f"[SellManager] ATM={atm} interval={interval} hedge_offset={self.hedge_offset} — "
-                f"CE search: {int(atm - 3*interval)} to {int(atm + 8*interval)} (excl ATM, {len(ce_targets)} candidates) | "
-                f"PE search: {int(atm - 8*interval)} to {int(atm + 3*interval)} (excl ATM, {len(pe_targets)} candidates)"
-            )
-            ce_chain = [e for e in chain if float(e.get('strike_price', -1)) in ce_targets]
-            pe_chain = [e for e in chain if float(e.get('strike_price', -1)) in pe_targets]
-        else:
-            logger.warning("[SellManager] ATM or interval not available — falling back to full chain scan")
-            ce_chain = chain
-            pe_chain = chain
-
-        if self.orchestrator.is_backtest:
-            ce_strike, ce_contract, ce_sell_key, ce_entry_ltp = await self._find_from_chain_backtest(ce_chain, 'CE', timestamp)
-            pe_strike, pe_contract, pe_sell_key, pe_entry_ltp = await self._find_from_chain_backtest(pe_chain, 'PE', timestamp)
-        else:
-            ce_strike, ce_contract, ce_sell_key, ce_entry_ltp = self._find_from_chain(ce_chain, 'CE')
-            pe_strike, pe_contract, pe_sell_key, pe_entry_ltp = self._find_from_chain(pe_chain, 'PE')
-
-        if ce_strike is None or pe_strike is None:
-            logger.error("[SellManager] Could not find valid strikes for strangle. Aborting.")
+        if not atm or not interval:
+            logger.error("[SellManager] ATM or strike interval unavailable — cannot build candidates.")
             return
 
-        # Resolve hedge keys from the full chain using configurable offset
-        buy_ce_key = self._find_hedge_key_in_chain(chain, ce_strike + self.hedge_offset, 'CE')
-        buy_pe_key = self._find_hedge_key_in_chain(chain, pe_strike - self.hedge_offset, 'PE')
+        logger.info(
+            f"[SellManager] Fetching option chain: {index_key} expiry={expiry} ATM={atm}")
+        chain = await self.orchestrator.rest_client.get_option_chain(index_key, expiry)
+        if not chain:
+            logger.error("[SellManager] Empty option chain — aborting candidate build.")
+            return
 
-        if not buy_ce_key:
-            logger.warning(f"[SellManager] CE hedge strike {ce_strike + self.hedge_offset} not found in chain — hedge BUY may fail")
-        if not buy_pe_key:
-            logger.warning(f"[SellManager] PE hedge strike {pe_strike - self.hedge_offset} not found in chain — hedge BUY may fail")
+        self.ce_candidates = self._build_candidate_list(chain, 'CE', atm, interval, itm_count)
+        self.pe_candidates = self._build_candidate_list(chain, 'PE', atm, interval, itm_count)
 
-        # Fetch hedge entry LTPs at strangle placement (backtest only)
-        if self.orchestrator.is_backtest:
-            self.buy_ce_entry_ltp = (
-                await self.orchestrator._get_ltp_for_backtest_instrument(buy_ce_key, timestamp)
-                if buy_ce_key else None
-            )
-            self.buy_pe_entry_ltp = (
-                await self.orchestrator._get_ltp_for_backtest_instrument(buy_pe_key, timestamp)
-                if buy_pe_key else None
-            )
-            logger.info(
-                f"[SellManager][Backtest] Hedge entry LTPs recorded: "
-                f"CE hedge {int(ce_strike + self.hedge_offset)}={self.buy_ce_entry_ltp} | "
-                f"PE hedge {int(pe_strike - self.hedge_offset)}={self.buy_pe_entry_ltp}"
-            )
+        if not self.ce_placed:
+            self.ce_searching = True
+        if not self.pe_placed:
+            self.pe_searching = True
 
+        # Subscribe all candidate keys to websocket so LTPs arrive in ticks
+        all_keys = [k for _, k in self.ce_candidates + self.pe_candidates]
+        if all_keys and hasattr(self.orchestrator, 'websocket') and self.orchestrator.websocket:
+            self.orchestrator.websocket.subscribe(all_keys)
+            logger.info(f"[SellManager] Subscribed {len(all_keys)} candidate keys to WS.")
+
+        logger.info(
+            f"[SellManager] Ready — CE searching={self.ce_searching} "
+            f"PE searching={self.pe_searching}")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # LTP candidate selection helpers
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _get_best_ltp_candidate(self, candidates, ticks, ltp_min, ltp_target):
+        """
+        From live tick data pick the candidate with LTP >= ltp_min and
+        minimum |ltp - ltp_target|.
+        Returns (strike, inst_key, ltp) or (None, None, None).
+        """
+        best_strike = best_key = best_ltp = None
+        best_diff = float('inf')
+        for strike, inst_key in candidates:
+            tick = ticks.get(inst_key) or {}
+            ltp = tick.get('ltp', 0) or 0
+            if ltp >= ltp_min:
+                diff = abs(ltp - ltp_target)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_strike, best_key, best_ltp = strike, inst_key, ltp
+        return best_strike, best_key, best_ltp
+
+    # ─────────────────────────────────────────────────────────────────────
+    # VWAP slope helpers
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _check_slope_decreasing(self, inst_key, timestamp):
+        """
+        Returns True if the VWAP slope for inst_key is currently falling
+        (diff_pct < threshold, where threshold defaults to 0.0).
+        """
+        tf = self._cfg('indicators.vwap_slope.tf', int, 1)
+        threshold = self._cfg('indicators.vwap_slope.threshold', float, 0.0)
+        live_vwap = await self.orchestrator.indicator_manager.calculate_vwap(
+            inst_key, timestamp)
+        if live_vwap is None:
+            return False
+        result = await self.orchestrator.indicator_manager.get_vwap_slope_status(
+            inst_key, timestamp, tf, count=1, live_vwap=live_vwap)
+        if result is None or result[0] is None:
+            return False
+        _, _, v_curr, v_prev, _, _ = result
+        if v_prev and v_prev > 0:
+            return (v_curr - v_prev) / v_prev < threshold
+        return False
+
+    async def _get_vwap(self, inst_key, timestamp):
+        return await self.orchestrator.indicator_manager.calculate_vwap(
+            inst_key, timestamp)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Main per-tick method  (called from tick_processor every tick)
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def on_tick(self, ticks, timestamp):
+        """
+        ticks: dict {inst_key: {'ltp': float, ...}} for live mode.
+        Called every processed tick from tick_processor.
+        """
+        if self.strangle_closed:
+            return
+        if not self.ce_candidates and not self.pe_candidates:
+            return   # Candidates not built yet (before 9:20)
+
+        ltp_min = self._cfg('ltp_min', float, 50.0)
+        ltp_target = self._cfg('ltp_target', float, 50.0)
+        ltp_exit_min = self._cfg('ltp_exit_min', float, 20.0)
+
+        # ── 1. LTP exit check for each placed leg ──────────────────────
+        for side in ['CE', 'PE']:
+            placed = self.ce_placed if side == 'CE' else self.pe_placed
+            if not placed:
+                continue
+            key = self.ce_key if side == 'CE' else self.pe_key
+            tick = ticks.get(key) or {}
+            ltp = tick.get('ltp', 0) or 0
+            if ltp > 0 and ltp < ltp_exit_min:
+                logger.info(
+                    f"[SellManager] {side} LTP {ltp:.2f} < exit_min {ltp_exit_min:.0f} — exiting.")
+                await self.exit_side(side, timestamp,
+                                     reason=f"LTP decayed below {ltp_exit_min}")
+
+        # ── 2. Attempt entry for each searching side ───────────────────
+        for side in ['CE', 'PE']:
+            searching = self.ce_searching if side == 'CE' else self.pe_searching
+            if not searching:
+                continue
+            candidates = self.ce_candidates if side == 'CE' else self.pe_candidates
+            if not candidates:
+                continue
+            await self._try_enter_side(side, timestamp, ticks, candidates,
+                                       ltp_min, ltp_target)
+
+        # ── 3. Combined VWAP slope exit (when both legs active) ─────────
+        if self.ce_placed and self.pe_placed:
+            await self._check_combined_vwap_slope(timestamp)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Entry attempt
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _try_enter_side(self, side, timestamp, ticks, candidates,
+                               ltp_min, ltp_target):
+        strike, inst_key, ltp = self._get_best_ltp_candidate(
+            candidates, ticks, ltp_min, ltp_target)
+        if strike is None:
+            logger.debug(
+                f"[SellManager] {side}: no candidate with LTP >= {ltp_min}. Still scanning.")
+            return
+
+        slope_ok = await self._check_slope_decreasing(inst_key, timestamp)
+        if not slope_ok:
+            logger.debug(
+                f"[SellManager] {side} {int(strike)}: LTP={ltp:.2f} OK "
+                f"but slope not yet decreasing.")
+            return
+
+        # Resolve contract object for lot-size and order placement
+        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(
+            self.expiry, {})
+        contract = expiry_strikes.get(float(strike), {}).get(side)
+        if not contract:
+            logger.error(
+                f"[SellManager] {side} strike {strike} not in contract_lookup — skipping.")
+            return
+
+        product_type = self._cfg('product_type', str, 'NRML')
         brokers = self.orchestrator.broker_manager.brokers
         for broker in brokers:
             if not broker.is_configured_for_instrument(self.orchestrator.instrument_name):
                 continue
-
-            ce_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * ce_contract.lot_size
-            pe_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * pe_contract.lot_size
-
+            qty = (broker.config_manager.get_int(broker.instance_name, 'quantity', 1)
+                   * contract.lot_size)
             if self.orchestrator.is_backtest or getattr(broker, 'paper_trade', False):
-                logger.info(f"[SellManager][PAPER SELL NRML] CE: {ce_strike} qty={ce_qty} | PE: {pe_strike} qty={pe_qty}")
+                logger.info(
+                    f"[SellManager][PAPER SELL {product_type}] "
+                    f"{side}: strike={int(strike)} LTP={ltp:.2f} qty={qty}")
             else:
-                ce_order_id = broker.place_order(ce_contract, 'SELL', ce_qty, expiry, product_type='NRML')
-                pe_order_id = broker.place_order(pe_contract, 'SELL', pe_qty, expiry, product_type='NRML')
-                logger.info(f"[SellManager] Sold CE {ce_strike} order_id={ce_order_id} | PE {pe_strike} order_id={pe_order_id}")
+                order_id = broker.place_order(
+                    contract, 'SELL', qty, self.expiry, product_type=product_type)
+                logger.info(
+                    f"[SellManager] Sold {side} {int(strike)} "
+                    f"order_id={order_id} LTP={ltp:.2f}")
 
-        self.sell_ce_strike = ce_strike
-        self.sell_pe_strike = pe_strike
-        self.sell_ce_key = ce_sell_key
-        self.sell_pe_key = pe_sell_key
-        self.buy_ce_key = buy_ce_key
-        self.buy_pe_key = buy_pe_key
-        self.sell_ce_entry_ltp = ce_entry_ltp
-        self.sell_pe_entry_ltp = pe_entry_ltp
-        self.sell_entry_timestamp = timestamp
-        self.sell_ce_contract = ce_contract
-        self.sell_pe_contract = pe_contract
-        self.strangle_placed = True
-        all_strangle_keys = [k for k in [self.sell_ce_key, self.sell_pe_key, self.buy_ce_key, self.buy_pe_key] if k]
-        if all_strangle_keys:
-            self.orchestrator.websocket.subscribe(all_strangle_keys)
-            logger.info(f"[SellManager] Subscribed all 4 strangle keys to websocket: {all_strangle_keys}")
+        # Persist state
+        if side == 'CE':
+            self.ce_placed = True
+            self.ce_searching = False
+            self.ce_strike = strike
+            self.ce_key = inst_key
+            self.ce_entry_ltp = ltp
+            self.ce_entry_timestamp = timestamp
+            self.ce_contract = contract
+        else:
+            self.pe_placed = True
+            self.pe_searching = False
+            self.pe_strike = strike
+            self.pe_key = inst_key
+            self.pe_entry_ltp = ltp
+            self.pe_entry_timestamp = timestamp
+            self.pe_contract = contract
+
+        # Subscribe placed key so LTP arrives immediately
+        if not self.orchestrator.is_backtest:
+            ws = getattr(self.orchestrator, 'websocket', None)
+            if ws:
+                ws.subscribe([inst_key])
+
         self.save_state()
         logger.info(
-            f"[SellManager] Short strangle placed: "
-            f"SELL CE {ce_strike} (key:{ce_sell_key}) | SELL PE {pe_strike} (key:{pe_sell_key}) | "
-            f"Hedge CE {int(ce_strike + self.hedge_offset)} key:{buy_ce_key} | "
-            f"Hedge PE {int(pe_strike - self.hedge_offset)} key:{buy_pe_key} | Expiry: {expiry}"
-        )
+            f"[SellManager] ✔ {side} leg entered: strike={int(strike)} "
+            f"LTP={ltp:.2f} key={inst_key} product={product_type}")
 
-    async def close_all(self, timestamp):
-        """Buys back both CE and PE legs to close the short strangle (EOD close)."""
-        if self.strangle_closed:
-            logger.info("[SellManager] Strangle already closed, skipping.")
-            return
-        if not self.strangle_placed:
-            logger.info("[SellManager] No strangle to close.")
-            return
+    # ─────────────────────────────────────────────────────────────────────
+    # Combined VWAP slope exit
+    # ─────────────────────────────────────────────────────────────────────
 
-        expiry = self.expiry
-        expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(expiry, {})
-
-        ce_contract = expiry_strikes.get(float(self.sell_ce_strike), {}).get('CE')
-        pe_contract = expiry_strikes.get(float(self.sell_pe_strike), {}).get('PE')
-
-        if not ce_contract or not pe_contract:
-            logger.error(f"[SellManager] Could not find CE/PE contracts to close. CE:{self.sell_ce_strike} PE:{self.sell_pe_strike}")
+    async def _check_combined_vwap_slope(self, timestamp):
+        """
+        Monitor CE_VWAP + PE_VWAP.
+        If combined slope rises above threshold, find which individual leg
+        is also rising above threshold and exit it → restart search.
+        """
+        ce_vwap = await self._get_vwap(self.ce_key, timestamp)
+        pe_vwap = await self._get_vwap(self.pe_key, timestamp)
+        if ce_vwap is None or pe_vwap is None:
             return
 
+        combined = ce_vwap + pe_vwap
+        if self.prev_combined_vwap is None:
+            self.prev_combined_vwap = combined
+            return
+
+        if self.prev_combined_vwap > 0:
+            comb_threshold = self._exit_cfg(
+                'combined_vwap_slope.threshold', float, 0.0)
+            comb_slope = (combined - self.prev_combined_vwap) / self.prev_combined_vwap
+
+            if comb_slope > comb_threshold:
+                logger.info(
+                    f"[SellManager] Combined VWAP slope rising: "
+                    f"{self.prev_combined_vwap:.2f} → {combined:.2f} "
+                    f"({comb_slope*100:+.3f}%). Checking individual legs.")
+
+                ind_threshold = self._exit_cfg(
+                    'individual_vwap_slope.threshold', float, 0.0)
+                ind_tf = self._exit_cfg('individual_vwap_slope.tf', int, 1)
+
+                for side in ['CE', 'PE']:
+                    placed = self.ce_placed if side == 'CE' else self.pe_placed
+                    if not placed:
+                        continue
+                    key = self.ce_key if side == 'CE' else self.pe_key
+                    live_vwap = ce_vwap if side == 'CE' else pe_vwap
+                    result = await self.orchestrator.indicator_manager.get_vwap_slope_status(
+                        key, timestamp, int(ind_tf), count=1, live_vwap=live_vwap)
+                    if result and result[2] is not None and result[3] is not None:
+                        _, _, v_curr, v_prev, _, _ = result
+                        if v_prev and v_prev > 0:
+                            ind_slope = (v_curr - v_prev) / v_prev
+                            if ind_slope > ind_threshold:
+                                logger.info(
+                                    f"[SellManager] {side} individual VWAP "
+                                    f"slope rising ({ind_slope*100:+.3f}%) — exiting.")
+                                await self.exit_side(
+                                    side, timestamp,
+                                    reason="Individual VWAP slope rising above threshold")
+
+        self.prev_combined_vwap = combined
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Exit one leg
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def exit_side(self, side, timestamp, reason='Exit'):
+        """
+        Buy back one sell leg and restart the search for that side.
+        """
+        strike = self.ce_strike if side == 'CE' else self.pe_strike
+        key = self.ce_key if side == 'CE' else self.pe_key
+        entry_ltp = self.ce_entry_ltp if side == 'CE' else self.pe_entry_ltp
+        entry_ts = self.ce_entry_timestamp if side == 'CE' else self.pe_entry_timestamp
+        contract = self.ce_contract if side == 'CE' else self.pe_contract
+
+        if strike is None or contract is None:
+            logger.warning(
+                f"[SellManager] exit_side({side}): no active position — skipping.")
+            return
+
+        exit_ltp = None
+        product_type = self._cfg('product_type', str, 'NRML')
         brokers = self.orchestrator.broker_manager.brokers
+
         for broker in brokers:
             if not broker.is_configured_for_instrument(self.orchestrator.instrument_name):
                 continue
-
-            ce_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * ce_contract.lot_size
-            pe_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * pe_contract.lot_size
-
+            qty = (broker.config_manager.get_int(broker.instance_name, 'quantity', 1)
+                   * contract.lot_size)
             if self.orchestrator.is_backtest or getattr(broker, 'paper_trade', False):
-                logger.info(f"[SellManager][PAPER BUY NRML CLOSE] CE: {self.sell_ce_strike} qty={ce_qty} | PE: {self.sell_pe_strike} qty={pe_qty}")
+                if self.orchestrator.is_backtest and key:
+                    exit_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(
+                        key, timestamp)
+                logger.info(
+                    f"[SellManager][PAPER BUY {product_type}] {side}: "
+                    f"strike={int(strike)} qty={qty} reason={reason}")
             else:
-                ce_order_id = broker.place_order(ce_contract, 'BUY', ce_qty, expiry, product_type='NRML')
-                pe_order_id = broker.place_order(pe_contract, 'BUY', pe_qty, expiry, product_type='NRML')
-                logger.info(f"[SellManager] Closed CE {self.sell_ce_strike} order_id={ce_order_id} | PE {self.sell_pe_strike} order_id={pe_order_id}")
+                order_id = broker.place_order(
+                    contract, 'BUY', qty, self.expiry, product_type=product_type)
+                logger.info(
+                    f"[SellManager] Closed {side} {int(strike)} "
+                    f"order_id={order_id} reason={reason}")
+
+        # Record PnL
+        if entry_ltp and exit_ltp and self.orchestrator.pnl_tracker:
+            ref_broker = next(
+                (b for b in brokers
+                 if b.is_configured_for_instrument(self.orchestrator.instrument_name)), None)
+            broker_qty = (ref_broker.config_manager.get_int(
+                ref_broker.instance_name, 'quantity', 1) if ref_broker else 1)
+            pnl = (entry_ltp - exit_ltp) * contract.lot_size * broker_qty
+            pnl_side = 'CALL' if side == 'CE' else 'PUT'
+            logger.info(
+                f"[SellManager] {side} PnL: entry={entry_ltp:.2f} "
+                f"exit={exit_ltp:.2f} pnl=₹{pnl:+.2f}")
+            self.orchestrator.pnl_tracker.trade_history.append({
+                'instrument_key': key,
+                'entry_price': entry_ltp,
+                'exit_price': exit_ltp,
+                'entry_timestamp': entry_ts,
+                'exit_timestamp': timestamp,
+                'pnl': pnl,
+                'lot_size': contract.lot_size,
+                'quantity': broker_qty,
+                'status': 'CLOSED',
+                'side': pnl_side,
+                'strike_price': strike,
+                'contract': contract,
+                'strategy_log': f'SELL {product_type} leg — {reason}',
+                'entry_type': 'SELL',
+            })
+
+        # Reset this side → restart search
+        if side == 'CE':
+            self.ce_placed = False
+            self.ce_strike = None
+            self.ce_key = None
+            self.ce_entry_ltp = None
+            self.ce_entry_timestamp = None
+            self.ce_contract = None
+            self.ce_searching = True
+        else:
+            self.pe_placed = False
+            self.pe_strike = None
+            self.pe_key = None
+            self.pe_entry_ltp = None
+            self.pe_entry_timestamp = None
+            self.pe_contract = None
+            self.pe_searching = True
+
+        self.prev_combined_vwap = None   # reset combined tracking
+        self.save_state()
+        logger.info(f"[SellManager] {side} exited ({reason}). Fresh search started.")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # EOD close — close whatever is still open
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def close_all(self, timestamp):
+        """Called at end-of-day to buy back any open sell legs."""
+        if self.strangle_closed:
+            return
+
+        closed_any = False
+        for side in ['CE', 'PE']:
+            placed = self.ce_placed if side == 'CE' else self.pe_placed
+            if placed:
+                await self.exit_side(side, timestamp, reason='EOD Close')
+                closed_any = True
 
         self.strangle_closed = True
         self.save_state()
-        logger.info(f"[SellManager] Short strangle closed: CE {self.sell_ce_strike} | PE {self.sell_pe_strike}")
+        if not closed_any:
+            logger.info("[SellManager] close_all: no open legs to close.")
+        else:
+            logger.info("[SellManager] EOD close completed.")
 
-        if self.orchestrator.is_backtest and self.sell_ce_entry_ltp and self.sell_pe_entry_ltp:
-            ce_exit_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(self.sell_ce_key, timestamp)
-            pe_exit_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(self.sell_pe_key, timestamp)
-            if ce_exit_ltp and pe_exit_ltp:
-                _ref_broker = next(
-                    (b for b in self.orchestrator.broker_manager.brokers
-                     if b.is_configured_for_instrument(self.orchestrator.instrument_name)), None
-                )
-                _broker_qty = _ref_broker.config_manager.get_int(_ref_broker.instance_name, 'quantity', 1) if _ref_broker else 1
-                ce_lot = ce_contract.lot_size if ce_contract else 1
-                pe_lot = pe_contract.lot_size if pe_contract else 1
-
-                ce_pnl_per = self.sell_ce_entry_ltp - ce_exit_ltp
-                pe_pnl_per = self.sell_pe_entry_ltp - pe_exit_ltp
-                ce_pnl_total = ce_pnl_per * ce_lot * _broker_qty
-                pe_pnl_total = pe_pnl_per * pe_lot * _broker_qty
-                logger.info(
-                    f"[SellManager] SELL STRANGLE PnL at close: "
-                    f"CE {int(self.sell_ce_strike)} entry={self.sell_ce_entry_ltp:.2f} exit={ce_exit_ltp:.2f} "
-                    f"PnL/share={ce_pnl_per:+.2f} × lot={ce_lot} × qty={_broker_qty} = ₹{ce_pnl_total:+.2f} | "
-                    f"PE {int(self.sell_pe_strike)} entry={self.sell_pe_entry_ltp:.2f} exit={pe_exit_ltp:.2f} "
-                    f"PnL/share={pe_pnl_per:+.2f} × lot={pe_lot} × qty={_broker_qty} = ₹{pe_pnl_total:+.2f} | "
-                    f"Combined Total PnL=₹{ce_pnl_total + pe_pnl_total:+.2f}"
-                )
-                if self.orchestrator.pnl_tracker:
-                    for side, key, strike, entry_ltp, exit_ltp, pnl_total, lot, contract in [
-                        ('CALL', self.sell_ce_key, self.sell_ce_strike, self.sell_ce_entry_ltp, ce_exit_ltp, ce_pnl_total, ce_lot, self.sell_ce_contract),
-                        ('PUT',  self.sell_pe_key, self.sell_pe_strike, self.sell_pe_entry_ltp, pe_exit_ltp, pe_pnl_total, pe_lot, self.sell_pe_contract),
-                    ]:
-                        self.orchestrator.pnl_tracker.trade_history.append({
-                            'instrument_key': key,
-                            'entry_price': entry_ltp,
-                            'exit_price': exit_ltp,
-                            'entry_timestamp': self.sell_entry_timestamp,
-                            'exit_timestamp': timestamp,
-                            'pnl': pnl_total,
-                            'lot_size': lot,
-                            'quantity': _broker_qty,
-                            'status': 'CLOSED',
-                            'side': side,
-                            'strike_price': strike,
-                            'contract': contract,
-                            'strategy_log': 'SELL NRML strangle leg',
-                            'entry_type': 'SELL',
-                        })
-
-                # Hedge EOD P&L log (informational only — no double-count)
-                # BUY hedge positions are tracked via the normal pnl_tracker lifecycle.
-                hedge_offset = self.hedge_offset or 150
-                if self.buy_ce_key and self.buy_pe_key and self.buy_ce_entry_ltp and self.buy_pe_entry_ltp:
-                    buy_ce_exit = await self.orchestrator._get_ltp_for_backtest_instrument(
-                        self.buy_ce_key, timestamp)
-                    buy_pe_exit = await self.orchestrator._get_ltp_for_backtest_instrument(
-                        self.buy_pe_key, timestamp)
-                    if buy_ce_exit and buy_pe_exit:
-                        hedge_lot = ce_lot
-                        hedge_qty_mult = self.orchestrator.config_manager.get_int(
-                            self.orchestrator.instrument_name, 'hedge_quantity_multiplier', 2)
-                        hedge_qty = _broker_qty * hedge_qty_mult
-                        buy_ce_pnl = (buy_ce_exit - self.buy_ce_entry_ltp) * hedge_lot * hedge_qty
-                        buy_pe_pnl = (buy_pe_exit - self.buy_pe_entry_ltp) * hedge_lot * hedge_qty
-                        logger.info(
-                            f"[SellManager] HEDGE EOD P&L (informational): "
-                            f"CE hedge {int(self.sell_ce_strike + hedge_offset)} "
-                            f"entry={self.buy_ce_entry_ltp:.2f} exit={buy_ce_exit:.2f} "
-                            f"PnL/share={buy_ce_exit - self.buy_ce_entry_ltp:+.2f} × "
-                            f"lot={hedge_lot} × qty={hedge_qty} = ₹{buy_ce_pnl:+.2f} | "
-                            f"PE hedge {int(self.sell_pe_strike - hedge_offset)} "
-                            f"entry={self.buy_pe_entry_ltp:.2f} exit={buy_pe_exit:.2f} "
-                            f"PnL/share={buy_pe_exit - self.buy_pe_entry_ltp:+.2f} × "
-                            f"lot={hedge_lot} × qty={hedge_qty} = ₹{buy_pe_pnl:+.2f} | "
-                            f"Hedge Combined=₹{buy_ce_pnl + buy_pe_pnl:+.2f}"
-                        )
-                    else:
-                        logger.warning("[SellManager][Backtest] Could not fetch EOD exit LTP for hedge legs.")
-            else:
-                logger.warning(f"[SellManager][Backtest] Could not fetch exit LTP for sell legs at {timestamp}. PnL not calculated.")
+    # ─────────────────────────────────────────────────────────────────────
+    # Backward-compat stub used by base_orchestrator.broadcast_signal
+    # ─────────────────────────────────────────────────────────────────────
 
     def get_buy_strike(self, direction):
         """
-        Returns the hedge (BUY) strike and instrument_key for the given signal direction.
-          CALL signal → buy CE at sell_ce_strike + hedge_offset  (key stored as buy_ce_key)
-          PUT  signal → buy PE at sell_pe_strike - hedge_offset  (key stored as buy_pe_key)
-        Returns (None, None) if strangle not placed or hedge key was not resolved.
+        No longer drives hedge selection — buy strike is always ATM
+        (handled by signal_monitor / trade_executor).
+        Returning (None, None) allows broadcast_signal to proceed normally.
         """
-        if not self.strangle_placed:
-            return None, None
+        return None, None
 
-        hedge_offset = self.orchestrator.config_manager.get_int(
-            self.orchestrator.instrument_name, 'hedge_offset', 150)
+    # ─────────────────────────────────────────────────────────────────────
+    # Backtest support
+    # ─────────────────────────────────────────────────────────────────────
 
-        if direction == 'CALL':
-            hedge_strike = self.sell_ce_strike + hedge_offset
-            hedge_key = self.buy_ce_key
-        elif direction == 'PUT':
-            hedge_strike = self.sell_pe_strike - hedge_offset
-            hedge_key = self.buy_pe_key
-        else:
-            return None, None
+    async def _find_best_backtest_candidate(self, candidates, timestamp, ltp_min, ltp_target):
+        """Backtest: fetch real historical LTPs and apply the same selection logic."""
+        best_diff = float('inf')
+        best_strike = best_key = best_ltp = None
+        for strike, inst_key in candidates:
+            hist_ltp = await self.orchestrator._get_ltp_for_backtest_instrument(
+                inst_key, timestamp)
+            if hist_ltp and hist_ltp >= ltp_min:
+                diff = abs(hist_ltp - ltp_target)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_strike, best_key, best_ltp = strike, inst_key, hist_ltp
+        return best_strike, best_key, best_ltp
 
-        if not hedge_key:
-            logger.warning(f"[SellManager] No stored hedge key for {direction} (hedge strike {hedge_strike})")
-            return None, None
+    async def execute_short_strangle_backtest(self, timestamp):
+        """
+        Backtest entry point — evaluate candidates at `timestamp`, pick best by
+        LTP, check slope, enter each side that qualifies.
+        Called from backtest orchestrator when the sell start time is reached.
+        """
+        if self.strangle_closed or (self.ce_placed and self.pe_placed):
+            return
+        if not self.ce_candidates and not self.pe_candidates:
+            logger.warning("[SellManager][Backtest] No candidates built — skipping entry.")
+            return
 
-        return hedge_strike, hedge_key
+        ltp_min = self._cfg('ltp_min', float, 50.0)
+        ltp_target = self._cfg('ltp_target', float, 50.0)
+        product_type = self._cfg('product_type', str, 'NRML')
+
+        for side in ['CE', 'PE']:
+            placed = self.ce_placed if side == 'CE' else self.pe_placed
+            if placed:
+                continue
+            candidates = self.ce_candidates if side == 'CE' else self.pe_candidates
+            strike, inst_key, ltp = await self._find_best_backtest_candidate(
+                candidates, timestamp, ltp_min, ltp_target)
+            if strike is None:
+                logger.info(
+                    f"[SellManager][Backtest] {side}: no candidate with "
+                    f"hist LTP >= {ltp_min} at {timestamp}.")
+                continue
+
+            slope_ok = await self._check_slope_decreasing(inst_key, timestamp)
+            if not slope_ok:
+                logger.info(
+                    f"[SellManager][Backtest] {side} {int(strike)}: "
+                    f"LTP={ltp:.2f} OK but slope not decreasing at {timestamp}.")
+                continue
+
+            expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(
+                self.expiry, {})
+            contract = expiry_strikes.get(float(strike), {}).get(side)
+            if not contract:
+                logger.error(
+                    f"[SellManager][Backtest] {side} strike {strike} "
+                    f"not in contract_lookup.")
+                continue
+
+            logger.info(
+                f"[SellManager][Backtest PAPER SELL {product_type}] "
+                f"{side}: strike={int(strike)} histLTP={ltp:.2f}")
+
+            if side == 'CE':
+                self.ce_placed = True
+                self.ce_searching = False
+                self.ce_strike = strike
+                self.ce_key = inst_key
+                self.ce_entry_ltp = ltp
+                self.ce_entry_timestamp = timestamp
+                self.ce_contract = contract
+            else:
+                self.pe_placed = True
+                self.pe_searching = False
+                self.pe_strike = strike
+                self.pe_key = inst_key
+                self.pe_entry_ltp = ltp
+                self.pe_entry_timestamp = timestamp
+                self.pe_contract = contract
+
+        self.save_state()
+
+    # ─────────────────────────────────────────────────────────────────────
+    # State persistence
+    # ─────────────────────────────────────────────────────────────────────
 
     def save_state(self):
-        """Persists strangle state to JSON so a mid-day restart doesn't re-place orders."""
         state = {
-            'strangle_placed': self.strangle_placed,
+            'ce_placed': self.ce_placed,
+            'pe_placed': self.pe_placed,
+            'ce_strike': self.ce_strike,
+            'pe_strike': self.pe_strike,
+            'ce_key': self.ce_key,
+            'pe_key': self.pe_key,
+            'ce_entry_ltp': self.ce_entry_ltp,
+            'pe_entry_ltp': self.pe_entry_ltp,
             'strangle_closed': self.strangle_closed,
-            'sell_ce_strike': self.sell_ce_strike,
-            'sell_pe_strike': self.sell_pe_strike,
-            'sell_ce_key': self.sell_ce_key,
-            'sell_pe_key': self.sell_pe_key,
-            'buy_ce_key': self.buy_ce_key,
-            'buy_pe_key': self.buy_pe_key,
-            'sell_ce_entry_ltp': self.sell_ce_entry_ltp,
-            'sell_pe_entry_ltp': self.sell_pe_entry_ltp,
-            'buy_ce_entry_ltp': self.buy_ce_entry_ltp,
-            'buy_pe_entry_ltp': self.buy_pe_entry_ltp,
-            'hedge_offset': self.hedge_offset,
-            'expiry': self.expiry.isoformat() if self.expiry else None
+            'expiry': self.expiry.isoformat() if self.expiry else None,
         }
         try:
             os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
             with open(self.state_file, 'w') as f:
                 json.dump(state, f, indent=2)
-            logger.debug(f"[SellManager] State saved to {self.state_file}")
         except Exception as e:
             logger.error(f"[SellManager] Failed to save state: {e}")
 
     def load_state(self):
-        """Restores strangle state from JSON file if it exists and is from today's expiry."""
         if not os.path.exists(self.state_file):
             return
-
         try:
             with open(self.state_file, 'r') as f:
                 state = json.load(f)
-
             expiry_str = state.get('expiry')
             expiry = datetime.date.fromisoformat(expiry_str) if expiry_str else None
-
             if expiry and expiry < datetime.date.today():
-                logger.info(f"[SellManager] Stale state file (expiry {expiry}), ignoring.")
+                logger.info(f"[SellManager] Stale state (expiry {expiry}), ignoring.")
                 return
-
-            self.strangle_placed = state.get('strangle_placed', False)
+            self.ce_placed = state.get('ce_placed', False)
+            self.pe_placed = state.get('pe_placed', False)
+            self.ce_strike = state.get('ce_strike')
+            self.pe_strike = state.get('pe_strike')
+            self.ce_key = state.get('ce_key')
+            self.pe_key = state.get('pe_key')
+            self.ce_entry_ltp = state.get('ce_entry_ltp')
+            self.pe_entry_ltp = state.get('pe_entry_ltp')
             self.strangle_closed = state.get('strangle_closed', False)
-            self.sell_ce_strike = state.get('sell_ce_strike')
-            self.sell_pe_strike = state.get('sell_pe_strike')
-            self.sell_ce_key = state.get('sell_ce_key')
-            self.sell_pe_key = state.get('sell_pe_key')
-            self.buy_ce_key = state.get('buy_ce_key')
-            self.buy_pe_key = state.get('buy_pe_key')
-            self.sell_ce_entry_ltp = state.get('sell_ce_entry_ltp')
-            self.sell_pe_entry_ltp = state.get('sell_pe_entry_ltp')
-            self.buy_ce_entry_ltp = state.get('buy_ce_entry_ltp')
-            self.buy_pe_entry_ltp = state.get('buy_pe_entry_ltp')
-            self.hedge_offset = state.get('hedge_offset')
             self.expiry = expiry
-
-            if self.strangle_placed:
-                logger.info(
-                    f"[SellManager] Restored state: "
-                    f"CE {self.sell_ce_strike} | PE {self.sell_pe_strike} | "
-                    f"Hedge CE key:{self.buy_ce_key} | Hedge PE key:{self.buy_pe_key} | "
-                    f"hedge_offset:{self.hedge_offset} | Expiry: {expiry} | Closed: {self.strangle_closed}"
-                )
+            logger.info(
+                f"[SellManager] State loaded: CE={self.ce_placed} PE={self.pe_placed} "
+                f"expiry={expiry}")
         except Exception as e:
             logger.error(f"[SellManager] Failed to load state: {e}")

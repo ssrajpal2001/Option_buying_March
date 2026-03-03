@@ -7,7 +7,9 @@
         },
         "buy": {
             "enabled": true,
+            "start_time": "09:17",
             "entry_type": "BUY",
+            "product_type": "MIS",
             "signal_expiry": "WEEKLY",
             "trade_expiry": "WEEKLY",
             "entry_formula": "vwap_slope",
@@ -89,45 +91,46 @@
             }
         },
         "sell": {
-            "enabled": false,
+            "enabled": true,
+            "start_time": "09:20",
             "entry_type": "SELL",
+            "product_type": "NRML",
+            "buy_product_type": "MIS",
+            "ltp_target": 50,
+            "ltp_min": 50,
+            "ltp_exit_min": 20,
+            "itm_count": 2,
             "signal_expiry": "WEEKLY",
             "trade_expiry": "WEEKLY",
-            "entry_formula": "pattern AND vwap AND vwap_slope AND s1_low",
-            "exit_formula": "r1_high OR vwap_slope OR tsl",
+            "entry_formula": "vwap_slope",
+            "exit_formula": "combined_vwap_slope OR ltp_below_min",
             "indicators": {
-                "pattern": {
-                    "tf": 1
-                },
-                "vwap": {
-                    "tf": 1,
-                    "check_mode": "TICK"
-                },
                 "vwap_slope": {
                     "tf": 1,
-                    "check_mode": "CLOSE",
+                    "check_mode": "TICK",
                     "occurrences": 1,
-                    "operator": "<"
-                },
-                "s1_low": {
-                    "tf": 3,
-                    "check_mode": "TICK"
+                    "operator": "<",
+                    "threshold": 0.0
                 }
             },
             "exit_indicators": {
-                "pattern": {
-                    "tf": 1
-                },
-                "r1_high": {
-                    "tf": 5,
-                    "fast_tf": 1,
-                    "dynamic_tf": true
-                },
-                "vwap_slope": {
+                "combined_vwap_slope": {
                     "tf": 1,
-                    "check_mode": "CLOSE",
+                    "check_mode": "TICK",
+                    "occurrences": 1,
                     "operator": ">",
-                    "occurrences": 1
+                    "threshold": 0.0
+                },
+                "individual_vwap_slope": {
+                    "tf": 1,
+                    "check_mode": "TICK",
+                    "occurrences": 1,
+                    "operator": ">",
+                    "threshold": 0.0
+                },
+                "ltp_below_min": {
+                    "enabled": true,
+                    "threshold": 20
                 },
                 "tsl": {
                     "enabled": true,

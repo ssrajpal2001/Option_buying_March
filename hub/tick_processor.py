@@ -17,6 +17,59 @@ class TickProcessor:
         self.last_mgmt_check_time = 0
         self.last_heartbeat_time = 0
 
+    def _get_buy_start_time(self):
+        """Read buy.start_time from strategy_logic.json. Defaults to 09:17."""
+        import datetime as _dt
+        try:
+            raw = self.orchestrator.json_config.get_value(
+                f"{self.orchestrator.instrument_name}.buy.start_time")
+            if raw:
+                parts = str(raw).split(":")
+                return _dt.time(int(parts[0]), int(parts[1]))
+        except Exception:
+            pass
+        return _dt.time(9, 17)
+
+    def _build_sell_ticks(self, backtest_current_tick=None):
+        """
+        Build {inst_key: {'ltp': float}} for all sell candidate keys.
+        Live: reads from state_manager.option_prices.
+        Backtest: maps sell candidate strikes to LTPs from backtest_current_tick.
+        """
+        ticks = {}
+        if not self.orchestrator.is_backtest:
+            for inst_key, ltp in self.state_manager.option_prices.items():
+                if ltp is not None:
+                    ticks[inst_key] = {'ltp': float(ltp)}
+            return ticks
+
+        # Backtest: backtest_current_tick = {strike: {'ce_ltp': x, 'pe_ltp': x, ...}}
+        if not backtest_current_tick:
+            return ticks
+        sm = self.orchestrator.sell_manager
+        for strike_f, inst_key in (sm.ce_candidates or []):
+            strike_data = backtest_current_tick.get(float(strike_f), {})
+            ltp = strike_data.get('ce_ltp')
+            if ltp is not None:
+                ticks[inst_key] = {'ltp': float(ltp)}
+        for strike_f, inst_key in (sm.pe_candidates or []):
+            strike_data = backtest_current_tick.get(float(strike_f), {})
+            ltp = strike_data.get('pe_ltp')
+            if ltp is not None:
+                ticks[inst_key] = {'ltp': float(ltp)}
+        # Also include currently placed legs
+        if sm.ce_key and sm.ce_strike:
+            strike_data = backtest_current_tick.get(float(sm.ce_strike), {})
+            ltp = strike_data.get('ce_ltp')
+            if ltp is not None:
+                ticks[sm.ce_key] = {'ltp': float(ltp)}
+        if sm.pe_key and sm.pe_strike:
+            strike_data = backtest_current_tick.get(float(sm.pe_strike), {})
+            ltp = strike_data.get('pe_ltp')
+            if ltp is not None:
+                ticks[sm.pe_key] = {'ltp': float(ltp)}
+        return ticks
+
     def get_tick_data(self, ce_strike, pe_strike, is_backtest, backtest_current_tick=None):
         """
         Constructs a dictionary with all relevant data for the current tick for signal calculation.
@@ -206,10 +259,13 @@ class TickProcessor:
             # Monitoring management is now handled inside each UserSession's SignalMonitor
             # during the breach check loop below.
 
-        # 2. Crossover Breach Check (Per User)
+        # 2. Crossover Breach Check (Per User) — gated by buy.start_time from JSON
+        _buy_start = self._get_buy_start_time()
+        _buy_active = self.orchestrator.is_backtest or timestamp.time() >= _buy_start
+
         any_monitoring = False
         for user_id, session in self.orchestrator.user_sessions.items():
-            if self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0):
+            if _buy_active and (self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0)):
                 await session.signal_monitor.check_crossover_breach(
                     timestamp=timestamp,
                     current_atm=current_atm
@@ -221,7 +277,10 @@ class TickProcessor:
         if self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0):
              self.last_crossover_check_time = now_ts
 
-        if not any_monitoring:
+        if not _buy_active:
+            logger.debug(
+                f"V2: Buy side inactive until {_buy_start} (now {timestamp.strftime('%H:%M:%S')})")
+        elif not any_monitoring:
             # Periodic status log while scanning for a target strike
             if now_ts - self.last_crossover_check_time >= 60.0:
                 logger.debug(f"V2: Scanning watchlist around ATM {current_atm} for target strike...")
@@ -237,6 +296,13 @@ class TickProcessor:
                         current_ticks=current_ticks_for_watchlist,
                         current_atm=current_atm
                     )
+
+        # Condition 4: Sell-side per-tick logic (individual slope entry + LTP exit)
+        if hasattr(self.orchestrator, 'sell_manager'):
+            sm = self.orchestrator.sell_manager
+            if not sm.strangle_closed and (sm.ce_candidates or sm.pe_candidates or sm.ce_placed or sm.pe_placed):
+                sell_ticks = self._build_sell_ticks(backtest_current_tick)
+                await sm.on_tick(sell_ticks, timestamp)
 
         for strike, tick_data in current_ticks_for_watchlist.items():
             # In backtest, we need to manually push ticks to aggregators

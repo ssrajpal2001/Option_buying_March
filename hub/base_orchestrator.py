@@ -155,22 +155,6 @@ class BaseOrchestrator(ABC):
         quantity_multiplier = self.config_manager.get_int(
             self.instrument_name, 'hedge_quantity_multiplier', 2)
 
-        if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed:
-            hedge_strike, hedge_key = self.sell_manager.get_buy_strike(direction)
-            if hedge_strike and hedge_key:
-                logger.info(
-                    f"[{self.instrument_name}] Hedge override: signal strike {strike_price}"
-                    f" → hedge {hedge_strike} (key: {hedge_key}) | qty ×{quantity_multiplier}"
-                )
-                strike_price = hedge_strike
-                instrument_key = hedge_key
-            else:
-                logger.warning(
-                    f"[{self.instrument_name}] Strangle active but hedge key for "
-                    f"{direction} not found — trade BLOCKED (no un-hedged entry allowed)."
-                )
-                return
-
         logger.debug(f"[{self.instrument_name}] Broadcasting {direction} signal ({entry_type}) to {len(self.user_sessions)} users.")
         tasks = []
         for session in self.user_sessions.values():

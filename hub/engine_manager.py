@@ -40,12 +40,26 @@ class EngineManager:
         orch.atm_manager._determine_expiries()
         return orch
 
+    def _get_sell_start_time(self, orch):
+        """Read sell start time from strategy_logic.json with fallback."""
+        raw = orch.json_config.get_value(
+            f"{orch.instrument_name}.sell.start_time")
+        time_str = str(raw) if raw else "09:20"
+        try:
+            parts = time_str.split(":")
+            return datetime.time(int(parts[0]), int(parts[1]))
+        except Exception:
+            return datetime.time(9, 20)
+
     async def run_engines(self):
         start_time = datetime.datetime.strptime(self.config_manager.get('settings', 'start_time'), '%H:%M:%S').time()
         end_time = datetime.datetime.strptime(self.config_manager.get('settings', 'end_time'), '%H:%M:%S').time()
 
         is_initialized, is_trading_active = False, False
         ws_mgr, ws_task, disp_task = None, None, None
+
+        # Track which orchestrators have had candidates built (avoid repeat calls)
+        _sell_candidates_built = set()
 
         while True:
             now = datetime.datetime.now().time()
@@ -91,9 +105,27 @@ class EngineManager:
                 if is_initialized and not is_trading_active:
                     await asyncio.gather(*(m.start(False) for m in self.lifecycle_managers.values()))
                     is_trading_active = True
-                    for orch in orchestrators.values():
-                        if hasattr(orch, 'sell_manager') and not orch.sell_manager.strangle_placed:
-                            await orch.sell_manager.execute_short_strangle(datetime.datetime.now())
+
+                if is_initialized and is_trading_active:
+                    for inst_name, orch in orchestrators.items():
+                        if not hasattr(orch, 'sell_manager'):
+                            continue
+                        sell_enabled = orch.json_config.get_value(
+                            f"{orch.instrument_name}.sell.enabled")
+                        if sell_enabled is False or sell_enabled == 'false':
+                            continue
+
+                        sell_start = self._get_sell_start_time(orch)
+
+                        # Build candidates once when sell start time is reached
+                        if now >= sell_start and inst_name not in _sell_candidates_built:
+                            if not orch.sell_manager.strangle_closed:
+                                logger.info(
+                                    f"[EngineManager] {inst_name} sell start time "
+                                    f"{sell_start} reached — building candidates.")
+                                await orch.sell_manager.build_candidates_for_all_sides(
+                                    datetime.datetime.now())
+                                _sell_candidates_built.add(inst_name)
             else:
                 if is_trading_active:
                     for orch in orchestrators.values():
@@ -106,5 +138,7 @@ class EngineManager:
                     if ws_task: ws_task.cancel()
                     if disp_task: disp_task.cancel()
                     self.broker_manager.shutdown(); self.lifecycle_managers.clear()
-                    self.shared_display_manager.orchestrators.clear(); is_initialized = False
+                    self.shared_display_manager.orchestrators.clear()
+                    is_initialized = False
+                    _sell_candidates_built.clear()
             await asyncio.sleep(5)
