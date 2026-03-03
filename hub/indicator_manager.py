@@ -104,6 +104,16 @@ class IndicatorManager:
             if live_atp and live_atp > 0:
                 return float(live_atp)
 
+        atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
+        if atp_hist:
+            current_minute = timestamp.replace(second=0, microsecond=0)
+            if current_minute.tzinfo is None:
+                current_minute = current_minute.tz_localize('Asia/Kolkata')
+            candidates = {ts: v for ts, v in atp_hist.items()
+                          if isinstance(ts, type(current_minute)) and ts <= current_minute}
+            if candidates:
+                return float(atp_hist[max(candidates.keys())])
+
         current_day = timestamp.date()
         state_key = (inst_key, current_day)
         state = self._vwap_state.get(state_key)
@@ -147,7 +157,7 @@ class IndicatorManager:
         if cached and (timestamp - cached['ts']).total_seconds() < 5.0:
             return cached['val']
 
-        if not self.orchestrator.is_backtest and live_vwap is not None:
+        if live_vwap is not None:
             atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
             if atp_hist:
                 current_interval_start = timestamp.replace(

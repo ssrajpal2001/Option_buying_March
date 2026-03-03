@@ -29,6 +29,25 @@ class BacktestOrchestrator(BaseOrchestrator):
             self.atm_manager.set_ready()
             self.atm_manager._determine_expiries(backtest_date)
             await self.backtest_data_mgr.pre_fetch_underlying_data(backtest_date_str)
+
+            import os, csv
+            atp_file = os.path.join(os.getcwd(), f"atp_data_{self.instrument_name}_{backtest_date_str}.csv")
+            if os.path.exists(atp_file):
+                if not hasattr(self.state_manager, 'atp_history'):
+                    self.state_manager.atp_history = {}
+                with open(atp_file, newline='') as _f:
+                    for _row in csv.DictReader(_f):
+                        _ikey = _row['instrument_key']
+                        _raw_ts = pd.Timestamp(_row['minute_ts'])
+                        _ts = _raw_ts.tz_localize('Asia/Kolkata') if _raw_ts.tzinfo is None else _raw_ts.tz_convert('Asia/Kolkata')
+                        _atp_val = float(_row['atp']) if _row.get('atp') else None
+                        if _atp_val:
+                            if _ikey not in self.state_manager.atp_history:
+                                self.state_manager.atp_history[_ikey] = {}
+                            self.state_manager.atp_history[_ikey][_ts] = _atp_val
+                logger.info(f"[Backtest] Loaded real ATP history from {atp_file}")
+            else:
+                logger.warning(f"[Backtest] ATP file not found: {atp_file}. Slope will use synthetic OHLC VWAP.")
         else:
             logger.error("Backtest date not found. Cannot pre-fetch data.")
 

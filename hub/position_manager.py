@@ -523,6 +523,11 @@ class PositionManager:
             cooldown_ts = timestamp + pd.Timedelta(seconds=60)
             setattr(self.state_manager, cooldown_attr, cooldown_ts)
             logger.info(f"V2 MGMT: [{side}] Re-entry cooldown active until {cooldown_ts.strftime('%H:%M:%S')} (60s)")
+            monitor_data = self.state_manager.dual_sr_monitoring_data
+            side_key = 'ce_data' if side == 'CALL' else 'pe_data'
+            side_data = monitor_data.get(side_key) if monitor_data else None
+            if side_data and 'criteria_state' in side_data:
+                side_data['criteria_state']['vwap_slope'] = False
 
         if self.orchestrator.is_backtest:
             strategy_log = pos_data.get('exit_narrative', "") if pos_data else ""

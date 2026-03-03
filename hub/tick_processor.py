@@ -157,10 +157,11 @@ class TickProcessor:
             if tick_data:
                 current_ticks_for_watchlist[strike] = tick_data
 
-        # DATA RECORDING (ATM +/- 10)
+        # DATA RECORDING (ATM +/- 10) — once per minute at minute boundary
         if not self.orchestrator.is_backtest and self.orchestrator.data_recorder:
-            if now_ts - getattr(self, '_last_record_time', 0) >= 1.0:
-                self._last_record_time = now_ts
+            current_minute = timestamp.replace(second=0, microsecond=0)
+            if current_minute != getattr(self, '_last_record_minute', None):
+                self._last_record_minute = current_minute
                 recording_strikes = self.strike_manager.get_recording_watchlist(current_atm)
                 recording_data = {}
                 for strike in recording_strikes:
