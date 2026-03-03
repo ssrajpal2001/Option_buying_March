@@ -108,13 +108,23 @@ async def list_zerodha_accounts():
     creds = _load_creds()
     trader_cfg = configparser.ConfigParser()
     trader_cfg.read(str(CONFIG_FILE))
-    zerodha_cred_sections = set()
-    for section in trader_cfg.sections():
-        if trader_cfg.get(section, 'client', fallback='').strip().lower() == 'zerodha':
-            cred_section = trader_cfg.get(section, 'credentials', fallback=section).strip()
-            if cred_section in creds:
-                zerodha_cred_sections.add(cred_section)
-    return JSONResponse({"accounts": sorted(zerodha_cred_sections)})
+    candidates = []
+    if 'Zerodha' in trader_cfg and trader_cfg.get('Zerodha', 'client_list', fallback=''):
+        raw = trader_cfg.get('Zerodha', 'client_list', fallback='')
+        candidates = [x.strip() for x in raw.split(',') if x.strip()]
+    if not candidates:
+        for section in trader_cfg.sections():
+            if trader_cfg.get(section, 'client', fallback='').strip().lower() == 'zerodha':
+                cred_section = trader_cfg.get(section, 'credentials', fallback=section).strip()
+                candidates.append(cred_section)
+    seen = set()
+    result = []
+    for name in candidates:
+        cred_section = trader_cfg.get(name, 'credentials', fallback=name).strip() if name in trader_cfg else name
+        if cred_section in creds and cred_section not in seen:
+            seen.add(cred_section)
+            result.append(cred_section)
+    return JSONResponse({"accounts": sorted(result)})
 
 
 @router.get("/brokers/zerodha/login-url")
