@@ -1,6 +1,13 @@
 {
     "NIFTY": {
         "range_915_gate_enabled": false,
+        "oi_exit": {
+            "enabled": true,
+            "strikes_range": 2,
+            "call_oi_increase_pct": 10,
+            "put_oi_increase_pct": 10,
+            "check_interval_seconds": 60
+        },
         "profit_target_exit": {
             "enabled": false,
             "points": 60

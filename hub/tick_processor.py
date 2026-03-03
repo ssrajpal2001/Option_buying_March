@@ -304,6 +304,10 @@ class TickProcessor:
                 sell_ticks = self._build_sell_ticks(backtest_current_tick)
                 await sm.on_tick(sell_ticks, timestamp)
 
+        # Condition 5: OI-based exit monitor (self-throttled via check_interval_seconds)
+        if hasattr(self.orchestrator, 'oi_exit_monitor') and current_atm:
+            await self.orchestrator.oi_exit_monitor.check(timestamp, current_atm)
+
         for strike, tick_data in current_ticks_for_watchlist.items():
             # In backtest, we need to manually push ticks to aggregators
             if self.orchestrator.is_backtest:

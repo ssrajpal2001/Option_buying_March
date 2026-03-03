@@ -42,6 +42,7 @@ class StateManager:
         self.option_ivs = {}
         self.option_vegas = {}
         self.option_volumes = {}
+        self.option_oi = {}
         self.option_bid_ask = {}
         self.last_tick_times = {}
         self.last_exchange_time = None # Latest timestamp from the exchange (currentTs)
@@ -465,6 +466,7 @@ class StateManager:
         self.option_ivs.clear()
         self.option_vegas.clear()
         self.option_volumes.clear()
+        self.option_oi.clear()
         self.option_bid_ask.clear()
         self.last_tick_times.clear()
         self.call_position.clear()

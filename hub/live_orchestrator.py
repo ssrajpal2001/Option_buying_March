@@ -15,6 +15,9 @@ class LiveOrchestrator(BaseOrchestrator):
         self.sell_manager = SellManager(self)
         self.sell_manager.load_state()
 
+        from hub.oi_exit_monitor import OIExitMonitor
+        self.oi_exit_monitor = OIExitMonitor(self)
+
         # Dynamic watchlist management for traded ITM contracts
         event_bus.subscribe('ADD_TO_WATCHLIST', self.handle_add_to_watchlist)
         event_bus.subscribe('REMOVE_FROM_WATCHLIST', self.handle_remove_from_watchlist)

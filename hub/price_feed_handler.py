@@ -241,11 +241,12 @@ class PriceFeedHandler:
             self.state_manager.last_tick_times[instrument_key] = timestamp
             self._sync_market_data('last_tick_times', instrument_key, timestamp)
 
-            greeks, ltp, iv, volume, market_level, atp = None, None, None, None, None, None
+            greeks, ltp, iv, volume, market_level, atp, oi_value = None, None, None, None, None, None, 0
 
             if feed.HasField('fullFeed'):
                 ff = feed.fullFeed.marketFF
                 greeks, ltp, iv, volume, market_level, atp = ff.optionGreeks, ff.ltpc.ltp, ff.iv, ff.vtt, ff.marketLevel, ff.atp
+                oi_value = getattr(ff, 'oi', 0) or 0
             elif feed.HasField('ltpc'):
                 ltp = feed.ltpc.ltp
 
@@ -319,6 +320,11 @@ class PriceFeedHandler:
             if iv is not None and iv != 0.0:
                 self.state_manager.option_ivs[instrument_key] = iv
                 self._sync_market_data('option_ivs', instrument_key, iv)
+
+            # --- Store OI unconditionally (always, regardless of oi_exit enabled flag) ---
+            if oi_value and oi_value > 0:
+                self.state_manager.option_oi[instrument_key] = oi_value
+                self._sync_market_data('option_oi', instrument_key, oi_value)
 
             # Volume and incremental volume calculation
             volume_inc = 0

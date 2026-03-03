@@ -213,6 +213,23 @@ class BacktestOrchestrator(BaseOrchestrator):
         relevant = ohlc_df[ohlc_df.index < bucket_ts]
         return float(relevant.iloc[-1]['close']) if not relevant.empty else None
 
+    async def _get_oi_for_backtest_instrument(self, instrument_key, timestamp):
+        import pytz
+        kolkata = pytz.timezone('Asia/Kolkata')
+        ts = kolkata.localize(timestamp) if timestamp.tzinfo is None else timestamp.astimezone(kolkata)
+        bucket_ts = ts.replace(second=0, microsecond=0)
+        ohlc_df = await self.data_manager.get_historical_ohlc(instrument_key, 1, current_timestamp=bucket_ts, for_full_day=True)
+        if ohlc_df is None or ohlc_df.empty or 'oi' not in ohlc_df.columns: return None
+        if ohlc_df.index.tz is None: ohlc_df.index = ohlc_df.index.tz_localize('Asia/Kolkata')
+        row = ohlc_df.loc[bucket_ts] if bucket_ts in ohlc_df.index else None
+        if row is None:
+            relevant = ohlc_df[ohlc_df.index < bucket_ts]
+            row = relevant.iloc[-1] if not relevant.empty else None
+        if row is not None:
+            oi_val = row.get('oi') if hasattr(row, 'get') else row['oi']
+            return float(oi_val) if oi_val and float(oi_val) > 0 else None
+        return None
+
     async def _populate_state_for_tick(self, timestamp, tick_df):
         if tick_df.empty: return
         fut_p = tick_df['spot_price'].iloc[0] if 'spot_price' in tick_df.columns and pd.notna(tick_df['spot_price'].iloc[0]) else 0
@@ -253,6 +270,12 @@ class BacktestOrchestrator(BaseOrchestrator):
             ck, pk = self.atm_manager.find_instrument_key_by_strike(strike, 'CALL', exp), self.atm_manager.find_instrument_key_by_strike(strike, 'PUT', exp)
             if ck and ce_p: self.state_manager.option_prices[ck] = ce_p
             if pk and pe_p: self.state_manager.option_prices[pk] = pe_p
+            if ck:
+                ce_oi = await self._get_oi_for_backtest_instrument(ck, timestamp)
+                if ce_oi: self.state_manager.option_oi[ck] = ce_oi
+            if pk:
+                pe_oi = await self._get_oi_for_backtest_instrument(pk, timestamp)
+                if pe_oi: self.state_manager.option_oi[pk] = pe_oi
 
         for session in self.user_sessions.values():
             session.state_manager.timestamp = timestamp
@@ -260,6 +283,7 @@ class BacktestOrchestrator(BaseOrchestrator):
             session.state_manager.index_price = idx_p
             session.state_manager.option_prices.update(self.state_manager.option_prices)
             session.state_manager.option_data.update(self.state_manager.option_data)
+            session.state_manager.option_oi.update(self.state_manager.option_oi)
 
     async def _get_ltp_for_strike(self, strike, side, timestamp):
         expiry = self.atm_manager.signal_expiry_date
