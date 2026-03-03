@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% set active_page = "brokers" %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Broker Management</h1>
+    <p class="text-xs mt-1" style="color:#64748b">Credential changes require a bot restart to take effect.</p>
+  </div>
+  <button onclick="restartBot()" class="btn-primary px-5 py-2 text-sm">↻ Restart Bot</button>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Daily Token Refresh</div>
+    <p class="text-xs mb-3" style="color:#94a3b8">Paste today's Upstox access token here. The bot will restart automatically.</p>
+    <div class="mb-3">
+      <label class="block text-xs mb-1" style="color:#94a3b8">Select Broker Account</label>
+      <select id="token-broker" class="input-field">
+        <option value="upstox_1">upstox_1</option>
+        <option value="upstox_2">upstox_2</option>
+      </select>
+    </div>
+    <div class="mb-4">
+      <label class="block text-xs mb-1" style="color:#94a3b8">New Access Token</label>
+      <textarea id="token-value" class="input-field h-24 resize-none text-xs" placeholder="eyJ0eXAiOiJKV1Qi..."></textarea>
+    </div>
+    <button onclick="updateToken(true)" class="btn-primary w-full py-2 text-sm">Update Token &amp; Restart Bot</button>
+    <button onclick="updateToken(false)" class="btn-ghost w-full py-2 text-sm mt-2">Update Token Only (no restart)</button>
+  </div>
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Active Broker</div>
+    <p class="text-xs mb-3" style="color:#94a3b8">Select which broker handles trade execution. Bot restart required.</p>
+    <div id="broker-list" class="space-y-2 mb-4">
+      <div style="color:#64748b" class="text-sm">Loading brokers…</div>
+    </div>
+    <div class="mb-3">
+      <label class="block text-xs mb-1" style="color:#94a3b8">Active Broker (comma separated)</label>
+      <input type="text" id="active-broker-input" class="input-field" placeholder="PaperTrade"/>
+    </div>
+    <button onclick="setActiveBroker()" class="btn-ghost w-full py-2 text-sm">Set Active Broker</button>
+  </div>
+
+</div>
+
+<div class="card p-5 mb-4">
+  <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Configured Brokers</div>
+  <div id="brokers-table" class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="color:#64748b;border-bottom:1px solid #334155">
+          <th class="text-left pb-2 pr-4">Account Name</th>
+          <th class="text-left pb-2 pr-4">API Key</th>
+          <th class="text-left pb-2 pr-4">Token (partial)</th>
+          <th class="text-left pb-2">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="brokers-tbody">
+        <tr><td colspan="4" style="color:#64748b" class="py-4 text-center">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="cred-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,0.7)">
+  <div class="card p-6 w-full max-w-lg mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-bold text-white" id="modal-title">Edit Credentials</h2>
+      <button onclick="closeModal()" style="color:#64748b" class="text-xl">×</button>
+    </div>
+    <input type="hidden" id="modal-broker"/>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">API Key</label>
+        <input type="text" id="modal-api-key" class="input-field"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">API Secret</label>
+        <input type="password" id="modal-api-secret" class="input-field" placeholder="Leave blank to keep existing"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Client ID</label>
+        <input type="text" id="modal-client-id" class="input-field"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Access Token</label>
+        <textarea id="modal-token" class="input-field h-20 resize-none text-xs" placeholder="eyJ..."></textarea>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-4">
+      <button onclick="saveCredentials()" class="btn-primary flex-1 py-2 text-sm">Save Credentials</button>
+      <button onclick="closeModal()" class="btn-ghost flex-1 py-2 text-sm">Cancel</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let brokersData = [];
+
+async function loadBrokers() {
+  try {
+    const r = await fetch('/api/brokers');
+    const d = await r.json();
+    brokersData = d.brokers || [];
+    renderBrokers();
+  } catch(e) {
+    showToast('Failed to load brokers', 'error');
+  }
+}
+
+function renderBrokers() {
+  const tbody = document.getElementById('brokers-tbody');
+  const list = document.getElementById('broker-list');
+
+  if (!brokersData.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4" style="color:#64748b">No brokers configured</td></tr>';
+    list.innerHTML = '<div style="color:#64748b" class="text-sm">No brokers found</div>';
+    return;
+  }
+
+  tbody.innerHTML = brokersData.map(b => {
+    const f = b.fields || {};
+    const key = f.api_key || '--';
+    const token = f.access_token || '--';
+    return `<tr style="border-bottom:1px solid #1e293b">
+      <td class="py-3 pr-4 font-mono text-xs text-white">${b.name}</td>
+      <td class="py-3 pr-4 text-xs" style="color:#94a3b8">${key}</td>
+      <td class="py-3 pr-4 text-xs" style="color:#94a3b8">${token}</td>
+      <td class="py-3">
+        <button onclick="openModal('${b.name}')" class="text-xs px-3 py-1 rounded" style="background:#1e293b;color:#00d4aa">Edit</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  list.innerHTML = brokersData.map(b => `
+    <div class="flex items-center gap-2 text-sm">
+      <span class="w-2 h-2 rounded-full" style="background:#34d399"></span>
+      <span style="color:#e2e8f0">${b.name}</span>
+    </div>
+  `).join('');
+}
+
+async function updateToken(withRestart) {
+  const broker = document.getElementById('token-broker').value;
+  const token = document.getElementById('token-value').value.trim();
+  if (!token) { showToast('Please paste a token first', 'error'); return; }
+  try {
+    const r = await fetch(`/api/brokers/${broker}/token`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({token})
+    });
+    const d = await r.json();
+    showToast(d.message, d.success ? 'success' : 'error');
+    if (d.success && withRestart) {
+      setTimeout(restartBot, 500);
+    }
+  } catch(e) { showToast('Request failed', 'error'); }
+}
+
+async function setActiveBroker() {
+  const val = document.getElementById('active-broker-input').value.trim();
+  if (!val) { showToast('Enter broker name(s)', 'error'); return; }
+  try {
+    const r = await fetch('/api/brokers/active', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({active_broker: val})
+    });
+    const d = await r.json();
+    showToast(d.message, d.success ? 'success' : 'error');
+  } catch(e) { showToast('Request failed', 'error'); }
+}
+
+function openModal(brokerName) {
+  document.getElementById('modal-broker').value = brokerName;
+  document.getElementById('modal-title').textContent = `Edit: ${brokerName}`;
+  const b = brokersData.find(x => x.name === brokerName);
+  const f = (b && b.fields) || {};
+  document.getElementById('modal-api-key').value = f.api_key === '...' ? '' : (f.api_key || '');
+  document.getElementById('modal-api-secret').value = '';
+  document.getElementById('modal-client-id').value = f.client_id || '';
+  document.getElementById('modal-token').value = '';
+  document.getElementById('cred-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('cred-modal').classList.add('hidden');
+}
+
+async function saveCredentials() {
+  const broker = document.getElementById('modal-broker').value;
+  const body = {};
+  const apiKey = document.getElementById('modal-api-key').value.trim();
+  const apiSecret = document.getElementById('modal-api-secret').value.trim();
+  const clientId = document.getElementById('modal-client-id').value.trim();
+  const token = document.getElementById('modal-token').value.trim();
+  if (apiKey) body.api_key = apiKey;
+  if (apiSecret) body.api_secret = apiSecret;
+  if (clientId) body.client_id = clientId;
+  if (token) body.access_token = token;
+  try {
+    const r = await fetch(`/api/brokers/${broker}/credentials`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    showToast(d.message, d.success ? 'success' : 'error');
+    if (d.success) { closeModal(); loadBrokers(); }
+  } catch(e) { showToast('Request failed', 'error'); }
+}
+
+async function restartBot() {
+  try {
+    const r = await fetch('/api/bot/restart', {method:'POST'});
+    const d = await r.json();
+    showToast(d.message, d.success ? 'success' : 'error');
+  } catch(e) { showToast('Request failed', 'error'); }
+}
+
+loadBrokers();
+</script>
+{% endblock %}

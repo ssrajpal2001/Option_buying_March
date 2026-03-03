@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% set active_page = "strategy" %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Strategy Settings</h1>
+    <p class="text-xs mt-1" style="color:#64748b">Changes to JSON params take effect on next tick — no restart needed.</p>
+  </div>
+  <button onclick="saveAll()" class="btn-primary px-6 py-2 text-sm">Save All Changes</button>
+</div>
+
+<div id="settings-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Master Switches</div>
+    <div class="space-y-3" id="toggles">
+      <div class="flex items-center justify-between">
+        <span class="text-sm">Buy Side Enabled</span>
+        <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.buy.enabled" onclick="toggleSwitch(this)">
+          <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+        </button>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm">Sell Side Enabled</span>
+        <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell.enabled" onclick="toggleSwitch(this)">
+          <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+        </button>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm">OI Exit Enabled</span>
+        <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.oi_exit.enabled" onclick="toggleSwitch(this)">
+          <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+        </button>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm">Profit Target Exit</span>
+        <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.profit_target_exit.enabled" onclick="toggleSwitch(this)">
+          <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+        </button>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm">TSL (Buy Side)</span>
+        <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.buy.exit_indicators.tsl.enabled" onclick="toggleSwitch(this)">
+          <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+        </button>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm">ATR-TSL (Buy Side)</span>
+        <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.buy.exit_indicators.atr_tsl.enabled" onclick="toggleSwitch(this)">
+          <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+        </button>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm">Range 9:15 Gate</span>
+        <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.range_915_gate_enabled" onclick="toggleSwitch(this)">
+          <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Timing & Product Type</div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Buy Start Time</label>
+        <input type="text" id="f-buy-start" class="input-field" placeholder="09:17" data-path="NIFTY.buy.start_time"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Sell Start Time</label>
+        <input type="text" id="f-sell-start" class="input-field" placeholder="09:20" data-path="NIFTY.sell.start_time"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Buy Product Type</label>
+        <select id="f-buy-product" class="input-field" data-path="NIFTY.buy.product_type">
+          <option value="MIS">MIS (Intraday)</option>
+          <option value="NRML">NRML</option>
+          <option value="CNC">CNC</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Sell Product Type</label>
+        <select id="f-sell-product" class="input-field" data-path="NIFTY.sell.product_type">
+          <option value="NRML">NRML</option>
+          <option value="MIS">MIS (Intraday)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Profit Target (points)</label>
+        <input type="number" id="f-pt-points" class="input-field" data-path="NIFTY.profit_target_exit.points"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Sell Side Parameters</div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">LTP Min (entry filter)</label>
+        <input type="number" id="f-ltp-min" class="input-field" data-path="NIFTY.sell.ltp_min"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">LTP Target (nearest to)</label>
+        <input type="number" id="f-ltp-target" class="input-field" data-path="NIFTY.sell.ltp_target"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">LTP Exit Min</label>
+        <input type="number" id="f-ltp-exit" class="input-field" data-path="NIFTY.sell.ltp_exit_min"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">ITM Count (candidates)</label>
+        <input type="number" id="f-itm-count" class="input-field" data-path="NIFTY.sell.itm_count"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">TSL Offset (Sell)</label>
+        <input type="number" id="f-sell-tsl" class="input-field" data-path="NIFTY.sell.exit_indicators.tsl.offset"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">OI Exit Parameters</div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Strikes Range (ATM ± N)</label>
+        <input type="number" id="f-oi-range" class="input-field" data-path="NIFTY.oi_exit.strikes_range"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Call OI Increase % (trigger)</label>
+        <input type="number" id="f-oi-call-pct" class="input-field" step="0.5" data-path="NIFTY.oi_exit.call_oi_increase_pct"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Put OI Increase % (trigger)</label>
+        <input type="number" id="f-oi-put-pct" class="input-field" step="0.5" data-path="NIFTY.oi_exit.put_oi_increase_pct"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Check Interval (seconds)</label>
+        <input type="number" id="f-oi-interval" class="input-field" data-path="NIFTY.oi_exit.check_interval_seconds"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">Buy Side TSL / ATR-TSL</div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">TSL Offset (points)</label>
+        <input type="number" id="f-buy-tsl" class="input-field" data-path="NIFTY.buy.exit_indicators.tsl.offset"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">ATR Length</label>
+        <input type="number" id="f-atr-len" class="input-field" data-path="NIFTY.buy.exit_indicators.atr_tsl.length"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">ATR Multiplier</label>
+        <input type="number" id="f-atr-mult" class="input-field" step="0.1" data-path="NIFTY.buy.exit_indicators.atr_tsl.multiplier"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">ATR Timeframe (minutes)</label>
+        <input type="number" id="f-atr-tf" class="input-field" data-path="NIFTY.buy.exit_indicators.atr_tsl.tf"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p-5">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-4" style="color:#64748b">VWAP Slope</div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Entry Slope Threshold</label>
+        <input type="number" id="f-entry-slope" class="input-field" step="0.001" data-path="NIFTY.buy.indicators.vwap_slope.threshold"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Exit Slope Threshold</label>
+        <input type="number" id="f-exit-slope" class="input-field" step="0.001" data-path="NIFTY.buy.exit_indicators.vwap_slope.threshold"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">VWAP Occurrences (exit)</label>
+        <input type="number" id="f-vwap-occ" class="input-field" data-path="NIFTY.buy.exit_indicators.vwap_slope.occurrences"/>
+      </div>
+      <div>
+        <label class="block text-xs mb-1" style="color:#94a3b8">Sell VWAP Slope Threshold</label>
+        <input type="number" id="f-sell-slope" class="input-field" step="0.001" data-path="NIFTY.sell.indicators.vwap_slope.threshold"/>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let strategyData = {};
+
+const FIELD_MAP = {
+  'f-buy-start':    'NIFTY.buy.start_time',
+  'f-sell-start':   'NIFTY.sell.start_time',
+  'f-buy-product':  'NIFTY.buy.product_type',
+  'f-sell-product': 'NIFTY.sell.product_type',
+  'f-pt-points':    'NIFTY.profit_target_exit.points',
+  'f-ltp-min':      'NIFTY.sell.ltp_min',
+  'f-ltp-target':   'NIFTY.sell.ltp_target',
+  'f-ltp-exit':     'NIFTY.sell.ltp_exit_min',
+  'f-itm-count':    'NIFTY.sell.itm_count',
+  'f-sell-tsl':     'NIFTY.sell.exit_indicators.tsl.offset',
+  'f-oi-range':     'NIFTY.oi_exit.strikes_range',
+  'f-oi-call-pct':  'NIFTY.oi_exit.call_oi_increase_pct',
+  'f-oi-put-pct':   'NIFTY.oi_exit.put_oi_increase_pct',
+  'f-oi-interval':  'NIFTY.oi_exit.check_interval_seconds',
+  'f-buy-tsl':      'NIFTY.buy.exit_indicators.tsl.offset',
+  'f-atr-len':      'NIFTY.buy.exit_indicators.atr_tsl.length',
+  'f-atr-mult':     'NIFTY.buy.exit_indicators.atr_tsl.multiplier',
+  'f-atr-tf':       'NIFTY.buy.exit_indicators.atr_tsl.tf',
+  'f-entry-slope':  'NIFTY.buy.indicators.vwap_slope.threshold',
+  'f-exit-slope':   'NIFTY.buy.exit_indicators.vwap_slope.threshold',
+  'f-vwap-occ':     'NIFTY.buy.exit_indicators.vwap_slope.occurrences',
+  'f-sell-slope':   'NIFTY.sell.indicators.vwap_slope.threshold',
+};
+
+function getNestedValue(obj, path) {
+  return path.split('.').reduce((acc, k) => acc && acc[k] !== undefined ? acc[k] : null, obj);
+}
+
+function setNestedValue(obj, path, value) {
+  const keys = path.split('.');
+  let node = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (!node[keys[i]]) node[keys[i]] = {};
+    node = node[keys[i]];
+  }
+  node[keys[keys.length - 1]] = value;
+}
+
+function initToggles(data) {
+  document.querySelectorAll('.toggle-btn').forEach(btn => {
+    const path = btn.dataset.path;
+    const val = getNestedValue(data, path);
+    setToggleState(btn, !!val);
+  });
+}
+
+function setToggleState(btn, on) {
+  const knob = btn.querySelector('.toggle-knob');
+  if (on) {
+    btn.style.background = '#00d4aa';
+    knob.style.transform = 'translateX(24px)';
+    btn.dataset.value = 'true';
+  } else {
+    btn.style.background = '#475569';
+    knob.style.transform = 'translateX(0)';
+    btn.dataset.value = 'false';
+  }
+}
+
+function toggleSwitch(btn) {
+  const current = btn.dataset.value === 'true';
+  setToggleState(btn, !current);
+}
+
+function initFields(data) {
+  Object.entries(FIELD_MAP).forEach(([id, path]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const val = getNestedValue(data, path);
+    if (val !== null && val !== undefined) el.value = val;
+  });
+}
+
+async function loadStrategy() {
+  try {
+    const r = await fetch('/api/strategy');
+    strategyData = await r.json();
+    initToggles(strategyData);
+    initFields(strategyData);
+  } catch(e) {
+    showToast('Failed to load strategy config', 'error');
+  }
+}
+
+async function saveAll() {
+  document.querySelectorAll('.toggle-btn').forEach(btn => {
+    const path = btn.dataset.path;
+    const val = btn.dataset.value === 'true';
+    setNestedValue(strategyData, path, val);
+  });
+
+  Object.entries(FIELD_MAP).forEach(([id, path]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let val = el.value;
+    if (el.type === 'number') val = parseFloat(val);
+    if (!isNaN(val) || typeof val === 'string') setNestedValue(strategyData, path, val);
+  });
+
+  try {
+    const r = await fetch('/api/strategy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data: strategyData})
+    });
+    const d = await r.json();
+    showToast(d.message || 'Saved!', d.success ? 'success' : 'error');
+  } catch(e) {
+    showToast('Failed to save', 'error');
+  }
+}
+
+loadStrategy();
+</script>
+{% endblock %}

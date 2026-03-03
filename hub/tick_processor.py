@@ -308,6 +308,10 @@ class TickProcessor:
         if hasattr(self.orchestrator, 'oi_exit_monitor') and current_atm:
             await self.orchestrator.oi_exit_monitor.check(timestamp, current_atm)
 
+        # Condition 6: Write live status for web dashboard (self-throttled to every 5s)
+        if hasattr(self.orchestrator, 'status_writer') and current_atm:
+            self.orchestrator.status_writer.maybe_write(timestamp, current_atm)
+
         for strike, tick_data in current_ticks_for_watchlist.items():
             # In backtest, we need to manually push ticks to aggregators
             if self.orchestrator.is_backtest:

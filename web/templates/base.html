@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AlgoSoft Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: '#00d4aa',
+            'brand-dark': '#00a882',
+            surface: '#0f172a',
+            'surface-2': '#1e293b',
+            'surface-3': '#334155',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0a0f1e; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+    .stat-card { background: linear-gradient(135deg, #1e293b 0%, #162032 100%); border: 1px solid #334155; border-radius: 12px; }
+    .badge-live { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .badge-stopped { background: #450a0a; color: #f87171; border: 1px solid #dc2626; }
+    .badge-paper { background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb; }
+    .toggle-on  { background: #00d4aa; }
+    .toggle-off { background: #475569; }
+    .pnl-pos { color: #34d399; }
+    .pnl-neg { color: #f87171; }
+    .pnl-zero { color: #94a3b8; }
+    .log-box { background: #040810; font-family: 'Courier New', monospace; font-size: 11px; }
+    .nav-link { color: #94a3b8; transition: color 0.2s; }
+    .nav-link:hover, .nav-link.active { color: #00d4aa; }
+    .btn-primary { background: #00d4aa; color: #0a0f1e; font-weight: 700; border-radius: 8px; transition: all 0.2s; }
+    .btn-primary:hover { background: #00a882; }
+    .btn-danger { background: #dc2626; color: white; font-weight: 700; border-radius: 8px; transition: all 0.2s; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-ghost { background: #334155; color: #e2e8f0; font-weight: 600; border-radius: 8px; transition: all 0.2s; }
+    .btn-ghost:hover { background: #475569; }
+    .input-field { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; padding: 6px 10px; width: 100%; }
+    .input-field:focus { outline: none; border-color: #00d4aa; }
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .pulse-green { background: #34d399; animation: pulse 2s infinite; }
+    .pulse-red { background: #f87171; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; padding: 12px 20px; border-radius: 8px; font-weight: 600; opacity: 0; transition: opacity 0.3s; }
+    .toast.show { opacity: 1; }
+    .toast-success { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .toast-error { background: #450a0a; color: #f87171; border: 1px solid #dc2626; }
+    select.input-field option { background: #1e293b; }
+  </style>
+</head>
+<body>
+
+<nav style="background:#111827;border-bottom:1px solid #1e293b;" class="px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+  <div class="flex items-center gap-3">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="6" fill="#00d4aa"/><path d="M6 20 L10 14 L14 17 L18 10 L22 14" stroke="#0a0f1e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="text-white font-bold text-lg tracking-wide">Algo<span style="color:#00d4aa">Soft</span></span>
+  </div>
+  <div class="flex items-center gap-8">
+    <a href="/" class="nav-link text-sm font-medium {% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
+    <a href="/strategy" class="nav-link text-sm font-medium {% if active_page == 'strategy' %}active{% endif %}">Strategy</a>
+    <a href="/brokers" class="nav-link text-sm font-medium {% if active_page == 'brokers' %}active{% endif %}">Brokers</a>
+  </div>
+  <div id="nav-bot-status" class="flex items-center gap-2 text-sm px-3 py-1 rounded-full badge-stopped">
+    <span class="pulse-dot pulse-red"></span>
+    <span>Loading…</span>
+  </div>
+</nav>
+
+<div class="px-6 py-6 max-w-screen-xl mx-auto">
+  {% block content %}{% endblock %}
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
