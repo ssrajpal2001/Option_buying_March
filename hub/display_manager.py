@@ -239,10 +239,12 @@ class DisplayManager:
 
         pnl_sign = "+" if total_pnl >= 0 else ""
         print(f"\n    --- STRANGLE POSITIONS (SELL NRML) ---")
-        print(f"    SELL CE {int(sm.sell_ce_strike)} | Entry: {ce_entry:.2f} | LTP: {ce_ltp_str} | PNL: {'+' if ce_pnl >= 0 else ''}{ce_pnl:.2f}")
-        print(f"    SELL PE {int(sm.sell_pe_strike)} | Entry: {pe_entry:.2f} | LTP: {pe_ltp_str} | PNL: {'+' if pe_pnl >= 0 else ''}{pe_pnl:.2f}")
-        hedge_ce_strike = int(sm.sell_ce_strike + 100) if sm.sell_ce_strike else "---"
-        hedge_pe_strike = int(sm.sell_pe_strike - 100) if sm.sell_pe_strike else "---"
+        if sm.sell_ce_strike is not None:
+            print(f"    SELL CE {int(sm.sell_ce_strike)} | Entry: {ce_entry:.2f} | LTP: {ce_ltp_str} | PNL: {'+' if ce_pnl >= 0 else ''}{ce_pnl:.2f}")
+        if sm.sell_pe_strike is not None:
+            print(f"    SELL PE {int(sm.sell_pe_strike)} | Entry: {pe_entry:.2f} | LTP: {pe_ltp_str} | PNL: {'+' if pe_pnl >= 0 else ''}{pe_pnl:.2f}")
+        hedge_ce_strike = int(sm.sell_ce_strike + 100) if sm.sell_ce_strike is not None else "---"
+        hedge_pe_strike = int(sm.sell_pe_strike - 100) if sm.sell_pe_strike is not None else "---"
         print(f"    Hedge CE {hedge_ce_strike} (LTP: {hedge_ce_str}) | Hedge PE {hedge_pe_strike} (LTP: {hedge_pe_str})")
         print(f"    Strangle PNL: {pnl_sign}{total_pnl:.2f} per lot")
 
