@@ -49,6 +49,10 @@ class UserSession:
 
     async def evaluate_signal(self, direction, instrument_key, signal_ltp, strike_price, timestamp, strategy_log, entry_type='BUY', quantity_multiplier=1):
         """Evaluates a market signal against user-specific state and settings."""
+        if entry_type == 'SELL':
+            logger.debug(f"User {self.email} skipping SELL entry for {direction} — managed by sell_manager.")
+            return
+
         if self.is_in_trade(direction):
             logger.debug(f"User {self.email} already in {direction} trade. Skipping signal.")
             return
