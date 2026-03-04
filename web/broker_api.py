@@ -121,7 +121,7 @@ async def list_zerodha_accounts():
     result = []
     for name in candidates:
         cred_section = trader_cfg.get(name, 'credentials', fallback=name).strip() if name in trader_cfg else name
-        if cred_section in creds and cred_section not in seen:
+        if cred_section not in seen:
             seen.add(cred_section)
             result.append(cred_section)
     return JSONResponse({"accounts": sorted(result)})
