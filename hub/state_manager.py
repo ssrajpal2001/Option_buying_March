@@ -86,7 +86,7 @@ class StateManager:
         self.range_915_breached_up = False
         self.range_915_breached_down = False
 
-    async def reset_trade_state(self, direction, is_backtest=False):
+    async def reset_trade_state(self, direction, is_backtest=False, exit_ltp=None):
         """
         Resets state for a specific trade direction.
         In live mode, it also updates session stats and applies a cooldown.
@@ -128,6 +128,9 @@ class StateManager:
 
         # --- Live Mode Logic ---
         # Cooldown removed to allow immediate reversal (flip) per user request.
+
+        if exit_ltp is not None:
+            position_to_close['ltp'] = exit_ltp
 
         final_pnl = self._calculate_pnl(position_to_close)
         self.last_trade_pnl = final_pnl
