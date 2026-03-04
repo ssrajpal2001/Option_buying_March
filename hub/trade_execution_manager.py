@@ -66,7 +66,7 @@ class TradeExecutionManager:
             reason=reason
         )
 
-        await self.state_manager.reset_trade_state(direction)
+        await self.state_manager.reset_trade_state(direction, exit_ltp=exit_price)
 
     async def _handle_backtest_exit(self, exit_data):
         """Callback for when a trade exit is requested during a backtest."""
