@@ -28,20 +28,16 @@ class TradeExecutor:
     async def execute_trade_v2(self, direction, signal_instrument_key, signal_ltp, strike_price, timestamp, signal_strike, strategy_log="", user_id=None, entry_type='BUY', quantity_multiplier=1):
         state_manager = self._get_state_manager(user_id)
 
-        # BUY trades: recalculate trade strike from SPOT INDEX price so we buy
-        # the correct ATM option (index-based), not the futures-inflated one.
-        # SELL trades and exit monitoring use the signal_strike (futures-based) unchanged.
-        if entry_type == 'BUY':
-            strike_interval = self.config_manager.get_int(self.orchestrator.instrument_name, 'strike_interval', 50)
-            index_price = self.orchestrator.state_manager.index_price
-            if index_price and index_price > 0:
-                trade_strike = int(round(index_price / strike_interval) * strike_interval)
-                logger.info(f"V2: BUY trade strike from INDEX ({index_price:.2f}) → {trade_strike} [Futures/signal strike was: {strike_price}]")
-            else:
-                trade_strike = strike_price
-                logger.warning(f"V2: INDEX price unavailable, falling back to futures signal strike {strike_price}")
+        # All trades: recalculate trade strike from SPOT INDEX price.
+        # Signal/monitoring strike (futures-based) is kept unchanged for exit monitoring.
+        strike_interval = self.config_manager.get_int(self.orchestrator.instrument_name, 'strike_interval', 50)
+        index_price = self.orchestrator.state_manager.index_price
+        if index_price and index_price > 0:
+            trade_strike = int(round(index_price / strike_interval) * strike_interval)
+            logger.info(f"V2: {entry_type} trade strike from INDEX ({index_price:.2f}) → {trade_strike} [Futures/signal strike was: {strike_price}]")
         else:
             trade_strike = strike_price
+            logger.warning(f"V2: INDEX price unavailable, falling back to futures signal strike {strike_price}")
 
         # Get trade expiry based on entry_type (buy/sell) from JSON if available
         mode = 'buy' if entry_type == 'BUY' else 'sell'
