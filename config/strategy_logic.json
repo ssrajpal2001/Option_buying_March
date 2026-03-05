@@ -52,7 +52,7 @@
                 },
                 "r1_target": {
                     "tf": 1,
-                    "threshold": 20.0
+                    "threshold": 20
                 },
                 "vwap_slope": {
                     "tf": 1,
@@ -109,15 +109,21 @@
             "itm_count": 2,
             "signal_expiry": "WEEKLY",
             "trade_expiry": "WEEKLY",
-            "entry_formula": "vwap_slope",
-            "exit_formula": "combined_vwap_slope OR ltp_below_min",
+            "entry_formula": "vwap_slope AND cross_slope_comparison",
+            "exit_formula": "combined_vwap_slope OR ltp_below_min OR cross_slope_comparison",
             "indicators": {
                 "vwap_slope": {
                     "tf": 1,
                     "check_mode": "TICK",
                     "occurrences": 1,
                     "operator": "<",
-                    "threshold": -0.00025
+                    "threshold": -0.00025,
+                    "sticky": true
+                },
+                "cross_slope_comparison": {
+                    "enabled": true,
+                    "min_occurrences": 3,
+                    "tf": 1
                 }
             },
             "exit_indicators": {
@@ -133,7 +139,7 @@
                     "check_mode": "TICK",
                     "occurrences": 1,
                     "operator": ">",
-                    "threshold": 0.0
+                    "threshold": 0.00025
                 },
                 "ltp_below_min": {
                     "enabled": true,
@@ -141,7 +147,7 @@
                 },
                 "tsl": {
                     "enabled": true,
-                    "offset": 30.0
+                    "offset": 30
                 },
                 "atr_tsl": {
                     "enabled": true,
