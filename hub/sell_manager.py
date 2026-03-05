@@ -55,6 +55,10 @@ class SellManager:
         self.buy_ce_key = None
         self.buy_pe_key = None
 
+        # ── Sticky vwap_slope + cross_slope tracking ──────────────────────
+        self._vwap_slope_sticky = {'CE': False, 'PE': False}
+        self._cross_slope_count = {'CE': 0, 'PE': 0}
+
     # ─────────────────────────────────────────────────────────────────────
     # Backward-compat properties (engine_manager checks .strangle_placed)
     # ─────────────────────────────────────────────────────────────────────
@@ -150,17 +154,20 @@ class SellManager:
 
         self.expiry = expiry
         index_key = self.orchestrator.index_instrument_key
-        atm = self.orchestrator.atm_manager.strikes.get('atm')
         interval = self.orchestrator.config_manager.get_int(
             self.orchestrator.instrument_name, 'strike_interval', 50)
         itm_count = self._cfg('itm_count', int, 2)
 
-        if not atm or not interval:
+        # ATM for SELL candidates is calculated from SPOT INDEX price (not futures)
+        index_price = self.orchestrator.state_manager.index_price
+        if not index_price or not interval:
             logger.error("[SellManager] ATM or strike interval unavailable — cannot build candidates.")
             return
+        atm = int(round(index_price / interval) * interval)
 
         logger.info(
-            f"[SellManager] Fetching option chain: {index_key} expiry={expiry} ATM={atm}")
+            f"[SellManager] Fetching option chain: {index_key} expiry={expiry} "
+            f"INDEX={index_price:.2f} → ATM={atm}")
         chain = await self.orchestrator.rest_client.get_option_chain(index_key, expiry)
         if not chain:
             logger.error("[SellManager] Empty option chain — aborting candidate build.")
@@ -210,25 +217,119 @@ class SellManager:
     # VWAP slope helpers
     # ─────────────────────────────────────────────────────────────────────
 
-    async def _check_slope_decreasing(self, inst_key, timestamp):
+    async def _check_slope_decreasing(self, inst_key, timestamp, side=None):
         """
         Returns True if the VWAP slope for inst_key is currently falling
-        (diff_pct < threshold, where threshold defaults to 0.0).
+        (diff_pct < threshold). If sticky=true in config and `side` is provided,
+        once the slope has been declining it stays latched True until entry or exit
+        resets it — so a brief recovery does not cancel the entry signal.
         """
         tf = self._cfg('indicators.vwap_slope.tf', int, 1)
         threshold = self._cfg('indicators.vwap_slope.threshold', float, 0.0)
+        sticky = self._cfg('indicators.vwap_slope.sticky', lambda x: str(x).lower() == 'true', False)
+
         live_vwap = await self.orchestrator.indicator_manager.calculate_vwap(
             inst_key, timestamp)
         if live_vwap is None:
-            return False
+            return self._vwap_slope_sticky.get(side, False) if (sticky and side) else False
+
         result = await self.orchestrator.indicator_manager.get_vwap_slope_status(
             inst_key, timestamp, tf, count=1, live_vwap=live_vwap)
         if result is None or result[0] is None:
-            return False
+            return self._vwap_slope_sticky.get(side, False) if (sticky and side) else False
+
         _, _, v_curr, v_prev, _, _ = result
         if v_prev and v_prev > 0:
-            return (v_curr - v_prev) / v_prev < threshold
-        return False
+            declining = (v_curr - v_prev) / v_prev < threshold
+        else:
+            declining = False
+
+        if side and sticky:
+            if declining:
+                if not self._vwap_slope_sticky[side]:
+                    logger.info(f"[SellManager] vwap_slope sticky latched for {side}")
+                self._vwap_slope_sticky[side] = True
+                return True
+            else:
+                if self._vwap_slope_sticky[side]:
+                    logger.debug(
+                        f"[SellManager] {side} slope recovered — sticky still holding.")
+                    return True
+                return False
+        return declining
+
+    async def _get_slope_pct(self, inst_key, tf, timestamp):
+        """
+        Returns the VWAP slope percentage (v_curr - v_prev) / v_prev for inst_key,
+        or None if data is unavailable.
+        """
+        live_vwap = await self.orchestrator.indicator_manager.calculate_vwap(
+            inst_key, timestamp)
+        if live_vwap is None:
+            return None
+        result = await self.orchestrator.indicator_manager.get_vwap_slope_status(
+            inst_key, timestamp, tf, count=1, live_vwap=live_vwap)
+        if result is None or result[2] is None or result[3] is None:
+            return None
+        _, _, v_curr, v_prev, _, _ = result
+        if v_prev and v_prev > 0:
+            return (v_curr - v_prev) / v_prev
+        return None
+
+    async def _check_cross_slope_comparison(self, side, ce_key, pe_key, timestamp, is_exit=False):
+        """
+        Compare CE VWAP slope % vs PE VWAP slope % to confirm entry or exit signal.
+
+        ENTRY logic (is_exit=False):
+          - CE side: fire when PE slope% > CE slope% (CE declining faster)
+          - PE side: fire when CE slope% > PE slope% (PE declining faster)
+
+        EXIT logic (is_exit=True):
+          - CE side: fire when CE slope% > PE slope% (CE premium rising faster → exit short)
+          - PE side: fire when PE slope% > CE slope% (PE premium rising faster → exit short)
+
+        Returns True (pass-through) when cross_slope_comparison is disabled in config.
+        Requires min_occurrences consecutive confirmations before returning True.
+        """
+        enabled = self._cfg(
+            'indicators.cross_slope_comparison.enabled',
+            lambda x: str(x).lower() == 'true', False)
+        if not enabled:
+            return True
+
+        if not ce_key or not pe_key:
+            logger.debug(f"[SellManager] cross_slope: missing key for {side} — skipping.")
+            return False
+
+        tf = self._cfg('indicators.cross_slope_comparison.tf', int, 1)
+        min_occ = self._cfg('indicators.cross_slope_comparison.min_occurrences', int, 3)
+
+        ce_slope = await self._get_slope_pct(ce_key, tf, timestamp)
+        pe_slope = await self._get_slope_pct(pe_key, tf, timestamp)
+
+        if ce_slope is None or pe_slope is None:
+            logger.debug(
+                f"[SellManager] cross_slope: slope data unavailable "
+                f"CE={'N/A' if ce_slope is None else f'{ce_slope*100:.4f}%'} "
+                f"PE={'N/A' if pe_slope is None else f'{pe_slope*100:.4f}%'}")
+            return False
+
+        if is_exit:
+            condition = (ce_slope > pe_slope) if side == 'CE' else (pe_slope > ce_slope)
+        else:
+            condition = (pe_slope > ce_slope) if side == 'CE' else (ce_slope > pe_slope)
+
+        if condition:
+            self._cross_slope_count[side] += 1
+        else:
+            self._cross_slope_count[side] = 0
+
+        mode = 'EXIT' if is_exit else 'ENTRY'
+        logger.info(
+            f"[SellManager] cross_slope CE={ce_slope*100:.4f}% PE={pe_slope*100:.4f}% "
+            f"side={side} {mode} count={self._cross_slope_count[side]}/{min_occ}")
+
+        return self._cross_slope_count[side] >= min_occ
 
     async def _get_vwap(self, inst_key, timestamp):
         return await self.orchestrator.indicator_manager.calculate_vwap(
@@ -281,6 +382,19 @@ class SellManager:
         if self.ce_placed and self.pe_placed:
             await self._check_combined_vwap_slope(timestamp)
 
+        # ── 4. Cross-slope exit for each placed leg ──────────────────────
+        if self.ce_key and self.pe_key:
+            for side in ['CE', 'PE']:
+                placed = self.ce_placed if side == 'CE' else self.pe_placed
+                if not placed:
+                    continue
+                cross_exit = await self._check_cross_slope_comparison(
+                    side, self.ce_key, self.pe_key, timestamp, is_exit=True)
+                if cross_exit:
+                    logger.info(
+                        f"[SellManager] cross_slope exit triggered for {side}.")
+                    await self.exit_side(side, timestamp, reason='cross_slope_exit')
+
     # ─────────────────────────────────────────────────────────────────────
     # Entry attempt
     # ─────────────────────────────────────────────────────────────────────
@@ -294,11 +408,27 @@ class SellManager:
                 f"[SellManager] {side}: no candidate with LTP >= {ltp_min}. Still scanning.")
             return
 
-        slope_ok = await self._check_slope_decreasing(inst_key, timestamp)
+        slope_ok = await self._check_slope_decreasing(inst_key, timestamp, side=side)
         if not slope_ok:
             logger.debug(
                 f"[SellManager] {side} {int(strike)}: LTP={ltp:.2f} OK "
                 f"but slope not yet decreasing.")
+            return
+
+        # Cross-slope comparison check (pass-through when disabled)
+        # Resolve the opposite-side key for comparison
+        if side == 'CE':
+            ce_key_for_cross = inst_key
+            pe_key_for_cross = self.pe_key or (
+                self.pe_candidates[0][1] if self.pe_candidates else None)
+        else:
+            pe_key_for_cross = inst_key
+            ce_key_for_cross = self.ce_key or (
+                self.ce_candidates[0][1] if self.ce_candidates else None)
+
+        cross_ok = await self._check_cross_slope_comparison(
+            side, ce_key_for_cross, pe_key_for_cross, timestamp, is_exit=False)
+        if not cross_ok:
             return
 
         # Resolve contract object for lot-size and order placement
@@ -351,6 +481,10 @@ class SellManager:
             ws = getattr(self.orchestrator, 'websocket', None)
             if ws:
                 ws.subscribe([inst_key])
+
+        # Reset sticky and cross_slope count — entry placed, fresh state for re-entry
+        self._vwap_slope_sticky[side] = False
+        self._cross_slope_count[side] = 0
 
         self.save_state()
         logger.info(
@@ -485,6 +619,10 @@ class SellManager:
                 'entry_type': 'SELL',
             })
 
+        # Void sticky and cross_slope count — exit event means fresh checking starts
+        self._vwap_slope_sticky[side] = False
+        self._cross_slope_count[side] = 0
+
         # Reset this side → restart search
         if side == 'CE':
             self.ce_placed = False
@@ -505,7 +643,7 @@ class SellManager:
 
         self.prev_combined_vwap = None   # reset combined tracking
         self.save_state()
-        logger.info(f"[SellManager] {side} exited ({reason}). Fresh search started.")
+        logger.info(f"[SellManager] {side} exited ({reason}). Sticky voided. Fresh search started.")
 
     # ─────────────────────────────────────────────────────────────────────
     # EOD close — close whatever is still open
