@@ -206,6 +206,9 @@ class SellManager:
                 logger.info(
                     f"[SellManager] Pre-subscribed {len(exec_keys)} BUY execution keys "
                     f"at ATM={atm} ± {interval} (expiry={buy_trade_expiry})")
+                if hasattr(self.orchestrator, 'price_feed_handler'):
+                    self.orchestrator.price_feed_handler._rebuild_relevant_keys()
+                    logger.info(f"[SellManager] Forced _relevant_keys_cache rebuild to include BUY execution keys.")
 
         logger.info(
             f"[SellManager] Ready — CE searching={self.ce_searching} "
