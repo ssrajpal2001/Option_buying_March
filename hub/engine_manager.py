@@ -123,9 +123,10 @@ class EngineManager:
                                 logger.info(
                                     f"[EngineManager] {inst_name} sell start time "
                                     f"{sell_start} reached — building candidates.")
-                                await orch.sell_manager.build_candidates_for_all_sides(
+                                success = await orch.sell_manager.build_candidates_for_all_sides(
                                     datetime.datetime.now())
-                                _sell_candidates_built.add(inst_name)
+                                if success:
+                                    _sell_candidates_built.add(inst_name)
             else:
                 if is_trading_active:
                     for orch in orchestrators.values():
