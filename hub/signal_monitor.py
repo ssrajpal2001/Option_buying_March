@@ -412,11 +412,17 @@ class SignalMonitor:
                             gate_str = ""
 
                         sell_str = ""
-                        if hasattr(self.orchestrator, 'sell_manager') and self.orchestrator.sell_manager.strangle_placed:
+                        if hasattr(self.orchestrator, 'sell_manager'):
                             sm = self.orchestrator.sell_manager
-                            ce_sell_ltp = float(self.state_manager.get_ltp(sm.sell_ce_key) or 0)
-                            pe_sell_ltp = float(self.state_manager.get_ltp(sm.sell_pe_key) or 0)
-                            sell_str = f" | SOLD CE {int(sm.sell_ce_strike)}@{ce_sell_ltp:.2f} | SOLD PE {int(sm.sell_pe_strike)}@{pe_sell_ltp:.2f}"
+                            parts = []
+                            if sm.ce_placed and sm.sell_ce_strike is not None:
+                                ce_sell_ltp = float(self.state_manager.get_ltp(sm.sell_ce_key) or 0)
+                                parts.append(f"SOLD CE {int(sm.sell_ce_strike)}@{ce_sell_ltp:.2f}")
+                            if sm.pe_placed and sm.sell_pe_strike is not None:
+                                pe_sell_ltp = float(self.state_manager.get_ltp(sm.sell_pe_key) or 0)
+                                parts.append(f"SOLD PE {int(sm.sell_pe_strike)}@{pe_sell_ltp:.2f}")
+                            if parts:
+                                sell_str = " | " + " | ".join(parts)
                         logger.info(f"V2 MONITORING Status [{user_display}]: Strike {ce_data['strike_price']}{sw_label} | Index: {idx_ltp:.2f}{gate_str} | "
                                      f"CE: {ce_state} (LTP: {float(self.state_manager.get_ltp(ce_data['instrument_key']) or 0):.2f}) | "
                                      f"PE: {pe_state} (LTP: {float(self.state_manager.get_ltp(pe_data['instrument_key']) or 0):.2f}){sell_str}")
