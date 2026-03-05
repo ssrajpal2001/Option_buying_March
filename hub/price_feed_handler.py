@@ -142,6 +142,10 @@ class PriceFeedHandler:
                 for k in [sell_mgr.sell_ce_key, sell_mgr.sell_pe_key, sell_mgr.buy_ce_key, sell_mgr.buy_pe_key]:
                     if k:
                         relevant_keys.add(k)
+                for _, k in (sell_mgr.ce_candidates or []):
+                    if k: relevant_keys.add(k)
+                for _, k in (sell_mgr.pe_candidates or []):
+                    if k: relevant_keys.add(k)
 
             self._relevant_keys_cache = relevant_keys
             self._last_keys_rebuild_time = asyncio.get_event_loop().time()
