@@ -114,7 +114,7 @@
             "indicators": {
                 "vwap_slope": {
                     "tf": 1,
-                    "check_mode": "TICK",
+                    "check_mode": "CLOSE",
                     "occurrences": 1,
                     "operator": "<",
                     "threshold": -0.00025,
@@ -129,14 +129,14 @@
             "exit_indicators": {
                 "combined_vwap_slope": {
                     "tf": 1,
-                    "check_mode": "TICK",
+                    "check_mode": "CLOSE",
                     "occurrences": 1,
                     "operator": ">",
                     "threshold": 0.00025
                 },
                 "individual_vwap_slope": {
                     "tf": 1,
-                    "check_mode": "TICK",
+                    "check_mode": "CLOSE",
                     "occurrences": 1,
                     "operator": ">",
                     "threshold": 0.00025
