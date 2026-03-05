@@ -98,6 +98,13 @@ class SignalEvaluator:
                                 (timestamp.minute % slope_tf == 0)
                             )
 
+                        if not can_eval_slope and slope_mode == 'CLOSE':
+                            # Outside the CLOSE evaluation window: reset slope state to False.
+                            # This prevents stale True values written by another mode (e.g. SELL)
+                            # from leaking into this mode's formula at second=10+ and firing a
+                            # spurious entry. Entries in CLOSE mode must only fire at seconds 0-9.
+                            data['criteria_state']['vwap_slope'] = False
+
                         if can_eval_slope:
                             s_ts = timestamp if slope_mode == 'TICK' else (
                                 timestamp.replace(second=0, microsecond=0) -
