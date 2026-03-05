@@ -210,6 +210,11 @@ class SignalMonitor:
                 's1_low': False
             }
 
+        # Pre-seed last_analyzed_1m to the current last-completed candle so that
+        # _check_crossover_for_all_sides skips pre-existing historical candles on
+        # the first tick (avoids immediate entry from stale websocket-fed data).
+        last_analyzed_1m_seed = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
+
         ce_monitoring_data = {
             'instrument_key': ce_instrument_key,
             'last_close': None, 'direction': 'CALL', 'strike_price': target_strike,
@@ -219,7 +224,8 @@ class SignalMonitor:
             'criteria_state': get_fresh_criteria('ce_data'),
             'vwap': None, 'r1_high': None, 's1_low': None,
             'r1_label': 'R1', 's1_label': 'S1', 'r1_phase': '', 's1_phase': '',
-            'slope_info': 'Initializing...'
+            'slope_info': 'Initializing...',
+            'last_analyzed_1m': last_analyzed_1m_seed
         }
         pe_monitoring_data = {
             'instrument_key': pe_instrument_key,
@@ -230,7 +236,8 @@ class SignalMonitor:
             'criteria_state': get_fresh_criteria('pe_data'),
             'vwap': None, 'r1_high': None, 's1_low': None,
             'r1_label': 'R1', 's1_label': 'S1', 'r1_phase': '', 's1_phase': '',
-            'slope_info': 'Initializing...'
+            'slope_info': 'Initializing...',
+            'last_analyzed_1m': last_analyzed_1m_seed
         }
 
         # FINAL INITIALIZATION
