@@ -56,7 +56,7 @@
                 },
                 "vwap_slope": {
                     "tf": 1,
-                    "check_mode": "TICK",
+                    "check_mode": "CLOSE",
                     "operator": "<",
                     "occurrences": 1,
                     "threshold": -0.00025
