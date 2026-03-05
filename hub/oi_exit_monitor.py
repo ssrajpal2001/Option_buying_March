@@ -76,7 +76,7 @@ class OIExitMonitor:
                         logger.info(
                             f"[OI_EXIT] CALL OI rose {call_chg:.1f}% "
                             f"({self.prev_call_oi:,.0f} → {call_oi:,.0f}) — "
-                            f"exiting sell-PE and buy-CE"
+                            f"exiting sell-PE leg"
                         )
                         await self._trigger_oi_exit('CALL_OI_RISE', timestamp)
 
@@ -86,7 +86,7 @@ class OIExitMonitor:
                         logger.info(
                             f"[OI_EXIT] PUT OI rose {put_chg:.1f}% "
                             f"({self.prev_put_oi:,.0f} → {put_oi:,.0f}) — "
-                            f"exiting sell-CE and buy-PE"
+                            f"exiting sell-CE leg"
                         )
                         await self._trigger_oi_exit('PUT_OI_RISE', timestamp)
 
@@ -111,34 +111,3 @@ class OIExitMonitor:
             except Exception as e:
                 logger.error(f"[OI_EXIT] Error exiting sell side: {e}", exc_info=True)
 
-        for session in self.orchestrator.user_sessions.values():
-            try:
-                pm = getattr(session, 'position_manager', None)
-                usr_sm = getattr(session, 'state_manager', None)
-                if not pm or not usr_sm:
-                    continue
-
-                if signal == 'CALL_OI_RISE' and usr_sm.is_in_trade('CALL'):
-                    pos = usr_sm.call_position
-                    inst_key = pos.get('instrument_key')
-                    ltp = (
-                        usr_sm.option_prices.get(inst_key)
-                        or pos.get('ltp')
-                        or pos.get('entry_price', 0)
-                    )
-                    logger.info(f"[OI_EXIT] Exiting buy-CE for session {session}. Reason: {reason}")
-                    await pm._exit_trade('CALL', ltp, timestamp, reason)
-
-                if signal == 'PUT_OI_RISE' and usr_sm.is_in_trade('PUT'):
-                    pos = usr_sm.put_position
-                    inst_key = pos.get('instrument_key')
-                    ltp = (
-                        usr_sm.option_prices.get(inst_key)
-                        or pos.get('ltp')
-                        or pos.get('entry_price', 0)
-                    )
-                    logger.info(f"[OI_EXIT] Exiting buy-PE for session {session}. Reason: {reason}")
-                    await pm._exit_trade('PUT', ltp, timestamp, reason)
-
-            except Exception as e:
-                logger.error(f"[OI_EXIT] Error exiting buy side for session: {e}", exc_info=True)
