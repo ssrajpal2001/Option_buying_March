@@ -150,7 +150,7 @@ class SellManager:
         expiry = self.orchestrator.atm_manager.signal_expiry_date
         if not expiry:
             logger.error("[SellManager] Cannot build candidates — signal_expiry_date not set.")
-            return
+            return False
 
         self.expiry = expiry
         index_key = self.orchestrator.index_instrument_key
@@ -162,7 +162,7 @@ class SellManager:
         index_price = self.orchestrator.state_manager.index_price
         if not index_price or not interval:
             logger.error("[SellManager] ATM or strike interval unavailable — cannot build candidates.")
-            return
+            return False
         atm = int(round(index_price / interval) * interval)
 
         logger.info(
@@ -171,7 +171,7 @@ class SellManager:
         chain = await self.orchestrator.rest_client.get_option_chain(index_key, expiry)
         if not chain:
             logger.error("[SellManager] Empty option chain — aborting candidate build.")
-            return
+            return False
 
         self.ce_candidates = self._build_candidate_list(chain, 'CE', atm, interval, itm_count)
         self.pe_candidates = self._build_candidate_list(chain, 'PE', atm, interval, itm_count)
@@ -190,6 +190,7 @@ class SellManager:
         logger.info(
             f"[SellManager] Ready — CE searching={self.ce_searching} "
             f"PE searching={self.pe_searching}")
+        return True
 
     # ─────────────────────────────────────────────────────────────────────
     # LTP candidate selection helpers
