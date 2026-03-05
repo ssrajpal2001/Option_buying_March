@@ -47,10 +47,11 @@ class StatusWriter:
                     qty_mult = pos.get('quantity_multiplier', 1) or 1
                     lot_size = getattr(sm, 'lot_size', 1) or 1
                     total_qty = qty * qty_mult * lot_size
-                    if side == 'CALL':
-                        pnl = (ltp - entry) * total_qty
-                    else:
+                    entry_type = pos.get('entry_type', 'BUY')
+                    if entry_type == 'SELL':
                         pnl = (entry - ltp) * total_qty
+                    else:
+                        pnl = (ltp - entry) * total_qty
                     pos_data = {
                         "status": "ACTIVE",
                         "strike": pos.get('strike_price'),
@@ -61,6 +62,15 @@ class StatusWriter:
                     }
                     break
             buy_data[side] = pos_data
+
+        sell_lot_size = getattr(sm, 'lot_size', 1) or 1
+        try:
+            ref_broker = next(iter(orch.broker_manager.brokers), None)
+            sell_broker_qty = (ref_broker.config_manager.get_int(
+                ref_broker.instance_name, 'quantity', 1) if ref_broker else 1)
+        except Exception:
+            sell_broker_qty = 1
+        sell_total_qty = sell_lot_size * sell_broker_qty
 
         sell_data = {}
         for side in ['CE', 'PE']:
@@ -75,7 +85,7 @@ class StatusWriter:
                     "strike": strike,
                     "entry": round(float(entry), 2),
                     "ltp": round(float(ltp), 2),
-                    "pnl": round(float(entry) - float(ltp), 2),
+                    "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
                 }
             else:
                 sell_data[side] = {"placed": False}
@@ -92,6 +102,19 @@ class StatusWriter:
         for session in orch.user_sessions.values():
             session_pnl += float(getattr(session.state_manager, 'total_pnl', 0) or 0)
             trade_count += int(getattr(session.state_manager, 'trade_count', 0) or 0)
+
+        for side, pos_info in buy_data.items():
+            if pos_info.get('status') == 'ACTIVE':
+                session_pnl += float(pos_info.get('pnl', 0) or 0)
+
+        for side, s_info in sell_data.items():
+            if s_info.get('placed'):
+                session_pnl += float(s_info.get('pnl', 0) or 0)
+
+        if getattr(orch, 'pnl_tracker', None):
+            for t in orch.pnl_tracker.trade_history:
+                if t.get('entry_type') == 'SELL' and t.get('status') == 'CLOSED':
+                    session_pnl += float(t.get('pnl', 0) or 0)
 
         cfg = getattr(orch, 'config_manager', None)
         mode = cfg.get('settings', 'trading_mode', fallback='live') if cfg else 'live'
