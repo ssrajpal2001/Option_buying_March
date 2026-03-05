@@ -288,8 +288,6 @@ class SignalMonitor:
     async def _subscribe_to_monitoring_instruments(self, target_strike):
         """
         Subscribes to Signal Expiry instruments for monitoring.
-        Also pre-subscribes INDEX-based execution strikes (ATM ± 1 interval) so that
-        price data is already cached by the time a BUY entry fires.
         """
         keys_to_subscribe = set()
         signal_expiry = self.atm_manager.signal_expiry_date
@@ -300,26 +298,8 @@ class SignalMonitor:
         if ce_signal_key: keys_to_subscribe.add(ce_signal_key)
         if pe_signal_key: keys_to_subscribe.add(pe_signal_key)
 
-        # Pre-subscribe INDEX-based execution strikes so LTP is ready at entry
-        index_price = self.state_manager.index_price
-        trade_expiry = self.atm_manager.trade_expiry_date
-        if index_price and trade_expiry:
-            interval = self.orchestrator.config_manager.get_int(
-                self.orchestrator.instrument_name, 'strike_interval', 50)
-            index_atm = int(round(index_price / interval) * interval)
-            exec_count = 0
-            for offset in [0, interval, -interval]:
-                exec_strike = index_atm + offset
-                for side in ['CALL', 'PUT']:
-                    key = self.atm_manager.find_instrument_key_by_strike(exec_strike, side, trade_expiry)
-                    if key:
-                        keys_to_subscribe.add(key)
-                        exec_count += 1
-            if exec_count:
-                logger.info(f"V2: Pre-subscribing {exec_count} execution keys for INDEX ATM {index_atm} (expiry={trade_expiry})")
-
         if keys_to_subscribe:
-            logger.debug(f"V2: Subscribing to monitoring instruments for target strike {target_strike}: {list(keys_to_subscribe)}")
+            logger.debug(f"V2: Subscribing to Signal instruments for target strike {target_strike}: {list(keys_to_subscribe)}")
             self.orchestrator.websocket.subscribe(list(keys_to_subscribe))
 
 
