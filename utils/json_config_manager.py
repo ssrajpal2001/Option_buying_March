@@ -83,6 +83,15 @@ class JsonConfigManager:
             # Use regex for word-boundary matching to avoid partial matches
             eval_str = re.sub(rf'\b{key.lower()}\b', str(val), eval_str)
 
+        # Replace any remaining unresolved identifiers (e.g. cross_slope_comparison not in
+        # results_dict) with False so the formula still evaluates cleanly.
+        _keywords = {'and', 'or', 'not', 'true', 'false'}
+        eval_str = re.sub(
+            r'\b[a-z][a-z0-9_]*\b',
+            lambda m: m.group(0) if m.group(0) in _keywords else 'false',
+            eval_str
+        )
+
         # Basic sanitization: only allow ( ), and, or, True, False, space, not
         allowed_chars = set("() andortruefalsenot ")
         if not all(c in allowed_chars for c in eval_str.lower()):
