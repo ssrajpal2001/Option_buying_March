@@ -16,6 +16,10 @@ class DisplayManager:
 
     async def start_display_loop(self):
         """Starts the continuous loop to refresh the console display."""
+        if self.config_manager:
+            enabled = self.config_manager.get('settings', 'display_enabled', fallback='true').lower() == 'true'
+            if not enabled:
+                return
         loop = asyncio.get_running_loop()
         while True:
             # RUN SYNCHRONOUS display_data in a separate thread to avoid blocking the event loop.
