@@ -187,6 +187,26 @@ class SellManager:
             self.orchestrator.websocket.subscribe(all_keys)
             logger.info(f"[SellManager] Subscribed {len(all_keys)} candidate keys to WS.")
 
+        # Pre-subscribe INDEX-based BUY execution strikes (ATM ± 1 interval, both sides).
+        # This runs ~5-10s before any BUY signal can fire, so ticks are already cached at entry.
+        buy_mode_expiries = self.orchestrator.atm_manager.mode_expiries.get('buy')
+        buy_trade_expiry = (buy_mode_expiries['trade'] if buy_mode_expiries
+                            else self.orchestrator.atm_manager.trade_expiry_date)
+        if buy_trade_expiry and hasattr(self.orchestrator, 'websocket') and self.orchestrator.websocket:
+            exec_keys = []
+            for offset in [0, interval, -interval]:
+                exec_strike = atm + offset
+                for side in ['CALL', 'PUT']:
+                    key = self.orchestrator.atm_manager.find_instrument_key_by_strike(
+                        exec_strike, side, buy_trade_expiry)
+                    if key:
+                        exec_keys.append(key)
+            if exec_keys:
+                self.orchestrator.websocket.subscribe(exec_keys)
+                logger.info(
+                    f"[SellManager] Pre-subscribed {len(exec_keys)} BUY execution keys "
+                    f"at ATM={atm} ± {interval} (expiry={buy_trade_expiry})")
+
         logger.info(
             f"[SellManager] Ready — CE searching={self.ce_searching} "
             f"PE searching={self.pe_searching}")
@@ -585,11 +605,12 @@ class SellManager:
                     f"[SellManager][PAPER BUY {product_type}] {side}: "
                     f"strike={int(strike)} qty={qty} reason={reason}")
             else:
+                exit_ltp = self.orchestrator.state_manager.get_ltp(key) or entry_ltp
                 order_id = broker.place_order(
                     contract, 'BUY', qty, self.expiry, product_type=product_type)
                 logger.info(
                     f"[SellManager] Closed {side} {int(strike)} "
-                    f"order_id={order_id} reason={reason}")
+                    f"order_id={order_id} exit_ltp={exit_ltp:.2f} reason={reason}")
 
         # Record PnL
         if entry_ltp and exit_ltp and self.orchestrator.pnl_tracker:
