@@ -19,8 +19,8 @@
             "product_type": "MIS",
             "signal_expiry": "WEEKLY",
             "trade_expiry": "WEEKLY",
-            "entry_formula": "vwap_slope",
-            "exit_formula": "vwap_slope",
+            "entry_formula": "vwap_slope AND oi_gate",
+            "exit_formula": "vwap_slope OR oi_gate",
             "indicators": {
                 "pattern": {
                     "tf": 1
@@ -39,6 +39,9 @@
                 "r1_high": {
                     "tf": 3,
                     "check_mode": "TICK"
+                },
+                "oi_gate": {
+                    "enabled": true
                 }
             },
             "exit_indicators": {
@@ -94,6 +97,9 @@
                 },
                 "target_exit": {
                     "enabled": false
+                },
+                "oi_gate": {
+                    "enabled": true
                 }
             }
         },
@@ -106,11 +112,12 @@
             "ltp_target": 50,
             "ltp_min": 50,
             "ltp_exit_min": 20,
+            "profit_take_points": 30,
             "itm_count": 2,
             "signal_expiry": "WEEKLY",
             "trade_expiry": "WEEKLY",
-            "entry_formula": "vwap_slope AND cross_slope_comparison",
-            "exit_formula": "combined_vwap_slope OR ltp_below_min OR cross_slope_comparison",
+            "entry_formula": "vwap_slope OR cross_slope_comparison",
+            "exit_formula": "combined_vwap_slope OR ltp_below_min",
             "indicators": {
                 "vwap_slope": {
                     "tf": 1,
@@ -122,7 +129,7 @@
                 },
                 "cross_slope_comparison": {
                     "enabled": true,
-                    "min_occurrences": 3,
+                    "min_occurrences": 1,
                     "tf": 1
                 }
             },
