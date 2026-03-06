@@ -38,6 +38,30 @@ class OIExitMonitor:
 
         return total_call_oi, total_put_oi
 
+    def get_oi_direction(self, current_atm):
+        """
+        Returns OI directional signals based on the last two snapshots.
+        Used by BUY entry/exit OI gate in signal_evaluator and exit_evaluator.
+        Returns None if snapshots are not yet available.
+        """
+        if self.prev_call_oi is None or self.prev_put_oi is None:
+            return None
+
+        interval = self.orchestrator.config_manager.get_int(
+            self.orchestrator.instrument_name, 'strike_interval', 50)
+        strikes_range = self._cfg('strikes_range', int, 2)
+        curr_call_oi, curr_put_oi = self._get_oi_snapshot(current_atm, interval, strikes_range)
+
+        if curr_call_oi == 0 and curr_put_oi == 0:
+            return None
+
+        return {
+            'call_oi_decreasing': curr_call_oi < self.prev_call_oi,
+            'call_oi_increasing': curr_call_oi > self.prev_call_oi,
+            'put_oi_decreasing':  curr_put_oi < self.prev_put_oi,
+            'put_oi_increasing':  curr_put_oi > self.prev_put_oi,
+        }
+
     async def check(self, timestamp, current_atm):
         try:
             enabled = self._cfg('enabled', lambda x: str(x).lower() == 'true', False)
