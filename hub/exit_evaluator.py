@@ -1,3 +1,4 @@
+import time
 import pandas as pd
 from utils.logger import logger
 
@@ -192,24 +193,40 @@ class ExitEvaluator:
                 'enabled', mode, 'exit_indicators/oi_gate',
                 type_func=lambda x: str(x).lower() != 'false', fallback=True)
             if oi_gate_enabled:
-                oi_mon = getattr(self.orchestrator, 'oi_exit_monitor', None)
-                current_atm = getattr(self.orchestrator.state_manager, 'index_price', None)
-                if oi_mon and current_atm:
-                    oi_dir = oi_mon.get_oi_direction(current_atm)
-                    if oi_dir:
-                        direction = position_data.get('direction', 'CALL')
-                        if direction == 'CALL':
-                            oi_exit = oi_dir['call_oi_increasing'] or oi_dir['put_oi_decreasing']
-                        else:
-                            oi_exit = oi_dir['put_oi_increasing'] or oi_dir['call_oi_decreasing']
-                        if oi_exit:
-                            eval_results['oi_gate'] = True
-                            reasons.append(
-                                f"OI Gate Exit ("
-                                f"CE_inc={oi_dir['call_oi_increasing']} "
-                                f"PE_dec={oi_dir['put_oi_decreasing']} "
-                                f"PE_inc={oi_dir['put_oi_increasing']} "
-                                f"CE_dec={oi_dir['call_oi_decreasing']})")
+                min_hold = self._get_user_setting(
+                    'min_hold_seconds', mode, 'exit_indicators/oi_gate',
+                    type_func=int, fallback=120)
+                entry_ts = position_data.get('entry_timestamp')
+                if entry_ts is not None:
+                    try:
+                        held_seconds = (pd.Timestamp.now(tz='Asia/Kolkata') - pd.Timestamp(entry_ts)).total_seconds()
+                    except Exception:
+                        held_seconds = min_hold
+                else:
+                    held_seconds = min_hold
+                if held_seconds < min_hold:
+                    logger.info(
+                        f"[ExitEval] OI Gate exit skipped — min hold {min_hold}s not reached "
+                        f"(held {int(held_seconds)}s)")
+                else:
+                    oi_mon = getattr(self.orchestrator, 'oi_exit_monitor', None)
+                    current_atm = getattr(self.orchestrator.state_manager, 'index_price', None)
+                    if oi_mon and current_atm:
+                        oi_dir = oi_mon.get_oi_direction(current_atm)
+                        if oi_dir:
+                            direction = position_data.get('direction', 'CALL')
+                            if direction == 'CALL':
+                                oi_exit = oi_dir['call_oi_increasing'] or oi_dir['put_oi_decreasing']
+                            else:
+                                oi_exit = oi_dir['put_oi_increasing'] or oi_dir['call_oi_decreasing']
+                            if oi_exit:
+                                eval_results['oi_gate'] = True
+                                reasons.append(
+                                    f"OI Gate Exit ("
+                                    f"CE_inc={oi_dir['call_oi_increasing']} "
+                                    f"PE_dec={oi_dir['put_oi_decreasing']} "
+                                    f"PE_inc={oi_dir['put_oi_increasing']} "
+                                    f"CE_dec={oi_dir['call_oi_decreasing']})")
 
         if self.orchestrator.json_config.evaluate_formula(exit_formula, eval_results):
             sl_inds = ['s1_low', 'r1_high', 'tsl', 'atr_tsl', 's1_confirm', 'r1_falling', 'r1_stagnation', 'r1_low_breach', 's1_double_drop']
