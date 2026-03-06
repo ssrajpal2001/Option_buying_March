@@ -10,6 +10,7 @@ from .trade_execution_manager import TradeExecutionManager
 from .event_bus import event_bus
 from .strike_manager import StrikeManager
 from .backtest_pnl_tracker import BacktestPnLTracker
+from .live_trade_log import LiveTradeLog
 from .orchestrator_state import OrchestratorState
 from .tick_processor import TickProcessor
 from .signal_monitor import SignalMonitor
@@ -92,6 +93,7 @@ class BaseOrchestrator(ABC):
         self.trade_execution_manager = TradeExecutionManager(self.broker_manager, self.state_manager, self.atm_manager, self.config_manager)
 
         self.pnl_tracker = BacktestPnLTracker(self.instrument_name, self.config_manager) if self.is_backtest else None
+        self.trade_log = LiveTradeLog()
 
         # Initialize DataRecorder for live/paper V2 recording (Default: Disabled in Bot)
         # Recording is now handled by a standalone script scripts/run_recorder.py
