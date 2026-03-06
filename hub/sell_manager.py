@@ -656,7 +656,28 @@ class SellManager:
                     f"[SellManager] Closed {side} {int(strike)} "
                     f"order_id={order_id} exit_ltp={exit_ltp:.2f} reason={reason}")
 
-        # Record PnL
+        # Record PnL — always log to live_trade_log; also log to pnl_tracker in backtest
+        if entry_ltp and exit_ltp:
+            try:
+                from .live_trade_log import LiveTradeLog
+                trade_log = getattr(self.orchestrator, 'trade_log', None)
+                if trade_log:
+                    pnl_pts_raw = entry_ltp - exit_ltp
+                    trade_log.add(LiveTradeLog.make_entry(
+                        trade_type='SELL',
+                        direction=side,
+                        strike=strike,
+                        entry_price=entry_ltp,
+                        exit_price=exit_ltp,
+                        pnl_pts=pnl_pts_raw,
+                        pnl_rs=None,
+                        reason=reason,
+                        order_id=str(order_id) if order_id else '',
+                        timestamp=timestamp,
+                    ))
+            except Exception as _tl_ex:
+                logger.debug(f"[SellManager] trade_log append failed: {_tl_ex}")
+
         if entry_ltp and exit_ltp and self.orchestrator.pnl_tracker:
             ref_broker = next(
                 (b for b in brokers
