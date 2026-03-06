@@ -30,7 +30,8 @@ class ExitEvaluator:
             's1_low': s1_breached, 'r1_high': r1_breached, 'r1_target': r1_target_hit,
             'vwap_slope': False, 's1_confirm': False, 'tsl': False, 'atr_tsl': False,
             'r1_falling': False, 'r1_stagnation': False, 'r1_low_breach': False,
-            's1_double_drop': bool(position_data.get('s1_double_drop_triggered'))
+            's1_double_drop': bool(position_data.get('s1_double_drop_triggered')),
+            'oi_gate': False
         }
 
         if 'r1_stagnation' in f_lower:
@@ -185,6 +186,30 @@ class ExitEvaluator:
                 eval_results['r1_falling'] = True
                 reasons.append("Falling R1")
             if r1_curr: position_data['prev_r1_high'] = r1_curr
+
+        if 'oi_gate' in f_lower:
+            oi_gate_enabled = self._get_user_setting(
+                'enabled', mode, 'exit_indicators/oi_gate',
+                type_func=lambda x: str(x).lower() != 'false', fallback=True)
+            if oi_gate_enabled:
+                oi_mon = getattr(self.orchestrator, 'oi_exit_monitor', None)
+                current_atm = getattr(self.orchestrator.state_manager, 'index_price', None)
+                if oi_mon and current_atm:
+                    oi_dir = oi_mon.get_oi_direction(current_atm)
+                    if oi_dir:
+                        direction = position_data.get('direction', 'CALL')
+                        if direction == 'CALL':
+                            oi_exit = oi_dir['call_oi_increasing'] or oi_dir['put_oi_decreasing']
+                        else:
+                            oi_exit = oi_dir['put_oi_increasing'] or oi_dir['call_oi_decreasing']
+                        if oi_exit:
+                            eval_results['oi_gate'] = True
+                            reasons.append(
+                                f"OI Gate Exit ("
+                                f"CE_inc={oi_dir['call_oi_increasing']} "
+                                f"PE_dec={oi_dir['put_oi_decreasing']} "
+                                f"PE_inc={oi_dir['put_oi_increasing']} "
+                                f"CE_dec={oi_dir['call_oi_decreasing']})")
 
         if self.orchestrator.json_config.evaluate_formula(exit_formula, eval_results):
             sl_inds = ['s1_low', 'r1_high', 'tsl', 'atr_tsl', 's1_confirm', 'r1_falling', 'r1_stagnation', 'r1_low_breach', 's1_double_drop']
