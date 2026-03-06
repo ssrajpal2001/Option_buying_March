@@ -128,6 +128,33 @@
   </div>
 </div>
 
+<div class="card p-4 mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">Order Book — Today's Closed Trades</span>
+    <span id="ob-count" class="text-xs px-2 py-0.5 rounded" style="background:#1e293b;color:#64748b">0 trades</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-xs" id="ob-table">
+      <thead>
+        <tr style="color:#64748b;border-bottom:1px solid #1e293b">
+          <th class="text-left py-1 pr-3">Time</th>
+          <th class="text-left py-1 pr-3">Type</th>
+          <th class="text-left py-1 pr-3">Dir</th>
+          <th class="text-right py-1 pr-3">Strike</th>
+          <th class="text-right py-1 pr-3">Entry</th>
+          <th class="text-right py-1 pr-3">Exit</th>
+          <th class="text-right py-1 pr-3">P&amp;L pts</th>
+          <th class="text-right py-1 pr-3">P&amp;L ₹</th>
+          <th class="text-left py-1">Reason</th>
+        </tr>
+      </thead>
+      <tbody id="ob-body">
+        <tr><td colspan="9" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <div class="card p-4">
   <div class="flex items-center justify-between mb-2">
     <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">Bot Log (last 50 lines)</span>
@@ -264,6 +291,35 @@ function updateDashboard(d) {
   if (d.stale) {
     document.getElementById('error-box').textContent = `⚠ Bot may be frozen (last seen ${d.stale_seconds}s ago)`;
     document.getElementById('error-box').style.color = '#fb923c';
+  }
+
+  const trades = d.trade_history || [];
+  document.getElementById('ob-count').textContent = `${trades.length} trade${trades.length !== 1 ? 's' : ''}`;
+  const tbody = document.getElementById('ob-body');
+  if (trades.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>';
+  } else {
+    tbody.innerHTML = trades.map(t => {
+      const profit = t.pnl_pts > 0;
+      const loss = t.pnl_pts < 0;
+      const rowColor = profit ? '#052e16' : loss ? '#2d1010' : '#0f172a';
+      const pnlColor = profit ? '#34d399' : loss ? '#f87171' : '#64748b';
+      const typeColor = t.type === 'BUY' ? '#60a5fa' : '#fb923c';
+      const dirColor = (t.direction === 'CE' || t.direction === 'CALL') ? '#818cf8' : '#f472b6';
+      const ptsSign = t.pnl_pts > 0 ? '+' : '';
+      const rsSign = t.pnl_rs > 0 ? '+' : '';
+      return `<tr style="border-bottom:1px solid #1e293b;background:${rowColor}">
+        <td class="py-1 pr-3 font-mono" style="color:#94a3b8">${escapeHtml(t.time)}</td>
+        <td class="py-1 pr-3 font-bold" style="color:${typeColor}">${escapeHtml(t.type)}</td>
+        <td class="py-1 pr-3 font-bold" style="color:${dirColor}">${escapeHtml(t.direction)}</td>
+        <td class="py-1 pr-3 text-right text-white">${t.strike || '--'}</td>
+        <td class="py-1 pr-3 text-right" style="color:#94a3b8">${t.entry_price ? t.entry_price.toFixed(2) : '--'}</td>
+        <td class="py-1 pr-3 text-right" style="color:#94a3b8">${t.exit_price ? t.exit_price.toFixed(2) : '--'}</td>
+        <td class="py-1 pr-3 text-right font-bold" style="color:${pnlColor}">${ptsSign}${t.pnl_pts !== undefined ? t.pnl_pts.toFixed(2) : '--'}</td>
+        <td class="py-1 pr-3 text-right font-bold" style="color:${pnlColor}">${rsSign}${t.pnl_rs !== undefined ? t.pnl_rs.toFixed(0) : '--'}</td>
+        <td class="py-1" style="color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.reason)}</td>
+      </tr>`;
+    }).join('');
   }
 
   if (d.log_tail && d.log_tail.length) {
