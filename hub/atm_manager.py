@@ -44,40 +44,64 @@ class AtmManager:
         logger.debug("AtmManager initialized with Expiry and Subscription managers.")
 
     async def _handle_spot_price_update(self, data):
-        if isinstance(data, dict):
-            if data.get('instrument') != self.instrument_name: return
-            spot_price = data.get('ltp')
-        else: spot_price = data
+        if not isinstance(data, dict) or data.get('instrument') != self.instrument_name:
+            return
 
-        self.state_manager.spot_price = spot_price
-        if not self.initial_spot_price_received.is_set(): self.initial_spot_price_received.set()
-        if not self._is_ready: return
+        ltp = data.get('ltp')
+        is_futures = data.get('is_futures', False)
+
+        if not self.initial_spot_price_received.is_set():
+            self.initial_spot_price_received.set()
+        if not self._is_ready:
+            return
 
         strike_interval = self.config.get_int(self.instrument_name, 'strike_interval')
-        current_atm = self.strikes.get('atm')
+        atm_key = 'futures_atm' if is_futures else 'atm'
+        current_atm = self.strikes.get(atm_key)
 
-        if current_atm is None or self._is_atm_breached(spot_price, current_atm, strike_interval):
-            await self.update_strikes_and_subscribe(spot_price)
+        # Trigger update/subscription if ATM has shifted for either reference price
+        if current_atm is None or self._is_atm_breached(ltp, current_atm, strike_interval):
+            await self.update_strikes_and_subscribe(ltp, is_futures=is_futures)
 
     def _is_atm_breached(self, spot_price, current_atm, strike_interval):
-        buffer = self.config.get_int('settings', 'atm_breach_buffer_points', 0)
+        # Increased sensitivity for ATM shifts to ensure OI and Target selection are always anchored accurately.
         half = strike_interval / 2
-        return not (current_atm - half - buffer <= spot_price < current_atm + half + buffer)
+        return not (current_atm - half <= spot_price < current_atm + half)
 
-    async def update_strikes_and_subscribe(self, spot_price, is_initial_setup=False):
+    async def update_strikes_and_subscribe(self, spot_price, is_initial_setup=False, is_futures=False):
         if self.re_strike_in_progress: return
-        self.current_spot_price = spot_price
         strike_interval = self.config.get_int(self.instrument_name, 'strike_interval')
         new_atm = int(round(spot_price / strike_interval) * strike_interval)
 
-        if is_initial_setup or new_atm != self.strikes.get('atm'):
+        atm_key = 'futures_atm' if is_futures else 'atm'
+
+        if is_initial_setup or new_atm != self.strikes.get(atm_key):
             try:
                 self.re_strike_in_progress = True
+                self.strikes[atm_key] = new_atm
+
+                # Combine protected keys from all sources to ensure we don't unsubscribe from anything active
                 protected = self._get_protected_keys()
-                keys = await self.sub_manager.perform_resubscription(new_atm, protected, self.signal_expiry_date, self.contracts, self.find_contracts_for_strike)
-                self.strikes['atm'] = new_atm
-                if is_initial_setup: self.state_manager.initial_instrument_keys = keys
-            finally: self.re_strike_in_progress = False
+
+                # Ensure we also protect the other ATM's strikes if they exist
+                other_atm = self.strikes.get('atm' if is_futures else 'futures_atm')
+                if other_atm:
+                    num_strikes = self.config.get_int('settings', 'strikes_to_monitor', 1)
+                    for i in range(-num_strikes, num_strikes + 1):
+                        s = other_atm + i * strike_interval
+                        ck, pk = self.find_contracts_for_strike(s, self.signal_expiry_date)
+                        if ck: protected.add(ck.instrument_key)
+                        if pk: protected.add(pk.instrument_key)
+
+                # perform_resubscription handles the websocket commands and history priming
+                keys = await self.sub_manager.perform_resubscription(
+                    new_atm, protected, self.signal_expiry_date, self.contracts,
+                    find_contracts_func=self.find_contracts_for_strike)
+
+                if is_initial_setup:
+                    self.state_manager.initial_instrument_keys = keys
+            finally:
+                self.re_strike_in_progress = False
 
     def _get_protected_keys(self):
         protected = set()

@@ -66,13 +66,22 @@ class BacktestOrchestrator(BaseOrchestrator):
             self.config_manager.get('settings', 'strangle_start_time', fallback='09:16:00'),
             '%H:%M:%S'
         ).time()
-        if not self._backtest_strangle_triggered and timestamp.time() >= _strangle_start:
-            await self.sell_manager.build_candidates_for_all_sides(timestamp)
-            await self.sell_manager.execute_short_strangle_backtest(timestamp)
-            self._backtest_strangle_triggered = True
+        if timestamp.time() >= _strangle_start:
+            if not self._backtest_strangle_triggered:
+                await self.sell_manager.build_candidates_for_all_sides(timestamp)
+                self._backtest_strangle_triggered = True
+
+            # Continuously attempt entry until both legs are placed or EOD
+            if not (self.sell_manager.ce_placed and self.sell_manager.pe_placed):
+                await self.sell_manager.execute_short_strangle_backtest(timestamp)
+
+        # For BUY signal target selection, we strictly use Futures price.
+        strike_interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', fallback=50)
+        futures_atm = float(round(self.state_manager.spot_price / strike_interval) * strike_interval)
 
         self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
-            expiry=self.atm_manager.signal_expiry_date
+            expiry=self.atm_manager.signal_expiry_date,
+            reference_atm=futures_atm
         )
         if self.orchestrator_state.v2_target_strike_pair:
              target_strike = self.orchestrator_state.v2_target_strike_pair['strike']
@@ -243,7 +252,8 @@ class BacktestOrchestrator(BaseOrchestrator):
         self.state_manager.index_price = idx_p
         self.state_manager.option_data.clear()
 
-        await self.atm_manager.update_strikes_and_subscribe(fut_p)
+        # ATM strikes and subscriptions now strictly driven by INDEX price
+        await self.atm_manager.update_strikes_and_subscribe(idx_p)
         atm = self.atm_manager.strikes.get('atm')
         self.state_manager.atm_strike = atm
 

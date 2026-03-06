@@ -195,16 +195,23 @@ class TickProcessor:
             return
 
         strike_interval = self.config_manager.get_int(self.atm_manager.instrument_name, 'strike_interval')
-        # Ensure ATM is a float to match the strike price data type from contracts
-        current_atm = float(round(futures_price / strike_interval) * strike_interval)
+        # General purpose ATM (monitoring, OI, ITM) is now strictly INDEX SPOT based.
+        current_atm = float(round(index_price / strike_interval) * strike_interval)
         self.state_manager.atm_strike = current_atm
+
+        # Futures price is only used for target strike discovery (BUY activation).
+        futures_atm = float(round(futures_price / strike_interval) * strike_interval)
 
         if not current_atm:
             logger.debug("V2: ATM could not be calculated. Skipping tick.")
             return
 
         current_ticks_for_watchlist = {}
-        watchlist_strikes = self.strike_manager.get_strike_watchlist(current_atm)
+        # Watchlist must cover both Index ATM (OI/Monitoring) and Futures ATM (Buy Signal)
+        idx_watchlist = self.strike_manager.get_strike_watchlist(current_atm)
+        fut_watchlist = self.strike_manager.get_strike_watchlist(futures_atm)
+        watchlist_strikes = sorted(list(set(idx_watchlist + fut_watchlist)))
+
         for strike in watchlist_strikes:
             tick_data = self.orchestrator.get_current_tick_data(strike, strike, self.orchestrator.is_backtest, backtest_current_tick)
             if tick_data:
@@ -236,8 +243,10 @@ class TickProcessor:
             self.last_target_strike_check_time = now_ts
 
             # Use StrikeManager to find the best strike pair (using default signal expiry)
+            # Driven by FUTURES ATM as requested for BUY activation.
             self.state.v2_target_strike_pair = self.orchestrator.strike_manager.find_and_get_target_strike_pair(
-                expiry=self.atm_manager.signal_expiry_date
+                expiry=self.atm_manager.signal_expiry_date,
+                reference_atm=futures_atm
             )
 
             v2_signal_found = self.state.v2_target_strike_pair is not None
