@@ -58,6 +58,8 @@ class SellManager:
         # ── Sticky vwap_slope + cross_slope tracking ──────────────────────
         self._vwap_slope_sticky = {'CE': False, 'PE': False}
         self._cross_slope_count = {'CE': 0, 'PE': 0}
+        self._last_sell_close_minute = None
+        self._cross_slope_entry_ready = {'CE': False, 'PE': False}
 
     # ─────────────────────────────────────────────────────────────────────
     # Backward-compat properties (engine_manager checks .strangle_placed)
@@ -373,6 +375,11 @@ class SellManager:
         if not self.ce_candidates and not self.pe_candidates:
             return   # Candidates not built yet (before 9:20)
 
+        current_minute = timestamp.replace(second=0, microsecond=0)
+        if self._last_sell_close_minute is None or current_minute != self._last_sell_close_minute:
+            self._last_sell_close_minute = current_minute
+            await self._on_candle_close(timestamp)
+
         ltp_min = self._cfg('ltp_min', float, 50.0)
         ltp_target = self._cfg('ltp_target', float, 50.0)
         ltp_exit_min = self._cfg('ltp_exit_min', float, 20.0)
@@ -390,6 +397,19 @@ class SellManager:
                     f"[SellManager] {side} LTP {ltp:.2f} < exit_min {ltp_exit_min:.0f} — exiting.")
                 await self.exit_side(side, timestamp,
                                      reason=f"LTP decayed below {ltp_exit_min}")
+                continue
+
+            profit_take_pts = self._cfg('profit_take_points', float, 0.0)
+            entry_ltp_val = self.ce_entry_ltp if side == 'CE' else self.pe_entry_ltp
+            if profit_take_pts > 0 and ltp > 0 and entry_ltp_val:
+                profit_pts = entry_ltp_val - ltp
+                if profit_pts >= profit_take_pts:
+                    logger.info(
+                        f"[SellManager] {side} profit target hit: "
+                        f"entry={entry_ltp_val:.2f} ltp={ltp:.2f} "
+                        f"profit={profit_pts:.1f}pts — closing and restarting search.")
+                    await self.exit_side(side, timestamp,
+                                         reason=f"Profit target {profit_take_pts:.0f}pts")
 
         # ── 2. Attempt entry for each searching side ───────────────────
         for side in ['CE', 'PE']:
@@ -406,18 +426,55 @@ class SellManager:
         if self.ce_placed and self.pe_placed:
             await self._check_combined_vwap_slope(timestamp)
 
-        # ── 4. Cross-slope exit for each placed leg ──────────────────────
-        if self.ce_key and self.pe_key:
-            for side in ['CE', 'PE']:
-                placed = self.ce_placed if side == 'CE' else self.pe_placed
-                if not placed:
-                    continue
-                cross_exit = await self._check_cross_slope_comparison(
-                    side, self.ce_key, self.pe_key, timestamp, is_exit=True)
-                if cross_exit:
-                    logger.info(
-                        f"[SellManager] cross_slope exit triggered for {side}.")
-                    await self.exit_side(side, timestamp, reason='cross_slope_exit')
+    # ─────────────────────────────────────────────────────────────────────
+    # Candle-close gate evaluation
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _on_candle_close(self, timestamp):
+        """
+        Called once at each new 1-minute boundary.
+        Evaluates Gate 1 (vwap_slope sticky) and Gate 2 (cross_slope) at the
+        just-completed candle close. Either gate passing arms entry (OR logic).
+        """
+        last_close_ts = timestamp.replace(second=0, microsecond=0) - datetime.timedelta(minutes=1)
+        tf = self._cfg('indicators.vwap_slope.tf', int, 1)
+
+        for side in ['CE', 'PE']:
+            searching = self.ce_searching if side == 'CE' else self.pe_searching
+            if not searching:
+                continue
+            candidates = self.ce_candidates if side == 'CE' else self.pe_candidates
+            if not candidates:
+                continue
+
+            inst_key = candidates[0][1]
+
+            # Gate 1: vwap_slope sticky at candle close
+            gate1 = False
+            result = await self.orchestrator.indicator_manager.get_vwap_slope_status(
+                inst_key, last_close_ts, tf, count=1)
+            if result is not None:
+                _, is_falling, _, _, _, _ = result
+                if is_falling:
+                    if not self._vwap_slope_sticky[side]:
+                        logger.info(f"[SellManager] vwap_slope sticky latched for {side}")
+                    self._vwap_slope_sticky[side] = True
+                gate1 = self._vwap_slope_sticky[side]
+
+            # Gate 2: cross_slope at candle close (evaluated independently — OR logic)
+            gate2 = False
+            ce_key = self.ce_key or (self.ce_candidates[0][1] if self.ce_candidates else None)
+            pe_key = self.pe_key or (self.pe_candidates[0][1] if self.pe_candidates else None)
+            if ce_key and pe_key:
+                gate2 = await self._check_cross_slope_comparison(
+                    side, ce_key, pe_key, last_close_ts, is_exit=False)
+
+            # OR logic: either gate arms entry
+            self._cross_slope_entry_ready[side] = gate1 or gate2
+            if self._cross_slope_entry_ready[side]:
+                logger.info(
+                    f"[SellManager] Entry armed for {side} at close "
+                    f"(gate1={gate1}, gate2={gate2}).")
 
     # ─────────────────────────────────────────────────────────────────────
     # Entry attempt
@@ -432,27 +489,10 @@ class SellManager:
                 f"[SellManager] {side}: no candidate with LTP >= {ltp_min}. Still scanning.")
             return
 
-        slope_ok = await self._check_slope_decreasing(inst_key, timestamp, side=side)
-        if not slope_ok:
+        if not self._cross_slope_entry_ready[side]:
             logger.debug(
                 f"[SellManager] {side} {int(strike)}: LTP={ltp:.2f} OK "
-                f"but slope not yet decreasing.")
-            return
-
-        # Cross-slope comparison check (pass-through when disabled)
-        # Resolve the opposite-side key for comparison
-        if side == 'CE':
-            ce_key_for_cross = inst_key
-            pe_key_for_cross = self.pe_key or (
-                self.pe_candidates[0][1] if self.pe_candidates else None)
-        else:
-            pe_key_for_cross = inst_key
-            ce_key_for_cross = self.ce_key or (
-                self.ce_candidates[0][1] if self.ce_candidates else None)
-
-        cross_ok = await self._check_cross_slope_comparison(
-            side, ce_key_for_cross, pe_key_for_cross, timestamp, is_exit=False)
-        if not cross_ok:
+                f"but entry not armed (waiting for candle-close gate).")
             return
 
         # Resolve contract object for lot-size and order placement
@@ -509,6 +549,7 @@ class SellManager:
         # Reset sticky and cross_slope count — entry placed, fresh state for re-entry
         self._vwap_slope_sticky[side] = False
         self._cross_slope_count[side] = 0
+        self._cross_slope_entry_ready[side] = False
 
         self.save_state()
         logger.info(
@@ -647,6 +688,7 @@ class SellManager:
         # Void sticky and cross_slope count — exit event means fresh checking starts
         self._vwap_slope_sticky[side] = False
         self._cross_slope_count[side] = 0
+        self._cross_slope_entry_ready[side] = False
 
         # Reset this side → restart search
         if side == 'CE':
