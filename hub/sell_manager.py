@@ -422,8 +422,8 @@ class SellManager:
             await self._try_enter_side(side, timestamp, ticks, candidates,
                                        ltp_min, ltp_target)
 
-        # ── 3. Combined VWAP slope exit (when both legs active) ─────────
-        if self.ce_placed and self.pe_placed:
+        # ── 3. Combined VWAP slope exit (when either leg is active) ─────────
+        if self.ce_placed or self.pe_placed:
             await self._check_combined_vwap_slope(timestamp)
 
     # ─────────────────────────────────────────────────────────────────────
@@ -435,21 +435,29 @@ class SellManager:
         Called once at each new 1-minute boundary.
         Evaluates Gate 1 (vwap_slope sticky) and Gate 2 (cross_slope) at the
         just-completed candle close. Either gate passing arms entry (OR logic).
+
+        NEW: Both gates are now strictly evaluated on the current Target Strike
+        (Futures-based premium pair) to identify the global trend direction.
         """
         last_close_ts = timestamp.replace(second=0, microsecond=0) - datetime.timedelta(minutes=1)
         tf = self._cfg('indicators.vwap_slope.tf', int, 1)
+
+        # Resolve Target Strike Keys (Signal Expiry)
+        target_strike = self.orchestrator.state_manager.target_strike
+        expiry = self.orchestrator.atm_manager.signal_expiry_date
+        t_ce_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(target_strike, 'CALL', expiry)
+        t_pe_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(target_strike, 'PUT', expiry)
 
         for side in ['CE', 'PE']:
             searching = self.ce_searching if side == 'CE' else self.pe_searching
             if not searching:
                 continue
-            candidates = self.ce_candidates if side == 'CE' else self.pe_candidates
-            if not candidates:
+
+            inst_key = t_ce_key if side == 'CE' else t_pe_key
+            if not inst_key:
                 continue
 
-            inst_key = candidates[0][1]
-
-            # Gate 1: vwap_slope sticky at candle close
+            # Gate 1: vwap_slope sticky at candle close (Target Strike)
             gate1 = False
             result = await self.orchestrator.indicator_manager.get_vwap_slope_status(
                 inst_key, last_close_ts, tf, count=1)
@@ -457,17 +465,15 @@ class SellManager:
                 _, is_falling, _, _, _, _ = result
                 if is_falling:
                     if not self._vwap_slope_sticky[side]:
-                        logger.info(f"[SellManager] vwap_slope sticky latched for {side}")
+                        logger.info(f"[SellManager] vwap_slope sticky latched for {side} (Target:{int(target_strike)})")
                     self._vwap_slope_sticky[side] = True
                 gate1 = self._vwap_slope_sticky[side]
 
-            # Gate 2: cross_slope at candle close (evaluated independently — OR logic)
+            # Gate 2: cross_slope at candle close (Target Strike Premium comparison)
             gate2 = False
-            ce_key = self.ce_key or (self.ce_candidates[0][1] if self.ce_candidates else None)
-            pe_key = self.pe_key or (self.pe_candidates[0][1] if self.pe_candidates else None)
-            if ce_key and pe_key:
+            if t_ce_key and t_pe_key:
                 gate2 = await self._check_cross_slope_comparison(
-                    side, ce_key, pe_key, last_close_ts, is_exit=False)
+                    side, t_ce_key, t_pe_key, last_close_ts, is_exit=False)
 
             # OR logic: either gate arms entry
             self._cross_slope_entry_ready[side] = gate1 or gate2
@@ -562,12 +568,21 @@ class SellManager:
 
     async def _check_combined_vwap_slope(self, timestamp):
         """
-        Monitor CE_VWAP + PE_VWAP.
+        Monitor CE_VWAP + PE_VWAP of the current TARGET STRIKE.
         If combined slope rises above threshold, find which individual leg
         is also rising above threshold and exit it → restart search.
         """
-        ce_vwap = await self._get_vwap(self.ce_key, timestamp)
-        pe_vwap = await self._get_vwap(self.pe_key, timestamp)
+        # Resolve Target Strike Keys (Signal Expiry)
+        target_strike = self.orchestrator.state_manager.target_strike
+        expiry = self.orchestrator.atm_manager.signal_expiry_date
+        t_ce_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(target_strike, 'CALL', expiry)
+        t_pe_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(target_strike, 'PUT', expiry)
+
+        if not t_ce_key or not t_pe_key:
+            return
+
+        ce_vwap = await self._get_vwap(t_ce_key, timestamp)
+        pe_vwap = await self._get_vwap(t_pe_key, timestamp)
         if ce_vwap is None or pe_vwap is None:
             return
 
@@ -576,7 +591,9 @@ class SellManager:
             self.prev_combined_vwap = combined
             return
 
-        if self.prev_combined_vwap > 0:
+        # If only one leg is open, combined vwap is just that leg's vwap.
+        # We only apply the 'combined' rising logic if BOTH legs are open.
+        if self.ce_placed and self.pe_placed and self.prev_combined_vwap > 0:
             comb_threshold = self._exit_cfg(
                 'combined_vwap_slope.threshold', float, 0.0)
             comb_slope = (combined - self.prev_combined_vwap) / self.prev_combined_vwap
@@ -595,8 +612,12 @@ class SellManager:
                     placed = self.ce_placed if side == 'CE' else self.pe_placed
                     if not placed:
                         continue
-                    key = self.ce_key if side == 'CE' else self.pe_key
+
+                    # Individual leg exit evaluation is also performed on the Target Strike
+                    # as it is the most sensitive proxy for the trend.
+                    key = t_ce_key if side == 'CE' else t_pe_key
                     live_vwap = ce_vwap if side == 'CE' else pe_vwap
+
                     result = await self.orchestrator.indicator_manager.get_vwap_slope_status(
                         key, timestamp, int(ind_tf), count=1, live_vwap=live_vwap)
                     if result and result[2] is not None and result[3] is not None:
@@ -610,6 +631,41 @@ class SellManager:
                                 await self.exit_side(
                                     side, timestamp,
                                     reason="Individual VWAP slope rising above threshold")
+
+        # If only ONE leg is open, we evaluate it directly against the individual threshold.
+        # This fixes the issue where individual legs wouldn't close when the other side was empty.
+        elif self.prev_combined_vwap > 0:
+            enabled = self._exit_cfg(
+                'individual_vwap_slope.enabled',
+                lambda x: str(x).lower() == 'true', True)
+            if not enabled:
+                return
+
+            ind_threshold = self._exit_cfg(
+                'individual_vwap_slope.threshold', float, 0.0)
+            ind_tf = self._exit_cfg('individual_vwap_slope.tf', int, 1)
+
+            for side in ['CE', 'PE']:
+                placed = self.ce_placed if side == 'CE' else self.pe_placed
+                if not placed:
+                    continue
+
+                key = t_ce_key if side == 'CE' else t_pe_key
+                live_vwap = ce_vwap if side == 'CE' else pe_vwap
+
+                result = await self.orchestrator.indicator_manager.get_vwap_slope_status(
+                    key, timestamp, int(ind_tf), count=1, live_vwap=live_vwap)
+                if result and result[2] is not None and result[3] is not None:
+                    _, _, v_curr, v_prev, _, _ = result
+                    if v_prev and v_prev > 0:
+                        ind_slope = (v_curr - v_prev) / v_prev
+                        if ind_slope > ind_threshold:
+                            logger.info(
+                                f"[SellManager] Single leg {side} individual VWAP "
+                                f"slope rising ({ind_slope*100:+.3f}%) — exiting.")
+                            await self.exit_side(
+                                side, timestamp,
+                                reason="Single leg individual VWAP slope rising")
 
         self.prev_combined_vwap = combined
 
@@ -802,6 +858,12 @@ class SellManager:
         ltp_target = self._cfg('ltp_target', float, 50.0)
         product_type = self._cfg('product_type', str, 'NRML')
 
+        # Resolve Target Strike Keys for slope checking (strictly driven by Futures as requested)
+        target_strike = self.orchestrator.state_manager.target_strike
+        expiry = self.orchestrator.atm_manager.signal_expiry_date
+        t_ce_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(target_strike, 'CALL', expiry)
+        t_pe_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(target_strike, 'PUT', expiry)
+
         for side in ['CE', 'PE']:
             placed = self.ce_placed if side == 'CE' else self.pe_placed
             if placed:
@@ -815,11 +877,13 @@ class SellManager:
                     f"hist LTP >= {ltp_min} at {timestamp}.")
                 continue
 
-            slope_ok = await self._check_slope_decreasing(inst_key, timestamp)
+            # Check slope of the TARGET STRIKE (Signal Proxy)
+            t_key = t_ce_key if side == 'CE' else t_pe_key
+            slope_ok = await self._check_slope_decreasing(t_key, timestamp)
             if not slope_ok:
                 logger.info(
                     f"[SellManager][Backtest] {side} {int(strike)}: "
-                    f"LTP={ltp:.2f} OK but slope not decreasing at {timestamp}.")
+                    f"LTP={ltp:.2f} OK but Target({int(target_strike)}) slope not decreasing at {timestamp}.")
                 continue
 
             expiry_strikes = self.orchestrator.atm_manager.contract_lookup.get(

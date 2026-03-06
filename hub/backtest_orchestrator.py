@@ -55,7 +55,10 @@ class BacktestOrchestrator(BaseOrchestrator):
         return self.current_timestamp
 
     def _is_trade_active(self):
-        return self.pnl_tracker and self.pnl_tracker.is_trade_active()
+        buy_active = self.pnl_tracker and self.pnl_tracker.is_trade_active()
+        sell_active = (hasattr(self, 'sell_manager') and
+                       (self.sell_manager.ce_placed or self.sell_manager.pe_placed))
+        return buy_active or sell_active
 
     async def run_backtest_strategy_for_timestamp(self, timestamp, current_group):
         self.current_timestamp = timestamp
@@ -118,6 +121,7 @@ class BacktestOrchestrator(BaseOrchestrator):
             current_group = current_group.drop_duplicates(subset='strike_price', keep='first')
 
         current_data_for_logic = self.state_manager.option_data
+        # Use Index Spot ATM for logic/OI consistently
         current_atm = self.atm_manager.strikes.get('atm')
 
         summary_extra_info = ""
@@ -129,6 +133,16 @@ class BacktestOrchestrator(BaseOrchestrator):
                 await session.manage_active_trades(timestamp=timestamp, current_ticks=current_data_for_logic, current_atm=current_atm)
                 if pos and not summary_extra_info:
                     summary_extra_info = self._get_summary_extra(pos)
+
+        # Condition 4: Sell-side per-tick logic (evaluation and exits)
+        if hasattr(self, 'sell_manager'):
+            sm = self.sell_manager
+            if sm.ce_placed or sm.pe_placed:
+                # Build sell_ticks dictionary from current prices
+                sell_ticks = {}
+                for inst_key, ltp in self.state_manager.option_prices.items():
+                    sell_ticks[inst_key] = {'ltp': ltp}
+                await sm.on_tick(sell_ticks, timestamp)
 
         from utils.logger import log_trade_summary
         pnl = self.pnl_tracker.get_real_time_pnl() if self.pnl_tracker else 0
@@ -252,12 +266,19 @@ class BacktestOrchestrator(BaseOrchestrator):
         self.state_manager.index_price = idx_p
         self.state_manager.option_data.clear()
 
-        # ATM strikes and subscriptions now strictly driven by INDEX price
-        await self.atm_manager.update_strikes_and_subscribe(idx_p)
-        atm = self.atm_manager.strikes.get('atm')
-        self.state_manager.atm_strike = atm
+        # ATM for OI/Monitoring is Index-based
+        await self.atm_manager.update_strikes_and_subscribe(idx_p, is_futures=False)
+        index_atm = self.atm_manager.strikes.get('atm')
+        self.state_manager.atm_strike = index_atm
 
-        watchlist = set(self.strike_manager.get_strike_watchlist(atm))
+        # ATM for Buy Target selection is Futures-based
+        await self.atm_manager.update_strikes_and_subscribe(fut_p, is_futures=True)
+        futures_atm = self.atm_manager.strikes.get('futures_atm')
+
+        # Watchlist must cover both Index strikes (OI) and Futures strikes (Target selection)
+        watchlist = set(self.strike_manager.get_strike_watchlist(index_atm))
+        if futures_atm:
+            watchlist.update(self.strike_manager.get_strike_watchlist(futures_atm))
         for session in self.user_sessions.values():
             if session.state_manager.dual_sr_monitoring_data: watchlist.add(float(session.state_manager.dual_sr_monitoring_data['target_strike']))
             for p in [session.state_manager.call_position, session.state_manager.put_position]:

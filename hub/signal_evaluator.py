@@ -39,6 +39,7 @@ class SignalEvaluator:
             needs_slope = self._is_in_formula('vwap_slope', entry_formula)
             needs_r1 = self._is_in_formula('r1_high', entry_formula)
             needs_s1 = self._is_in_formula('s1_low', entry_formula)
+            needs_oi_gate = self._is_in_formula('oi_gate', entry_formula)
 
             for side in ['CE', 'PE']:
                 side_key = 'ce_data' if side == 'CE' else 'pe_data'
@@ -251,6 +252,30 @@ class SignalEvaluator:
                         data[
                             's1_label'] = 'PrevLow' if ph == 'S1_TRACKING' else 'S1'
                         data['criteria_state']['s1_low'] = is_br
+
+                if needs_oi_gate:
+                    oi_gate_enabled = self.monitor._get_user_setting(
+                        'enabled', bool, fallback=True, mode=mode,
+                        category='indicators/oi_gate')
+                    if oi_gate_enabled:
+                        oi_mon = getattr(self.orchestrator, 'oi_exit_monitor', None)
+                        idx_p = self.state_manager.index_price
+                        if oi_mon and idx_p:
+                            oi_dir = oi_mon.get_oi_direction(idx_p)
+                            if oi_dir:
+                                if side == 'CE':
+                                    oi_pass = oi_dir['call_oi_decreasing'] or oi_dir['put_oi_increasing']
+                                else:
+                                    oi_pass = oi_dir['put_oi_decreasing'] or oi_dir['call_oi_increasing']
+                                data['criteria_state']['oi_gate'] = oi_pass
+                            else:
+                                data['criteria_state']['oi_gate'] = False
+                                if self.orchestrator.is_backtest:
+                                    logger.debug(f"V2: [{side}] OI gate: No snapshots available in backtest (LTP exists? {current_ltp is not None})")
+                        else:
+                            data['criteria_state']['oi_gate'] = False
+                    else:
+                        data['criteria_state']['oi_gate'] = True
 
                 is_sticky_reentry = monitoring_data.get(
                     'awaiting_fresh_vwap_breach', False)
@@ -573,9 +598,9 @@ class SignalEvaluator:
                         category='indicators/oi_gate')
                     if oi_gate_enabled:
                         oi_mon = getattr(self.orchestrator, 'oi_exit_monitor', None)
-                        current_atm = self.state_manager.index_price
-                        if oi_mon and current_atm:
-                            oi_dir = oi_mon.get_oi_direction(current_atm)
+                        idx_p = self.state_manager.index_price
+                        if oi_mon and idx_p:
+                            oi_dir = oi_mon.get_oi_direction(idx_p)
                             if oi_dir:
                                 if side == 'CE':
                                     oi_pass = oi_dir['call_oi_decreasing'] or oi_dir['put_oi_increasing']

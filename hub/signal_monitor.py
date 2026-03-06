@@ -207,7 +207,8 @@ class SignalMonitor:
                 'vwap': False,
                 'vwap_slope': False,
                 'r1_high': False,
-                's1_low': False
+                's1_low': False,
+                'oi_gate': False
             }
 
         # Pre-seed last_analyzed_1m to the current last-completed candle so that
@@ -356,6 +357,8 @@ class SignalMonitor:
                         self._target_strike_consensus_count += 1
 
                     consensus_threshold = self._get_user_setting('strike_switch_consensus', int, fallback=2, mode=ref_mode)
+                    if self.orchestrator.is_backtest:
+                        consensus_threshold = 1
                     ticks_ok = self._target_strike_consensus_count >= consensus_threshold
 
                     elapsed_since_switch = (

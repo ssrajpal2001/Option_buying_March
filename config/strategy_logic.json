@@ -143,6 +143,7 @@
                     "threshold": 0.00025
                 },
                 "individual_vwap_slope": {
+                    "enabled": true,
                     "tf": 1,
                     "check_mode": "CLOSE",
                     "occurrences": 1,

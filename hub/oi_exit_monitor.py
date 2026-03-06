@@ -71,10 +71,15 @@ class OIExitMonitor:
             put_oi_increase_pct = self._cfg('put_oi_increase_pct', float, 10.0)
             check_interval = self._cfg('check_interval_seconds', float, 60.0)
 
-            now = time.monotonic()
-            if (now - self.last_check_ts) < check_interval:
+            is_backtest = self.orchestrator.is_backtest
+            if is_backtest:
+                now_val = timestamp.timestamp()
+            else:
+                now_val = time.monotonic()
+
+            if (now_val - self.last_check_ts) < check_interval:
                 return
-            self.last_check_ts = now
+            self.last_check_ts = now_val
 
             interval = self.orchestrator.config_manager.get_int(
                 self.orchestrator.instrument_name, 'strike_interval', 50
