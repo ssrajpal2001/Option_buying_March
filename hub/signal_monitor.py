@@ -421,11 +421,11 @@ class SignalMonitor:
                             sm = self.orchestrator.sell_manager
                             parts = []
                             if sm.ce_placed and sm.sell_ce_strike is not None:
-                                ce_sell_ltp = float(self.state_manager.get_ltp(sm.sell_ce_key) or 0)
-                                parts.append(f"SOLD CE {int(sm.sell_ce_strike)}@{ce_sell_ltp:.2f}")
+                                entry = sm.sell_ce_entry_ltp or 0
+                                parts.append(f"SOLD CE {int(sm.sell_ce_strike)}@{entry:.2f}")
                             if sm.pe_placed and sm.sell_pe_strike is not None:
-                                pe_sell_ltp = float(self.state_manager.get_ltp(sm.sell_pe_key) or 0)
-                                parts.append(f"SOLD PE {int(sm.sell_pe_strike)}@{pe_sell_ltp:.2f}")
+                                entry = sm.sell_pe_entry_ltp or 0
+                                parts.append(f"SOLD PE {int(sm.sell_pe_strike)}@{entry:.2f}")
                             if parts:
                                 sell_str = " | " + " | ".join(parts)
                         logger.info(f"V2 MONITORING Status [{user_display}]: Strike {ce_data['strike_price']}{sw_label} | Index: {idx_ltp:.2f}{gate_str} | "

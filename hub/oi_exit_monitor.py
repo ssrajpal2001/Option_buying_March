@@ -7,6 +7,7 @@ class OIExitMonitor:
         self.orchestrator = orchestrator
         self.prev_call_oi = None
         self.prev_put_oi = None
+        self.last_atm = None
         self.last_check_ts = 0
 
     def _cfg(self, key, type_func=float, fallback=None):
@@ -84,13 +85,28 @@ class OIExitMonitor:
             if call_oi == 0 and put_oi == 0:
                 return
 
+            # ATM CHANGE DETECTION:
+            # If the ATM strike has shifted, the OI sum will jump because we are looking
+            # at a different set of strikes. We must reset the baseline to avoid false exits.
+            atm_rounded = int(round(current_atm / interval) * interval)
+            if self.last_atm is not None and atm_rounded != self.last_atm:
+                logger.info(
+                    f"[OI_EXIT] ATM shifted ({self.last_atm} → {atm_rounded}). "
+                    f"Resetting OI baseline to avoid false trigger."
+                )
+                self.prev_call_oi = call_oi
+                self.prev_put_oi = put_oi
+                self.last_atm = atm_rounded
+                return
+
             logger.debug(
-                f"[OI_EXIT] Snapshot — CALL OI: {call_oi:,.0f}  PUT OI: {put_oi:,.0f}"
+                f"[OI_EXIT] Snapshot — CALL OI: {call_oi:,.0f}  PUT OI: {put_oi:,.0f} (ATM: {atm_rounded})"
             )
 
             if self.prev_call_oi is None:
                 self.prev_call_oi = call_oi
                 self.prev_put_oi = put_oi
+                self.last_atm = atm_rounded
                 return
 
             if enabled:

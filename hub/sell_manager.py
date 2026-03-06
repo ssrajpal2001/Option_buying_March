@@ -902,5 +902,31 @@ class SellManager:
             logger.info(
                 f"[SellManager] State loaded: CE={self.ce_placed} PE={self.pe_placed} "
                 f"expiry={expiry}")
+            # Note: ce_contract/pe_contract cannot be JSON-serialized.
+            # They must be re-resolved via reconnect_positions() once AtmManager is ready.
         except Exception as e:
             logger.error(f"[SellManager] Failed to load state: {e}")
+
+    def reconnect_positions(self):
+        """
+        After restart/reload, re-resolves the OptionContract objects from
+        the lookup table using the loaded strike prices.
+        """
+        if not self.expiry:
+            return
+
+        lookup = self.orchestrator.atm_manager.contract_lookup.get(self.expiry, {})
+        if not lookup:
+            return
+
+        if self.ce_placed and self.ce_strike:
+            contract = lookup.get(float(self.ce_strike), {}).get('CE')
+            if contract:
+                self.ce_contract = contract
+                logger.info(f"[SellManager] Reconnected CE contract for strike {self.ce_strike}")
+
+        if self.pe_placed and self.pe_strike:
+            contract = lookup.get(float(self.pe_strike), {}).get('PE')
+            if contract:
+                self.pe_contract = contract
+                logger.info(f"[SellManager] Reconnected PE contract for strike {self.pe_strike}")
