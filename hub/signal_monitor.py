@@ -213,7 +213,7 @@ class SignalMonitor:
         # Pre-seed last_analyzed_1m to the current last-completed candle so that
         # _check_crossover_for_all_sides skips pre-existing historical candles on
         # the first tick (avoids immediate entry from stale websocket-fed data).
-        last_analyzed_1m_seed = timestamp.replace(second=0, microsecond=0) - pd.Timedelta(minutes=1)
+        last_analyzed_1m_seed = timestamp.replace(second=0, microsecond=0)
 
         ce_monitoring_data = {
             'instrument_key': ce_instrument_key,
