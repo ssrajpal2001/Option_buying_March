@@ -129,6 +129,10 @@ class StatusWriter:
         except Exception:
             pass
 
+        trade_history = []
+        if getattr(orch, 'trade_log', None):
+            trade_history = orch.trade_log.to_list(50)
+
         status = {
             "updated_at": (timestamp.isoformat()
                            if hasattr(timestamp, 'isoformat') else str(timestamp)),
@@ -146,6 +150,7 @@ class StatusWriter:
             "trade_count": trade_count,
             "last_error": self.last_error,
             "log_tail": log_lines,
+            "trade_history": trade_history,
         }
 
         tmp = self.status_path.with_suffix('.tmp')
