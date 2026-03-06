@@ -99,7 +99,8 @@
                     "enabled": false
                 },
                 "oi_gate": {
-                    "enabled": true
+                    "enabled": true,
+                    "min_hold_seconds": 120
                 }
             }
         },
