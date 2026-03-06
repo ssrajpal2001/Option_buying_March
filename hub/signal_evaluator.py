@@ -380,6 +380,7 @@ class SignalEvaluator:
             needs_slope = self._is_in_formula('vwap_slope', entry_formula)
             needs_r1 = self._is_in_formula('r1_high', entry_formula)
             needs_s1 = self._is_in_formula('s1_low', entry_formula)
+            needs_oi_gate = self._is_in_formula('oi_gate', entry_formula)
 
             for side in ['CE', 'PE']:
                 side_key = 'ce_data' if side == 'CE' else 'pe_data'
@@ -436,7 +437,8 @@ class SignalEvaluator:
                     'vwap_slope':
                     data['criteria_state'].get('vwap_slope', False),
                     'r1_high': data['criteria_state'].get('r1_high', False),
-                    's1_low': data['criteria_state'].get('s1_low', False)
+                    's1_low': data['criteria_state'].get('s1_low', False),
+                    'oi_gate': data['criteria_state'].get('oi_gate', False)
                 }
 
                 if needs_vwap and self._is_in_formula('vwap', entry_formula):
@@ -565,7 +567,37 @@ class SignalEvaluator:
                             mode=mode)
                         eval_results['s1_low'] = is_s1_p
 
-                for k in ['vwap', 'vwap_slope', 'r1_high', 's1_low']:
+                if needs_oi_gate:
+                    oi_gate_enabled = self.monitor._get_user_setting(
+                        'enabled', bool, fallback=True, mode=mode,
+                        category='indicators/oi_gate')
+                    if oi_gate_enabled:
+                        oi_mon = getattr(self.orchestrator, 'oi_exit_monitor', None)
+                        current_atm = self.state_manager.index_price
+                        if oi_mon and current_atm:
+                            oi_dir = oi_mon.get_oi_direction(current_atm)
+                            if oi_dir:
+                                if side == 'CE':
+                                    oi_pass = oi_dir['call_oi_decreasing'] or oi_dir['put_oi_increasing']
+                                else:
+                                    oi_pass = oi_dir['put_oi_decreasing'] or oi_dir['call_oi_increasing']
+                                eval_results['oi_gate'] = oi_pass
+                                if not oi_pass:
+                                    logger.info(
+                                        f"V2: [{side}] BUY entry BLOCKED by OI gate. "
+                                        f"CE_dec={oi_dir['call_oi_decreasing']} "
+                                        f"PE_inc={oi_dir['put_oi_increasing']} "
+                                        f"PE_dec={oi_dir['put_oi_decreasing']} "
+                                        f"CE_inc={oi_dir['call_oi_increasing']}")
+                            else:
+                                eval_results['oi_gate'] = False
+                                logger.debug(f"V2: [{side}] OI gate: waiting for snapshots.")
+                        else:
+                            eval_results['oi_gate'] = False
+                    else:
+                        eval_results['oi_gate'] = True
+
+                for k in ['vwap', 'vwap_slope', 'r1_high', 's1_low', 'oi_gate']:
                     if k in eval_results:
                         data['criteria_state'][k] = eval_results[k]
 
