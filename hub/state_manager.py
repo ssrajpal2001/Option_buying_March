@@ -136,6 +136,26 @@ class StateManager:
         self.last_trade_pnl = final_pnl
         self.total_pnl += final_pnl
         logger.info(f"Closed {direction} trade. Final PNL: {self.last_trade_pnl:.2f}, Total Session PNL: {self.total_pnl:.2f}")
+
+        trade_log = getattr(self.orchestrator, 'trade_log', None)
+        if trade_log:
+            from .live_trade_log import LiveTradeLog
+            entry_price = position_to_close.get('entry_price') or position_to_close.get('entry', 0)
+            exit_price = position_to_close.get('ltp', exit_ltp or 0)
+            pnl_pts = (float(exit_price) - float(entry_price)) if entry_price else 0
+            trade_log.add(LiveTradeLog.make_entry(
+                trade_type='BUY',
+                direction=direction,
+                strike=position_to_close.get('strike_price', 0),
+                entry_price=entry_price,
+                exit_price=exit_price,
+                pnl_pts=pnl_pts,
+                pnl_rs=final_pnl,
+                reason='Exit',
+                order_id='',
+                timestamp=position_to_close.get('exit_timestamp') or position_to_close.get('entry_timestamp'),
+            ))
+
         await self.save_state()
 
     def set_waiting_for_resubscription(self, keys):
