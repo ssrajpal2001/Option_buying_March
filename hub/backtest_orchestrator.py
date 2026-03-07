@@ -31,7 +31,10 @@ class BacktestOrchestrator(BaseOrchestrator):
             await self.backtest_data_mgr.pre_fetch_underlying_data(backtest_date_str)
 
             import os, csv
-            atp_file = os.path.join(os.getcwd(), f"atp_data_{self.instrument_name}_{backtest_date_str}.csv")
+            # Standardize path discovery for recorded data files
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            atp_file = os.path.join(project_root, f"atp_data_{self.instrument_name}_{backtest_date_str}.csv")
+
             if os.path.exists(atp_file):
                 if not hasattr(self.state_manager, 'atp_history'):
                     self.state_manager.atp_history = {}
@@ -287,6 +290,8 @@ class BacktestOrchestrator(BaseOrchestrator):
                         if p.get(k): watchlist.add(float(p[k]))
 
         tick_df_idx = tick_df.drop_duplicates(subset='strike_price').set_index('strike_price') if 'strike_price' in tick_df.columns else pd.DataFrame()
+        exp = self.atm_manager.signal_expiry_date
+
         for strike in watchlist:
             api_ce = await self._get_ltp_for_strike(strike, 'CALL', timestamp)
             api_pe = await self._get_ltp_for_strike(strike, 'PUT', timestamp)
@@ -294,20 +299,23 @@ class BacktestOrchestrator(BaseOrchestrator):
             ce_p = s_data.get('ce_ltp') if pd.notna(s_data.get('ce_ltp')) and s_data.get('ce_ltp') > 0 else api_ce
             pe_p = s_data.get('pe_ltp') if pd.notna(s_data.get('pe_ltp')) and s_data.get('pe_ltp') > 0 else api_pe
 
-            self.state_manager.option_data[strike] = {
-                'ce_ltp': ce_p, 'pe_ltp': pe_p,
-                'ce_delta': s_data.get('ce_delta'), 'pe_delta': s_data.get('pe_delta'),
-                'ce_vega': s_data.get('ce_vega'), 'pe_vega': s_data.get('pe_vega'),
-                'ce_theta': s_data.get('ce_theta'), 'pe_theta': s_data.get('pe_theta'),
-                'ce_gamma': s_data.get('ce_gamma'), 'pe_gamma': s_data.get('pe_gamma'),
-                'ce_open': s_data.get('ce_open'), 'pe_open': s_data.get('pe_open'),
-                'ce_high': s_data.get('ce_high'), 'pe_high': s_data.get('pe_high'),
-                'ce_low': s_data.get('ce_low'), 'pe_low': s_data.get('pe_low'),
-                'ce_close': s_data.get('ce_close'), 'pe_close': s_data.get('pe_close'),
-                'ce_oi': s_data.get('ce_oi'), 'pe_oi': s_data.get('pe_oi')
-            }
-            exp = self.atm_manager.signal_expiry_date
             ck, pk = self.atm_manager.find_instrument_key_by_strike(strike, 'CALL', exp), self.atm_manager.find_instrument_key_by_strike(strike, 'PUT', exp)
+
+            if ck:
+                self.state_manager.option_data[ck] = {
+                    'ltp': ce_p, 'delta': s_data.get('ce_delta'),
+                    'vega': s_data.get('ce_vega'), 'theta': s_data.get('ce_theta'), 'gamma': s_data.get('ce_gamma'),
+                    'open': s_data.get('ce_open'), 'high': s_data.get('ce_high'), 'low': s_data.get('ce_low'), 'close': s_data.get('ce_close'),
+                    'oi': s_data.get('ce_oi')
+                }
+            if pk:
+                self.state_manager.option_data[pk] = {
+                    'ltp': pe_p, 'delta': s_data.get('pe_delta'),
+                    'vega': s_data.get('pe_vega'), 'theta': s_data.get('pe_theta'), 'gamma': s_data.get('pe_gamma'),
+                    'open': s_data.get('pe_open'), 'high': s_data.get('pe_high'), 'low': s_data.get('pe_low'), 'close': s_data.get('pe_close'),
+                    'oi': s_data.get('pe_oi')
+                }
+
             if ck and ce_p: self.state_manager.option_prices[ck] = ce_p
             if pk and pe_p: self.state_manager.option_prices[pk] = pe_p
             if ck:

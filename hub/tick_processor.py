@@ -92,8 +92,9 @@ class TickProcessor:
 
         if is_backtest:
             if backtest_current_tick:
-                ce_data = backtest_current_tick.get(ce_strike, {})
-                pe_data = backtest_current_tick.get(pe_strike, {})
+                # Backtest: backtest_current_tick uses strike (float) as key
+                ce_data = backtest_current_tick.get(float(ce_strike), {})
+                pe_data = backtest_current_tick.get(float(pe_strike), {})
                 tick_data.update({
                     'ce_ltp': ce_data.get('ce_ltp'),
                     'ce_delta': ce_data.get('ce_delta'),
@@ -233,7 +234,7 @@ class TickProcessor:
         for strike in watchlist_strikes:
             tick_data = self.orchestrator.get_current_tick_data(strike, strike, self.orchestrator.is_backtest, backtest_current_tick)
             if tick_data:
-                current_ticks_for_watchlist[strike] = tick_data
+                current_ticks_for_watchlist[float(strike)] = tick_data
 
         # DATA RECORDING (ATM +/- 10) — once per minute at minute boundary
         if not self.orchestrator.is_backtest and self.orchestrator.data_recorder:
@@ -342,6 +343,9 @@ class TickProcessor:
         for strike, tick_data in current_ticks_for_watchlist.items():
             # In backtest, we need to manually push ticks to aggregators
             if self.orchestrator.is_backtest:
+                # Update option_data with strike-based keys for backtest-side logic
+                self.state_manager.option_data[float(strike)] = tick_data
+
                 ce_ltp = tick_data.get('ce_ltp')
                 pe_ltp = tick_data.get('pe_ltp')
                 # Find instrument keys for these strikes

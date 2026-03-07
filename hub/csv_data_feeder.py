@@ -27,8 +27,13 @@ class CSVDataFeeder:
             if target_date:
                 self.backtest_date = target_date if isinstance(target_date, datetime.date) else datetime.datetime.strptime(target_date, '%Y-%m-%d').date()
 
+            # Identify project root safely
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
             if not os.path.isfile(self.file_path):
-                logger.warning(f"CSV file NOT FOUND or is a directory at {self.file_path}. Generating synthetic 1-minute timestamps for API-only backtest.")
+                # AUTOMATIC DISCOVERY: If default tick_data_log.csv is missing,
+                # try to find a recorded file matching market_data_{instrument}_{date}.csv
+                # We need the date first to construct the filename.
 
                 # 1. Try to get date from config (if not provided as argument)
                 if not self.backtest_date:
@@ -50,21 +55,34 @@ class CSVDataFeeder:
                         # 3. Fallback to yesterday
                         self.backtest_date = (datetime.datetime.now() - datetime.timedelta(days=1)).date()
 
-                start_ts = datetime.datetime.combine(self.backtest_date, datetime.time(9, 15))
-                end_ts = datetime.datetime.combine(self.backtest_date, datetime.time(15, 30))
+                # Attempt discovery using the resolved date and instrument
+                instrument = "NIFTY"
+                if self.trade_orchestrator: instrument = self.trade_orchestrator.instrument_name
+                elif self.config_manager: instrument = self.config_manager.get('settings', 'instrument', fallback='NIFTY')
 
-                import pytz
-                kolkata = pytz.timezone('Asia/Kolkata')
-                start_ts = kolkata.localize(start_ts)
-                end_ts = kolkata.localize(end_ts)
+                discovery_name = f"market_data_{instrument}_{self.backtest_date}.csv"
+                discovery_path = os.path.join(project_root, discovery_name)
 
-                timestamps = pd.date_range(start=start_ts, end=end_ts, freq='1min')
-                self.data = pd.DataFrame({'timestamp': timestamps})
-                # Add dummy columns to satisfy existing logic
-                self.data['strike_price'] = 0
-                self.data['spot_price'] = 0
-                logger.info(f"Generated {len(self.data)} synthetic timestamps for {self.backtest_date}")
-                return
+                if os.path.isfile(discovery_path):
+                    logger.info(f"CSV DISCOVERY: Automatically identified recorded data file: {discovery_name}")
+                    self.file_path = discovery_path
+                else:
+                    logger.warning(f"CSV file NOT FOUND at {self.file_path} or {discovery_path}. Generating synthetic 1-minute timestamps for API-only backtest.")
+                    start_ts = datetime.datetime.combine(self.backtest_date, datetime.time(9, 15))
+                    end_ts = datetime.datetime.combine(self.backtest_date, datetime.time(15, 30))
+
+                    import pytz
+                    kolkata = pytz.timezone('Asia/Kolkata')
+                    start_ts = kolkata.localize(start_ts)
+                    end_ts = kolkata.localize(end_ts)
+
+                    timestamps = pd.date_range(start=start_ts, end=end_ts, freq='1min')
+                    self.data = pd.DataFrame({'timestamp': timestamps})
+                    # Add dummy columns to satisfy existing logic
+                    self.data['strike_price'] = 0
+                    self.data['spot_price'] = 0
+                    logger.info(f"Generated {len(self.data)} synthetic timestamps for {self.backtest_date}")
+                    return
 
             long_df = pd.read_csv(self.file_path, parse_dates=['timestamp'], on_bad_lines='warn', engine='python')
             self.data = long_df

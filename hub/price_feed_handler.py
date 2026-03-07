@@ -259,12 +259,15 @@ class PriceFeedHandler:
 
                 # Extract day's OHLC for recording/monitoring
                 if ff.ltpc:
-                    self.state_manager.option_data[instrument_key] = {
+                    if instrument_key not in self.state_manager.option_data:
+                        self.state_manager.option_data[instrument_key] = {}
+
+                    self.state_manager.option_data[instrument_key].update({
                         'open': ff.ltpc.o,
                         'high': ff.ltpc.h,
                         'low': ff.ltpc.l,
                         'close': ff.ltpc.cp # Previous close or current? Usually prev.
-                    }
+                    })
                     self._sync_market_data('option_data', instrument_key, self.state_manager.option_data[instrument_key])
 
             elif feed.HasField('ltpc'):
