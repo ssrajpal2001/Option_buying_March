@@ -117,14 +117,21 @@ class LifecycleManager:
                     symbol = "N/A"
                     if temp_broker_for_reporting and 'contract' in trade:
                         try:
-                            signal_expiry = self.trade_orchestrator.atm_manager.signal_expiry_date
+                            # Use default signal expiry if not present in trade
+                            signal_expiry = trade.get('signal_expiry_date') or self.trade_orchestrator.atm_manager.signal_expiry_date
                             symbol = temp_broker_for_reporting.construct_zerodha_symbol(trade['contract'], signal_expiry)
                         except Exception as e:
                             logger.warning(f"Could not construct symbol for a trade: {e}")
 
+                    side_label = trade.get('side', 'N/A')
+                    if trade.get('entry_type') == 'SELL':
+                        side_label += " (SELL)"
+                    else:
+                        side_label += " (BUY)"
+
                     log_message = (
                         f"Symbol: {symbol}, "
-                        f"Side: {trade.get('side', 'N/A')}, "
+                        f"Side: {side_label}, "
                         f"Entry Time: {trade.get('entry_timestamp', 'N/A')}, "
                         f"Entry Price: {trade.get('entry_price', 0):.2f}, "
                         f"Exit Time: {trade.get('exit_timestamp', 'N/A')}, "

@@ -123,6 +123,11 @@ class BaseOrchestrator(ABC):
         """
         self.tick_processor = TickProcessor(self)
         self.atm_manager.set_ready()
+
+        # Reconnect any recovered sell positions now that AtmManager lookup is ready
+        if hasattr(self, 'sell_manager'):
+            self.sell_manager.reconnect_positions()
+
         logger.debug("Orchestrator initialization finalized.")
 
     @abstractmethod

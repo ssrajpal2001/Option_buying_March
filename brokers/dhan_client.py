@@ -8,8 +8,8 @@ from utils.auth_manager_dhan import handle_dhan_login
 from hub.event_bus import event_bus
 
 class DhanClient(BaseBroker):
-    def __init__(self, broker_instance_name, config_manager, login_required=True, user_id=None, db_config=None):
-        super().__init__(broker_instance_name, config_manager, user_id=user_id, db_config=db_config)
+    def __init__(self, broker_instance_name, config_manager, login_required=True, user_id=None, db_config=None, **kwargs):
+        super().__init__(broker_instance_name, config_manager, user_id=user_id, db_config=db_config, **kwargs)
         self.dhan = None
         self._security_id_cache = {} # (name, expiry, strike, type) -> security_id
         self._security_list_df = None

@@ -4,8 +4,8 @@ from utils.trade_logger import TradeLogger
 from hub.event_bus import event_bus
 
 class PaperTradeClient(BaseBroker):
-    def __init__(self, broker_instance_name, config_manager):
-        super().__init__(broker_instance_name, config_manager)
+    def __init__(self, broker_instance_name, config_manager, **kwargs):
+        super().__init__(broker_instance_name, config_manager, **kwargs)
         logger.info(f"{self.instance_name} initialized for instruments: {list(self.instruments)}")
 
     def connect(self):
@@ -90,6 +90,21 @@ class PaperTradeClient(BaseBroker):
 
     def place_order(self, contract, transaction_type, quantity, signal_expiry_date=None):
         return "PAPER_ORDER_ID"
+
+    def construct_zerodha_symbol(self, contract, signal_expiry_date=None):
+        """Returns a readable symbol for reporting purposes."""
+        if not contract:
+            return "N/A"
+        name = getattr(contract, 'name', 'NIFTY').upper()
+        if "NIFTY 50" in name: name = "NIFTY"
+        elif "NIFTY BANK" in name: name = "BANKNIFTY"
+
+        strike = int(contract.strike_price)
+        opt_type = contract.instrument_type.upper()
+        expiry = contract.expiry
+        expiry_str = expiry.strftime('%d%b') if hasattr(expiry, 'strftime') else str(expiry)
+
+        return f"{name} {expiry_str} {strike} {opt_type}"
 
     def close_all_positions(self):
         logger.info(f"[{self.instance_name}] End-of-day closure: Closing all open paper trade positions.")

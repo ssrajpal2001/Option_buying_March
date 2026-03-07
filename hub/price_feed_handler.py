@@ -213,26 +213,31 @@ class PriceFeedHandler:
                 if self.state_manager.spot_price is None:
                     logger.info(f"V2: First FUTURES price received for {self.trade_orchestrator.instrument_name}: {ltp}")
 
-                # This is the futures price. It updates the main spot_price and triggers ATM recalc.
+                # This is the futures price. Used ONLY for target strike selection (BUY activation).
                 self.state_manager.spot_price = ltp
                 self._sync_market_data('spot_price', None, ltp, is_primitive=True)
+
+                # Also trigger subscription update for futures-based target strikes
                 await event_bus.publish('SPOT_PRICE_UPDATE', {
                     'instrument': self.trade_orchestrator.instrument_name,
-                    'ltp': ltp
+                    'ltp': ltp,
+                    'is_futures': True
                 })
 
-                # NO FALLBACK: Never use Futures for Index Price.
-                # This ensures ITM trade calculations remain strictly tied to NIFTY 50 Index.
             else:
                 if self.state_manager.index_price is None:
                     logger.info(f"V2: First INDEX price (Spot) received for {self.trade_orchestrator.instrument_name}: {ltp}")
 
-                # This is the index price. It's stored separately for trade initiation.
+                # This is the index price (Spot). Used for ATM, OI monitoring, and ITM selection.
                 self.state_manager.index_price = ltp
                 self._sync_market_data('index_price', None, ltp, is_primitive=True)
 
-                # NO FALLBACK: Never use Index for Futures (ATM).
-                # Strike selection and ATMs stay strictly tied to NIFTY Futures price.
+                # Trigger ATM recalculation and resubscription based on INDEX SPOT as requested.
+                await event_bus.publish('SPOT_PRICE_UPDATE', {
+                    'instrument': self.trade_orchestrator.instrument_name,
+                    'ltp': ltp,
+                    'is_futures': False
+                })
 
             # Always signal the tick worker to check for strike changes/breaches on any underlying movement
             self._tick_event.set()
@@ -251,6 +256,20 @@ class PriceFeedHandler:
                 ff = feed.fullFeed.marketFF
                 greeks, ltp, iv, volume, market_level, atp = ff.optionGreeks, ff.ltpc.ltp, ff.iv, ff.vtt, ff.marketLevel, ff.atp
                 oi_value = getattr(ff, 'oi', 0) or 0
+
+                # Extract day's OHLC for recording/monitoring
+                if ff.ltpc:
+                    if instrument_key not in self.state_manager.option_data:
+                        self.state_manager.option_data[instrument_key] = {}
+
+                    self.state_manager.option_data[instrument_key].update({
+                        'open': ff.ltpc.o,
+                        'high': ff.ltpc.h,
+                        'low': ff.ltpc.l,
+                        'close': ff.ltpc.cp # Previous close or current? Usually prev.
+                    })
+                    self._sync_market_data('option_data', instrument_key, self.state_manager.option_data[instrument_key])
+
             elif feed.HasField('ltpc'):
                 ltp = feed.ltpc.ltp
 
@@ -290,7 +309,8 @@ class PriceFeedHandler:
                                 futures = getattr(self.state_manager, 'futures_price', None)
                                 data_recorder.record_atp_snapshot(
                                     prev_minute_ts, instrument_key, strike, side,
-                                    prev_atp, ltp, spot, futures
+                                    prev_atp, ltp, spot, futures,
+                                    oi=self.state_manager.option_oi.get(instrument_key)
                                 )
 
                         self.state_manager.atp_history[instrument_key]['_last_minute'] = minute_ts

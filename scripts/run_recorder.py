@@ -105,9 +105,11 @@ class RecordingOrchestrator:
                 'ce_symbol': ce_key,
                 'ce_ltp': self.state_manager.option_prices.get(ce_key),
                 'ce_delta': self.state_manager.option_deltas.get(ce_key),
+                'ce_oi': self.state_manager.option_oi.get(ce_key),
                 'pe_symbol': pe_key,
                 'pe_ltp': self.state_manager.option_prices.get(pe_key),
                 'pe_delta': self.state_manager.option_deltas.get(pe_key),
+                'pe_oi': self.state_manager.option_oi.get(pe_key),
             }
 
         # DYNAMIC SUBSCRIPTION: Ensure we are subscribed to the instruments we are recording

@@ -92,13 +92,16 @@ class TickProcessor:
 
         if is_backtest:
             if backtest_current_tick:
-                ce_data = backtest_current_tick.get(ce_strike, {})
-                pe_data = backtest_current_tick.get(pe_strike, {})
+                # Backtest: backtest_current_tick uses strike (float) as key
+                ce_data = backtest_current_tick.get(float(ce_strike), {})
+                pe_data = backtest_current_tick.get(float(pe_strike), {})
                 tick_data.update({
                     'ce_ltp': ce_data.get('ce_ltp'),
                     'ce_delta': ce_data.get('ce_delta'),
+                    'ce_oi': ce_data.get('ce_oi'),
                     'pe_ltp': pe_data.get('pe_ltp'),
                     'pe_delta': pe_data.get('pe_delta'),
+                    'pe_oi': pe_data.get('pe_oi'),
                 })
         else: # Live Mode
             ce_contract, pe_contract = self.atm_manager.find_contracts_for_strike(ce_strike, self.atm_manager.signal_expiry_date)
@@ -119,9 +122,25 @@ class TickProcessor:
             tick_data.update({
                 'ce_ltp': ce_ltp,
                 'ce_delta': self.state_manager.option_deltas.get(ce_key),
+                'ce_vega': self.state_manager.option_vegas.get(ce_key),
+                'ce_theta': self.state_manager.option_thetas.get(ce_key),
+                'ce_gamma': self.state_manager.option_gammas.get(ce_key),
+                'ce_oi': self.state_manager.option_oi.get(ce_key),
+                'ce_open': self.state_manager.option_data.get(ce_key, {}).get('open'),
+                'ce_high': self.state_manager.option_data.get(ce_key, {}).get('high'),
+                'ce_low': self.state_manager.option_data.get(ce_key, {}).get('low'),
+                'ce_close': self.state_manager.option_data.get(ce_key, {}).get('close'),
                 'ce_symbol': ce_key,
                 'pe_ltp': self.state_manager.option_prices.get(pe_key),
                 'pe_delta': self.state_manager.option_deltas.get(pe_key),
+                'pe_vega': self.state_manager.option_vegas.get(pe_key),
+                'pe_theta': self.state_manager.option_thetas.get(pe_key),
+                'pe_gamma': self.state_manager.option_gammas.get(pe_key),
+                'pe_oi': self.state_manager.option_oi.get(pe_key),
+                'pe_open': self.state_manager.option_data.get(pe_key, {}).get('open'),
+                'pe_high': self.state_manager.option_data.get(pe_key, {}).get('high'),
+                'pe_low': self.state_manager.option_data.get(pe_key, {}).get('low'),
+                'pe_close': self.state_manager.option_data.get(pe_key, {}).get('close'),
                 'pe_symbol': pe_key,
             })
 
@@ -195,20 +214,27 @@ class TickProcessor:
             return
 
         strike_interval = self.config_manager.get_int(self.atm_manager.instrument_name, 'strike_interval')
-        # Ensure ATM is a float to match the strike price data type from contracts
-        current_atm = float(round(futures_price / strike_interval) * strike_interval)
+        # General purpose ATM (monitoring, OI, ITM) is now strictly INDEX SPOT based.
+        current_atm = float(round(index_price / strike_interval) * strike_interval)
         self.state_manager.atm_strike = current_atm
+
+        # Futures price is only used for target strike discovery (BUY activation).
+        futures_atm = float(round(futures_price / strike_interval) * strike_interval)
 
         if not current_atm:
             logger.debug("V2: ATM could not be calculated. Skipping tick.")
             return
 
         current_ticks_for_watchlist = {}
-        watchlist_strikes = self.strike_manager.get_strike_watchlist(current_atm)
+        # Watchlist must cover both Index ATM (OI/Monitoring) and Futures ATM (Buy Signal)
+        idx_watchlist = self.strike_manager.get_strike_watchlist(current_atm)
+        fut_watchlist = self.strike_manager.get_strike_watchlist(futures_atm)
+        watchlist_strikes = sorted(list(set(idx_watchlist + fut_watchlist)))
+
         for strike in watchlist_strikes:
             tick_data = self.orchestrator.get_current_tick_data(strike, strike, self.orchestrator.is_backtest, backtest_current_tick)
             if tick_data:
-                current_ticks_for_watchlist[strike] = tick_data
+                current_ticks_for_watchlist[float(strike)] = tick_data
 
         # DATA RECORDING (ATM +/- 10) — once per minute at minute boundary
         if not self.orchestrator.is_backtest and self.orchestrator.data_recorder:
@@ -236,8 +262,10 @@ class TickProcessor:
             self.last_target_strike_check_time = now_ts
 
             # Use StrikeManager to find the best strike pair (using default signal expiry)
+            # Driven by FUTURES ATM as requested for BUY activation.
             self.state.v2_target_strike_pair = self.orchestrator.strike_manager.find_and_get_target_strike_pair(
-                expiry=self.atm_manager.signal_expiry_date
+                expiry=self.atm_manager.signal_expiry_date,
+                reference_atm=futures_atm
             )
 
             v2_signal_found = self.state.v2_target_strike_pair is not None
@@ -315,6 +343,9 @@ class TickProcessor:
         for strike, tick_data in current_ticks_for_watchlist.items():
             # In backtest, we need to manually push ticks to aggregators
             if self.orchestrator.is_backtest:
+                # Update option_data with strike-based keys for backtest-side logic
+                self.state_manager.option_data[float(strike)] = tick_data
+
                 ce_ltp = tick_data.get('ce_ltp')
                 pe_ltp = tick_data.get('pe_ltp')
                 # Find instrument keys for these strikes
@@ -327,11 +358,16 @@ class TickProcessor:
                     self.orchestrator.exit_aggregator.add_tick(ce_key, ce_ltp, timestamp)
                     self.orchestrator.one_min_aggregator.add_tick(ce_key, ce_ltp, timestamp)
                     self.orchestrator.five_min_aggregator.add_tick(ce_key, ce_ltp, timestamp)
+                    # Sync to state for backtest consistency
+                    self.state_manager.option_oi[ce_key] = tick_data.get('ce_oi')
+
                 if pe_key and pe_ltp:
                     self.orchestrator.entry_aggregator.add_tick(pe_key, pe_ltp, timestamp)
                     self.orchestrator.exit_aggregator.add_tick(pe_key, pe_ltp, timestamp)
                     self.orchestrator.one_min_aggregator.add_tick(pe_key, pe_ltp, timestamp)
                     self.orchestrator.five_min_aggregator.add_tick(pe_key, pe_ltp, timestamp)
+                    # Sync to state for backtest consistency
+                    self.state_manager.option_oi[pe_key] = tick_data.get('pe_oi')
 
             self.state.tick_history[strike].append(tick_data)
 

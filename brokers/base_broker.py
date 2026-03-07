@@ -6,7 +6,7 @@ class BaseBroker(ABC):
     Abstract base class for all broker clients.
     Defines the standard interface for broker-specific operations.
     """
-    def __init__(self, instance_name, config_manager, user_id=None, db_config=None):
+    def __init__(self, instance_name, config_manager, user_id=None, db_config=None, **kwargs):
         self.instance_name = instance_name
         self.config_manager = config_manager
         self.user_id = user_id

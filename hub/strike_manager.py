@@ -44,14 +44,14 @@ class StrikeManager:
 
         return sorted(list(set(watchlist)))
 
-    def find_and_get_target_strike_pair(self, expiry):
+    def find_and_get_target_strike_pair(self, expiry, reference_atm=None):
         """
         Finds the best target strike pair for a given expiry.
         """
         min_diff = float('inf')
         best_pair = None
 
-        atm_strike = self.atm_manager.strikes.get('atm')
+        atm_strike = reference_atm or self.atm_manager.strikes.get('atm')
         if not atm_strike: return None
 
         watchlist = self.get_strike_watchlist(atm_strike)

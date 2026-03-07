@@ -207,7 +207,8 @@ class SignalMonitor:
                 'vwap': False,
                 'vwap_slope': False,
                 'r1_high': False,
-                's1_low': False
+                's1_low': False,
+                'oi_gate': False
             }
 
         # Pre-seed last_analyzed_1m to the current last-completed candle so that
@@ -356,6 +357,8 @@ class SignalMonitor:
                         self._target_strike_consensus_count += 1
 
                     consensus_threshold = self._get_user_setting('strike_switch_consensus', int, fallback=2, mode=ref_mode)
+                    if self.orchestrator.is_backtest:
+                        consensus_threshold = 1
                     ticks_ok = self._target_strike_consensus_count >= consensus_threshold
 
                     elapsed_since_switch = (
@@ -421,11 +424,11 @@ class SignalMonitor:
                             sm = self.orchestrator.sell_manager
                             parts = []
                             if sm.ce_placed and sm.sell_ce_strike is not None:
-                                ce_sell_ltp = float(self.state_manager.get_ltp(sm.sell_ce_key) or 0)
-                                parts.append(f"SOLD CE {int(sm.sell_ce_strike)}@{ce_sell_ltp:.2f}")
+                                entry = sm.sell_ce_entry_ltp or 0
+                                parts.append(f"SOLD CE {int(sm.sell_ce_strike)}@{entry:.2f}")
                             if sm.pe_placed and sm.sell_pe_strike is not None:
-                                pe_sell_ltp = float(self.state_manager.get_ltp(sm.sell_pe_key) or 0)
-                                parts.append(f"SOLD PE {int(sm.sell_pe_strike)}@{pe_sell_ltp:.2f}")
+                                entry = sm.sell_pe_entry_ltp or 0
+                                parts.append(f"SOLD PE {int(sm.sell_pe_strike)}@{entry:.2f}")
                             if parts:
                                 sell_str = " | " + " | ".join(parts)
                         logger.info(f"V2 MONITORING Status [{user_display}]: Strike {ce_data['strike_price']}{sw_label} | Index: {idx_ltp:.2f}{gate_str} | "

@@ -31,7 +31,15 @@ class BacktestOrchestrator(BaseOrchestrator):
             await self.backtest_data_mgr.pre_fetch_underlying_data(backtest_date_str)
 
             import os, csv
-            atp_file = os.path.join(os.getcwd(), f"atp_data_{self.instrument_name}_{backtest_date_str}.csv")
+            # Standardize path discovery for recorded data files
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            atp_file = os.path.join(project_root, f"atp_data_{self.instrument_name}_{backtest_date_str}.csv")
+
+            # Robust fallback for user's specific environment structure
+            if not os.path.exists(atp_file):
+                env_atp = os.path.join('/home/ec2-user/environment/Option_buying_March', f"atp_data_{self.instrument_name}_{backtest_date_str}.csv")
+                if os.path.exists(env_atp): atp_file = env_atp
+
             if os.path.exists(atp_file):
                 if not hasattr(self.state_manager, 'atp_history'):
                     self.state_manager.atp_history = {}
@@ -55,24 +63,23 @@ class BacktestOrchestrator(BaseOrchestrator):
         return self.current_timestamp
 
     def _is_trade_active(self):
-        return self.pnl_tracker and self.pnl_tracker.is_trade_active()
+        buy_active = self.pnl_tracker and self.pnl_tracker.is_trade_active()
+        sell_active = (hasattr(self, 'sell_manager') and
+                       (self.sell_manager.ce_placed or self.sell_manager.pe_placed))
+        return buy_active or sell_active
 
     async def run_backtest_strategy_for_timestamp(self, timestamp, current_group):
         self.current_timestamp = timestamp
+        # 1. Update prices/strikes first to establish baseline ATMs
         await self._populate_state_for_tick(timestamp, current_group)
 
-        import datetime as _dt
-        _strangle_start = _dt.datetime.strptime(
-            self.config_manager.get('settings', 'strangle_start_time', fallback='09:16:00'),
-            '%H:%M:%S'
-        ).time()
-        if not self._backtest_strangle_triggered and timestamp.time() >= _strangle_start:
-            await self.sell_manager.build_candidates_for_all_sides(timestamp)
-            await self.sell_manager.execute_short_strangle_backtest(timestamp)
-            self._backtest_strangle_triggered = True
+        # 2. Identify Target Strike pair early so SellManager can use it for trend monitoring
+        strike_interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', fallback=50)
+        futures_atm = float(round(self.state_manager.spot_price / strike_interval) * strike_interval)
 
         self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
-            expiry=self.atm_manager.signal_expiry_date
+            expiry=self.atm_manager.signal_expiry_date,
+            reference_atm=futures_atm
         )
         if self.orchestrator_state.v2_target_strike_pair:
              target_strike = self.orchestrator_state.v2_target_strike_pair['strike']
@@ -80,6 +87,22 @@ class BacktestOrchestrator(BaseOrchestrator):
              for session in self.user_sessions.values():
                  session.state_manager.target_strike = target_strike
 
+        # 3. Handle Short Strangle entry/candidates
+        import datetime as _dt
+        _strangle_start = _dt.datetime.strptime(
+            self.config_manager.get('settings', 'strangle_start_time', fallback='09:16:00'),
+            '%H:%M:%S'
+        ).time()
+        if timestamp.time() >= _strangle_start:
+            if not self._backtest_strangle_triggered:
+                await self.sell_manager.build_candidates_for_all_sides(timestamp)
+                self._backtest_strangle_triggered = True
+
+            # Continuously attempt entry until both legs are placed or EOD
+            if not (self.sell_manager.ce_placed and self.sell_manager.pe_placed):
+                await self.sell_manager.execute_short_strangle_backtest(timestamp)
+
+        # Re-populate state after target selection to ensure aggregators see the correct watchlist
         await self._populate_state_for_tick(timestamp, current_group)
 
         # Feeding aggregators
@@ -109,6 +132,7 @@ class BacktestOrchestrator(BaseOrchestrator):
             current_group = current_group.drop_duplicates(subset='strike_price', keep='first')
 
         current_data_for_logic = self.state_manager.option_data
+        # Use Index Spot ATM for logic/OI consistently
         current_atm = self.atm_manager.strikes.get('atm')
 
         summary_extra_info = ""
@@ -121,8 +145,19 @@ class BacktestOrchestrator(BaseOrchestrator):
                 if pos and not summary_extra_info:
                     summary_extra_info = self._get_summary_extra(pos)
 
+        # Condition 4: Sell-side per-tick logic (evaluation and exits)
+        if hasattr(self, 'sell_manager'):
+            sm = self.sell_manager
+            if sm.ce_placed or sm.pe_placed:
+                # Build sell_ticks dictionary from current prices
+                sell_ticks = {}
+                for inst_key, ltp in self.state_manager.option_prices.items():
+                    sell_ticks[inst_key] = {'ltp': ltp}
+                await sm.on_tick(sell_ticks, timestamp)
+
         from utils.logger import log_trade_summary
-        pnl = self.pnl_tracker.get_real_time_pnl() if self.pnl_tracker else 0
+        # Log Total PnL (Realized + Floating) for a complete daily picture
+        pnl = self.pnl_tracker.get_total_pnl() if self.pnl_tracker else 0
 
         # --- Profit target exit check ---
         if not self.profit_target_hit and self.pnl_tracker:
@@ -190,17 +225,19 @@ class BacktestOrchestrator(BaseOrchestrator):
         pass
 
     async def _update_pnl_for_active_trades(self, timestamp):
-        for side in ['CALL', 'PUT']:
-            trade = self.pnl_tracker.active_call_trade if side == 'CALL' else self.pnl_tracker.active_put_trade
-            if trade:
-                ltp = await self._get_ltp_for_backtest_instrument(trade['instrument_key'], timestamp)
-                if ltp is not None:
-                    self.pnl_tracker.update_pnl(side, ltp, timestamp)
-                    for session in self.user_sessions.values():
-                        pos = session.state_manager.call_position if side == 'CALL' else session.state_manager.put_position
-                        if pos:
-                            pos['ltp'] = ltp
-                            pos['pnl'] = trade.get('pnl', 0)
+        # Multi-trade PnL Update
+        for trade in list(self.pnl_tracker.active_trades):
+            side = trade['side']
+            key = trade['instrument_key']
+            ltp = await self._get_ltp_for_backtest_instrument(key, timestamp)
+            if ltp is not None:
+                self.pnl_tracker.update_pnl(side, ltp, instrument_key=key)
+                # Update corresponding position in StateManager
+                for session in self.user_sessions.values():
+                    pos = session.state_manager.get_position(side)
+                    if pos and pos.get('instrument_key') == key:
+                        pos['ltp'] = ltp
+                        pos['pnl'] = trade.get('pnl', 0)
 
     async def _get_ltp_for_backtest_instrument(self, instrument_key, timestamp):
         import pytz
@@ -234,28 +271,45 @@ class BacktestOrchestrator(BaseOrchestrator):
     async def _populate_state_for_tick(self, timestamp, tick_df):
         if tick_df.empty: return
         fut_p = tick_df['spot_price'].iloc[0] if 'spot_price' in tick_df.columns and pd.notna(tick_df['spot_price'].iloc[0]) else 0
-        if not fut_p: fut_p = self.backtest_data_mgr.get_futures_price(timestamp) or 0
+        if not fut_p or fut_p == 0: fut_p = self.backtest_data_mgr.get_futures_price(timestamp) or 0
         idx_p = tick_df['index_price'].iloc[0] if 'index_price' in tick_df.columns and pd.notna(tick_df['index_price'].iloc[0]) else 0
-        if not idx_p: idx_p = self.backtest_data_mgr.get_index_price(timestamp) or fut_p
+        if not idx_p or idx_p == 0: idx_p = self.backtest_data_mgr.get_index_price(timestamp) or fut_p
 
         self.state_manager.timestamp = timestamp
         self.state_manager.spot_price = fut_p
         self.state_manager.index_price = idx_p
         self.state_manager.option_data.clear()
 
-        await self.atm_manager.update_strikes_and_subscribe(fut_p)
-        atm = self.atm_manager.strikes.get('atm')
-        self.state_manager.atm_strike = atm
+        # ATM for OI/Monitoring is Index-based
+        index_atm = None
+        if idx_p and idx_p > 0:
+            await self.atm_manager.update_strikes_and_subscribe(idx_p, is_futures=False)
+            index_atm = self.atm_manager.strikes.get('atm')
+            self.state_manager.atm_strike = index_atm
 
-        watchlist = set(self.strike_manager.get_strike_watchlist(atm))
+        # ATM for Buy Target selection is Futures-based
+        futures_atm = None
+        if fut_p and fut_p > 0:
+            await self.atm_manager.update_strikes_and_subscribe(fut_p, is_futures=True)
+            futures_atm = self.atm_manager.strikes.get('futures_atm')
+
+        # Watchlist must cover both Index strikes (OI) and Futures strikes (Target selection)
+        watchlist = set()
+        if index_atm:
+            watchlist.update(self.strike_manager.get_strike_watchlist(index_atm))
+        if futures_atm:
+            watchlist.update(self.strike_manager.get_strike_watchlist(futures_atm))
         for session in self.user_sessions.values():
-            if session.state_manager.dual_sr_monitoring_data: watchlist.add(float(session.state_manager.dual_sr_monitoring_data['target_strike']))
+            mon_strike = session.state_manager.dual_sr_monitoring_data.get('target_strike') if session.state_manager.dual_sr_monitoring_data else None
+            if mon_strike: watchlist.add(float(mon_strike))
             for p in [session.state_manager.call_position, session.state_manager.put_position]:
                 if p:
                     for k in ['strike_price', 'signal_strike', 's1_monitoring_strike', 'exit_monitoring_strike']:
                         if p.get(k): watchlist.add(float(p[k]))
 
         tick_df_idx = tick_df.drop_duplicates(subset='strike_price').set_index('strike_price') if 'strike_price' in tick_df.columns else pd.DataFrame()
+        exp = self.atm_manager.signal_expiry_date
+
         for strike in watchlist:
             api_ce = await self._get_ltp_for_strike(strike, 'CALL', timestamp)
             api_pe = await self._get_ltp_for_strike(strike, 'PUT', timestamp)
@@ -263,19 +317,34 @@ class BacktestOrchestrator(BaseOrchestrator):
             ce_p = s_data.get('ce_ltp') if pd.notna(s_data.get('ce_ltp')) and s_data.get('ce_ltp') > 0 else api_ce
             pe_p = s_data.get('pe_ltp') if pd.notna(s_data.get('pe_ltp')) and s_data.get('pe_ltp') > 0 else api_pe
 
-            self.state_manager.option_data[strike] = {
-                'ce_ltp': ce_p, 'pe_ltp': pe_p,
-                'ce_delta': s_data.get('ce_delta'), 'pe_delta': s_data.get('pe_delta')
-            }
-            exp = self.atm_manager.signal_expiry_date
             ck, pk = self.atm_manager.find_instrument_key_by_strike(strike, 'CALL', exp), self.atm_manager.find_instrument_key_by_strike(strike, 'PUT', exp)
+
+            if ck:
+                self.state_manager.option_data[ck] = {
+                    'ltp': ce_p, 'delta': s_data.get('ce_delta'),
+                    'vega': s_data.get('ce_vega'), 'theta': s_data.get('ce_theta'), 'gamma': s_data.get('ce_gamma'),
+                    'open': s_data.get('ce_open'), 'high': s_data.get('ce_high'), 'low': s_data.get('ce_low'), 'close': s_data.get('ce_close'),
+                    'oi': s_data.get('ce_oi')
+                }
+            if pk:
+                self.state_manager.option_data[pk] = {
+                    'ltp': pe_p, 'delta': s_data.get('pe_delta'),
+                    'vega': s_data.get('pe_vega'), 'theta': s_data.get('pe_theta'), 'gamma': s_data.get('pe_gamma'),
+                    'open': s_data.get('pe_open'), 'high': s_data.get('pe_high'), 'low': s_data.get('pe_low'), 'close': s_data.get('pe_close'),
+                    'oi': s_data.get('pe_oi')
+                }
+
             if ck and ce_p: self.state_manager.option_prices[ck] = ce_p
             if pk and pe_p: self.state_manager.option_prices[pk] = pe_p
             if ck:
-                ce_oi = await self._get_oi_for_backtest_instrument(ck, timestamp)
+                ce_oi = s_data.get('ce_oi')
+                if pd.isna(ce_oi) or ce_oi == 0:
+                    ce_oi = await self._get_oi_for_backtest_instrument(ck, timestamp)
                 if ce_oi: self.state_manager.option_oi[ck] = ce_oi
             if pk:
-                pe_oi = await self._get_oi_for_backtest_instrument(pk, timestamp)
+                pe_oi = s_data.get('pe_oi')
+                if pd.isna(pe_oi) or pe_oi == 0:
+                    pe_oi = await self._get_oi_for_backtest_instrument(pk, timestamp)
                 if pe_oi: self.state_manager.option_oi[pk] = pe_oi
 
         for session in self.user_sessions.values():

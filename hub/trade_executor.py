@@ -50,6 +50,7 @@ class TradeExecutor:
         else:
             logger.debug(f"Trade expiry confirmed: {trade_expiry} (matches signal expiry)")
 
+        # DETERMINISTIC STRIKE RULE: All trades (Buy and Sell) are executed on the INDEX-based ATM strike.
         trade_instrument_key = self.atm_manager.find_instrument_key_by_strike(trade_strike, direction, trade_expiry)
 
         if not trade_instrument_key:
