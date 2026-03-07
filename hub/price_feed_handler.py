@@ -284,6 +284,7 @@ class PriceFeedHandler:
                     self.state_manager.option_atps[instrument_key] = atp
                     self._sync_market_data('option_atps', instrument_key, atp)
 
+                    # Update ATP history for VWAP/Indicator logic
                     minute_ts = timestamp.replace(second=0, microsecond=0) \
                         if hasattr(timestamp, 'replace') else None
                     if minute_ts:

@@ -397,3 +397,43 @@ class IndicatorManager:
         atr = atr_series.iloc[-1]
 
         return float(atr) if pd.notna(atr) else None
+
+    async def calculate_combined_rsi(self, key1, key2, timeframe_minutes, period, timestamp):
+        """
+        Calculates RSI on the sum of close prices of two instruments.
+        Uses Wilder's smoothing (standard RSI).
+        """
+        if not key1 or not key2:
+            return None
+
+        # Fetch historical data (exclude current running candle as requested)
+        ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False)
+        ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False)
+
+        if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty:
+            logger.debug(f"[IndicatorManager] Combined RSI: Missing OHLC for {key1} or {key2}")
+            return None
+
+        # Align by index (timestamp) and sum the close prices
+        combined = pd.DataFrame({'close1': ohlc1['close'], 'close2': ohlc2['close']}).dropna()
+
+        if len(combined) < period + 1:
+            logger.debug(f"[IndicatorManager] Combined RSI: Insufficient data points ({len(combined)} < {period+1})")
+            return None
+
+        combined['sum_close'] = combined['close1'] + combined['close2']
+
+        # Standard Wilder's RSI calculation
+        delta = combined['sum_close'].diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+
+        # Wilder's smoothing is equivalent to EWM with alpha = 1/period
+        avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+        val = rsi.iloc[-1]
+        return float(val) if pd.notna(val) else None

@@ -332,6 +332,10 @@ class TickProcessor:
                 sell_ticks = self._build_sell_ticks(backtest_current_tick)
                 await sm.on_tick(sell_ticks, timestamp)
 
+        # Condition 4b: Sell-side V3 per-tick logic
+        if hasattr(self.orchestrator, 'sell_manager_v3'):
+            await self.orchestrator.sell_manager_v3.on_tick(timestamp)
+
         # Condition 5: OI-based exit monitor (self-throttled via check_interval_seconds)
         if hasattr(self.orchestrator, 'oi_exit_monitor') and current_atm:
             await self.orchestrator.oi_exit_monitor.check(timestamp, current_atm)
