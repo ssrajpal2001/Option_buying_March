@@ -156,7 +156,8 @@ class BacktestOrchestrator(BaseOrchestrator):
                 await sm.on_tick(sell_ticks, timestamp)
 
         from utils.logger import log_trade_summary
-        pnl = self.pnl_tracker.get_real_time_pnl() if self.pnl_tracker else 0
+        # Log Total PnL (Realized + Floating) for a complete daily picture
+        pnl = self.pnl_tracker.get_total_pnl() if self.pnl_tracker else 0
 
         # --- Profit target exit check ---
         if not self.profit_target_hit and self.pnl_tracker:
@@ -224,17 +225,19 @@ class BacktestOrchestrator(BaseOrchestrator):
         pass
 
     async def _update_pnl_for_active_trades(self, timestamp):
-        for side in ['CALL', 'PUT']:
-            trade = self.pnl_tracker.active_call_trade if side == 'CALL' else self.pnl_tracker.active_put_trade
-            if trade:
-                ltp = await self._get_ltp_for_backtest_instrument(trade['instrument_key'], timestamp)
-                if ltp is not None:
-                    self.pnl_tracker.update_pnl(side, ltp, timestamp)
-                    for session in self.user_sessions.values():
-                        pos = session.state_manager.call_position if side == 'CALL' else session.state_manager.put_position
-                        if pos:
-                            pos['ltp'] = ltp
-                            pos['pnl'] = trade.get('pnl', 0)
+        # Multi-trade PnL Update
+        for trade in list(self.pnl_tracker.active_trades):
+            side = trade['side']
+            key = trade['instrument_key']
+            ltp = await self._get_ltp_for_backtest_instrument(key, timestamp)
+            if ltp is not None:
+                self.pnl_tracker.update_pnl(side, ltp, instrument_key=key)
+                # Update corresponding position in StateManager
+                for session in self.user_sessions.values():
+                    pos = session.state_manager.get_position(side)
+                    if pos and pos.get('instrument_key') == key:
+                        pos['ltp'] = ltp
+                        pos['pnl'] = trade.get('pnl', 0)
 
     async def _get_ltp_for_backtest_instrument(self, instrument_key, timestamp):
         import pytz
@@ -291,11 +294,14 @@ class BacktestOrchestrator(BaseOrchestrator):
             futures_atm = self.atm_manager.strikes.get('futures_atm')
 
         # Watchlist must cover both Index strikes (OI) and Futures strikes (Target selection)
-        watchlist = set(self.strike_manager.get_strike_watchlist(index_atm))
+        watchlist = set()
+        if index_atm:
+            watchlist.update(self.strike_manager.get_strike_watchlist(index_atm))
         if futures_atm:
             watchlist.update(self.strike_manager.get_strike_watchlist(futures_atm))
         for session in self.user_sessions.values():
-            if session.state_manager.dual_sr_monitoring_data: watchlist.add(float(session.state_manager.dual_sr_monitoring_data['target_strike']))
+            mon_strike = session.state_manager.dual_sr_monitoring_data.get('target_strike') if session.state_manager.dual_sr_monitoring_data else None
+            if mon_strike: watchlist.add(float(mon_strike))
             for p in [session.state_manager.call_position, session.state_manager.put_position]:
                 if p:
                     for k in ['strike_price', 'signal_strike', 's1_monitoring_strike', 'exit_monitoring_strike']:

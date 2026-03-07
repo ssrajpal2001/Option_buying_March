@@ -735,32 +735,13 @@ class SellManager:
                 logger.debug(f"[SellManager] trade_log append failed: {_tl_ex}")
 
         if entry_ltp and exit_ltp and self.orchestrator.pnl_tracker:
-            ref_broker = next(
-                (b for b in brokers
-                 if b.is_configured_for_instrument(self.orchestrator.instrument_name)), None)
-            broker_qty = (ref_broker.config_manager.get_int(
-                ref_broker.instance_name, 'quantity', 1) if ref_broker else 1)
-            pnl = (entry_ltp - exit_ltp) * contract.lot_size * broker_qty
-            pnl_side = 'CALL' if side == 'CE' else 'PUT'
-            logger.info(
-                f"[SellManager] {side} PnL: entry={entry_ltp:.2f} "
-                f"exit={exit_ltp:.2f} pnl=₹{pnl:+.2f}")
-            self.orchestrator.pnl_tracker.trade_history.append({
-                'instrument_key': key,
-                'entry_price': entry_ltp,
-                'exit_price': exit_ltp,
-                'entry_timestamp': entry_ts,
-                'exit_timestamp': timestamp,
-                'pnl': pnl,
-                'lot_size': contract.lot_size,
-                'quantity': broker_qty,
-                'status': 'CLOSED',
-                'side': pnl_side,
-                'strike_price': strike,
-                'contract': contract,
-                'strategy_log': f'SELL {product_type} leg — {reason}',
-                'entry_type': 'SELL',
-            })
+            self.orchestrator.pnl_tracker.exit_trade(
+                side=side,
+                exit_price=exit_ltp,
+                timestamp=timestamp,
+                reason=reason,
+                instrument_key=key
+            )
 
         # Void sticky and cross_slope count — exit event means fresh checking starts
         self._vwap_slope_sticky[side] = False
@@ -906,6 +887,22 @@ class SellManager:
             logger.info(
                 f"[SellManager][Backtest PAPER SELL {product_type}] "
                 f"{side}: strike={int(strike)} histLTP={ltp:.2f}")
+
+            # Register with PnL Tracker for simultaneous trade tracking
+            if self.orchestrator.pnl_tracker:
+                ref_broker = next((b for b in self.orchestrator.broker_manager.brokers if b.is_configured_for_instrument(self.orchestrator.instrument_name)), None)
+                broker_qty = ref_broker.config_manager.get_int(ref_broker.instance_name, 'quantity', 1) if ref_broker else 1
+                self.orchestrator.pnl_tracker.enter_trade(
+                    side=side,
+                    instrument_key=inst_key,
+                    entry_price=ltp,
+                    timestamp=timestamp,
+                    strike_price=strike,
+                    contract=contract,
+                    strategy_log=f"SELL Short Strangle leg ({side})",
+                    entry_type='SELL',
+                    quantity=broker_qty
+                )
 
             if side == 'CE':
                 self.ce_placed = True

@@ -6,24 +6,29 @@ class BacktestPnLTracker:
     def __init__(self, instrument_name, config_manager):
         self.instrument_name = instrument_name
         self.config_manager = config_manager
-        self.active_call_trade = None
-        self.active_put_trade = None
+        self.active_trades = [] # List of active trade dicts
         self.trade_history = []
         self.trade_logger = TradeLogger()
 
-    def is_trade_active(self, side=None):
-        if side == 'CALL':
-            return self.active_call_trade is not None
-        if side == 'PUT':
-            return self.active_put_trade is not None
-        return self.active_call_trade is not None or self.active_put_trade is not None
+    def is_trade_active(self, side=None, instrument_key=None):
+        for trade in self.active_trades:
+            side_match = (side is None or trade['side'] == side)
+            key_match = (instrument_key is None or trade['instrument_key'] == instrument_key)
+            if side_match and key_match:
+                return True
+        return False
 
-    def get_active_trade(self, side):
-        return self.active_call_trade if side == 'CALL' else self.active_put_trade
+    def get_active_trade(self, side, instrument_key=None):
+        for trade in self.active_trades:
+            if trade['side'] == side:
+                if instrument_key is None or trade['instrument_key'] == instrument_key:
+                    return trade
+        return None
 
     def enter_trade(self, side, instrument_key, entry_price, timestamp, strike_price, contract, strategy_log="", user_id=None, entry_type='BUY', quantity=1):
-        if self.is_trade_active(side):
-            logger.warning(f"[{self.instrument_name}] Cannot enter new {side} trade; a trade is already active.")
+        # Allow simultaneous trades as long as the instrument_key is different
+        if self.is_trade_active(side, instrument_key):
+            logger.warning(f"[{self.instrument_name}] Cannot enter duplicate {side} trade for {instrument_key}.")
             return False
 
         lot_size = contract.lot_size if contract and hasattr(contract, 'lot_size') else 1
@@ -45,17 +50,14 @@ class BacktestPnLTracker:
             'quantity': quantity,
         }
 
-        if side == 'CALL':
-            self.active_call_trade = trade
-        else:
-            self.active_put_trade = trade
+        self.active_trades.append(trade)
 
-        logger.info(f"[{self.instrument_name}] Entered {side} trade on {instrument_key} at {entry_price:.2f} (lot={lot_size} qty={quantity})")
+        logger.info(f"[{self.instrument_name}] Entered {side} ({entry_type}) trade on {instrument_key} at {entry_price:.2f} (lot={lot_size} qty={quantity})")
         self.trade_logger.log_entry("Backtest", self.instrument_name, instrument_key, side, entry_price, strategy_log, user_id=user_id)
         return True
 
-    def update_pnl(self, side, current_ltp, timestamp):
-        trade = self.get_active_trade(side)
+    def update_pnl(self, side, current_ltp, instrument_key=None):
+        trade = self.get_active_trade(side, instrument_key)
         if not trade:
             return
 
@@ -67,10 +69,10 @@ class BacktestPnLTracker:
             trade['pnl'] = (current_ltp - trade['entry_price']) * mult
         trade['current_ltp'] = current_ltp
 
-    def exit_trade(self, side, exit_price, timestamp, reason="", strategy_log="", user_id=None):
-        trade = self.get_active_trade(side)
+    def exit_trade(self, side, exit_price, timestamp, reason="", strategy_log="", user_id=None, instrument_key=None):
+        trade = self.get_active_trade(side, instrument_key)
         if not trade:
-            logger.warning(f"[{self.instrument_name}] Cannot exit {side} trade; no trade is active.")
+            logger.warning(f"[{self.instrument_name}] Cannot exit {side} trade; no trade is active for {instrument_key or 'any key'}.")
             return
 
         trade['exit_price'] = exit_price
@@ -88,11 +90,7 @@ class BacktestPnLTracker:
         trade['exit_strategy_log'] = strategy_log
 
         self.trade_history.append(trade)
-
-        if side == 'CALL':
-            self.active_call_trade = None
-        else:
-            self.active_put_trade = None
+        self.active_trades.remove(trade)
 
         pnl_per_share = trade['entry_price'] - exit_price if entry_type == 'SELL' else exit_price - trade['entry_price']
         logger.info(
@@ -103,12 +101,13 @@ class BacktestPnLTracker:
         self.trade_logger.log_exit("Backtest", self.instrument_name, trade['instrument_key'], f"EXIT_{side}", exit_price, trade['pnl'], reason, strategy_log, user_id=user_id)
 
     def get_real_time_pnl(self):
-        total_pnl = 0
-        if self.active_call_trade:
-            total_pnl += self.active_call_trade.get('pnl', 0)
-        if self.active_put_trade:
-            total_pnl += self.active_put_trade.get('pnl', 0)
-        return total_pnl
+        """Returns floating PnL for active trades."""
+        return sum(trade.get('pnl', 0) for trade in self.active_trades)
+
+    def get_total_pnl(self):
+        """Returns Realized + Floating PnL."""
+        realized = sum(t.get('pnl', 0) for t in self.trade_history)
+        return realized + self.get_real_time_pnl()
 
     def generate_summary_report(self):
         if not self.trade_history:
