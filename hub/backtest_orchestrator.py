@@ -296,17 +296,29 @@ class BacktestOrchestrator(BaseOrchestrator):
 
             self.state_manager.option_data[strike] = {
                 'ce_ltp': ce_p, 'pe_ltp': pe_p,
-                'ce_delta': s_data.get('ce_delta'), 'pe_delta': s_data.get('pe_delta')
+                'ce_delta': s_data.get('ce_delta'), 'pe_delta': s_data.get('pe_delta'),
+                'ce_vega': s_data.get('ce_vega'), 'pe_vega': s_data.get('pe_vega'),
+                'ce_theta': s_data.get('ce_theta'), 'pe_theta': s_data.get('pe_theta'),
+                'ce_gamma': s_data.get('ce_gamma'), 'pe_gamma': s_data.get('pe_gamma'),
+                'ce_open': s_data.get('ce_open'), 'pe_open': s_data.get('pe_open'),
+                'ce_high': s_data.get('ce_high'), 'pe_high': s_data.get('pe_high'),
+                'ce_low': s_data.get('ce_low'), 'pe_low': s_data.get('pe_low'),
+                'ce_close': s_data.get('ce_close'), 'pe_close': s_data.get('pe_close'),
+                'ce_oi': s_data.get('ce_oi'), 'pe_oi': s_data.get('pe_oi')
             }
             exp = self.atm_manager.signal_expiry_date
             ck, pk = self.atm_manager.find_instrument_key_by_strike(strike, 'CALL', exp), self.atm_manager.find_instrument_key_by_strike(strike, 'PUT', exp)
             if ck and ce_p: self.state_manager.option_prices[ck] = ce_p
             if pk and pe_p: self.state_manager.option_prices[pk] = pe_p
             if ck:
-                ce_oi = await self._get_oi_for_backtest_instrument(ck, timestamp)
+                ce_oi = s_data.get('ce_oi')
+                if pd.isna(ce_oi) or ce_oi == 0:
+                    ce_oi = await self._get_oi_for_backtest_instrument(ck, timestamp)
                 if ce_oi: self.state_manager.option_oi[ck] = ce_oi
             if pk:
-                pe_oi = await self._get_oi_for_backtest_instrument(pk, timestamp)
+                pe_oi = s_data.get('pe_oi')
+                if pd.isna(pe_oi) or pe_oi == 0:
+                    pe_oi = await self._get_oi_for_backtest_instrument(pk, timestamp)
                 if pe_oi: self.state_manager.option_oi[pk] = pe_oi
 
         for session in self.user_sessions.values():

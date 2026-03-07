@@ -8,8 +8,8 @@ from utils.auth_manager_angelone import handle_angelone_login
 from hub.event_bus import event_bus
 
 class AngelOneClient(BaseBroker):
-    def __init__(self, broker_instance_name, config_manager, login_required=True, user_id=None, db_config=None):
-        super().__init__(broker_instance_name, config_manager, user_id=user_id, db_config=db_config)
+    def __init__(self, broker_instance_name, config_manager, login_required=True, user_id=None, db_config=None, **kwargs):
+        super().__init__(broker_instance_name, config_manager, user_id=user_id, db_config=db_config, **kwargs)
         self.smart_api = None
         self._token_map = None # symbol_key -> {token, tradingsymbol, lot_size}
         self._last_token_load = None

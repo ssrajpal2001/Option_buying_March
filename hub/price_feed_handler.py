@@ -256,6 +256,17 @@ class PriceFeedHandler:
                 ff = feed.fullFeed.marketFF
                 greeks, ltp, iv, volume, market_level, atp = ff.optionGreeks, ff.ltpc.ltp, ff.iv, ff.vtt, ff.marketLevel, ff.atp
                 oi_value = getattr(ff, 'oi', 0) or 0
+
+                # Extract day's OHLC for recording/monitoring
+                if ff.ltpc:
+                    self.state_manager.option_data[instrument_key] = {
+                        'open': ff.ltpc.o,
+                        'high': ff.ltpc.h,
+                        'low': ff.ltpc.l,
+                        'close': ff.ltpc.cp # Previous close or current? Usually prev.
+                    }
+                    self._sync_market_data('option_data', instrument_key, self.state_manager.option_data[instrument_key])
+
             elif feed.HasField('ltpc'):
                 ltp = feed.ltpc.ltp
 
@@ -295,7 +306,8 @@ class PriceFeedHandler:
                                 futures = getattr(self.state_manager, 'futures_price', None)
                                 data_recorder.record_atp_snapshot(
                                     prev_minute_ts, instrument_key, strike, side,
-                                    prev_atp, ltp, spot, futures
+                                    prev_atp, ltp, spot, futures,
+                                    oi=self.state_manager.option_oi.get(instrument_key)
                                 )
 
                         self.state_manager.atp_history[instrument_key]['_last_minute'] = minute_ts

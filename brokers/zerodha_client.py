@@ -7,8 +7,8 @@ from hub.event_bus import event_bus
 import os
 
 class ZerodhaClient(BaseBroker):
-    def __init__(self, broker_instance_name, config_manager, login_required=True):
-        super().__init__(broker_instance_name, config_manager)
+    def __init__(self, broker_instance_name, config_manager, login_required=True, **kwargs):
+        super().__init__(broker_instance_name, config_manager, **kwargs)
         self.kite = None
 
         if login_required:

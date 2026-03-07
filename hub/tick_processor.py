@@ -97,8 +97,10 @@ class TickProcessor:
                 tick_data.update({
                     'ce_ltp': ce_data.get('ce_ltp'),
                     'ce_delta': ce_data.get('ce_delta'),
+                    'ce_oi': ce_data.get('ce_oi'),
                     'pe_ltp': pe_data.get('pe_ltp'),
                     'pe_delta': pe_data.get('pe_delta'),
+                    'pe_oi': pe_data.get('pe_oi'),
                 })
         else: # Live Mode
             ce_contract, pe_contract = self.atm_manager.find_contracts_for_strike(ce_strike, self.atm_manager.signal_expiry_date)
@@ -119,9 +121,25 @@ class TickProcessor:
             tick_data.update({
                 'ce_ltp': ce_ltp,
                 'ce_delta': self.state_manager.option_deltas.get(ce_key),
+                'ce_vega': self.state_manager.option_vegas.get(ce_key),
+                'ce_theta': self.state_manager.option_thetas.get(ce_key),
+                'ce_gamma': self.state_manager.option_gammas.get(ce_key),
+                'ce_oi': self.state_manager.option_oi.get(ce_key),
+                'ce_open': self.state_manager.option_data.get(ce_key, {}).get('open'),
+                'ce_high': self.state_manager.option_data.get(ce_key, {}).get('high'),
+                'ce_low': self.state_manager.option_data.get(ce_key, {}).get('low'),
+                'ce_close': self.state_manager.option_data.get(ce_key, {}).get('close'),
                 'ce_symbol': ce_key,
                 'pe_ltp': self.state_manager.option_prices.get(pe_key),
                 'pe_delta': self.state_manager.option_deltas.get(pe_key),
+                'pe_vega': self.state_manager.option_vegas.get(pe_key),
+                'pe_theta': self.state_manager.option_thetas.get(pe_key),
+                'pe_gamma': self.state_manager.option_gammas.get(pe_key),
+                'pe_oi': self.state_manager.option_oi.get(pe_key),
+                'pe_open': self.state_manager.option_data.get(pe_key, {}).get('open'),
+                'pe_high': self.state_manager.option_data.get(pe_key, {}).get('high'),
+                'pe_low': self.state_manager.option_data.get(pe_key, {}).get('low'),
+                'pe_close': self.state_manager.option_data.get(pe_key, {}).get('close'),
                 'pe_symbol': pe_key,
             })
 
@@ -336,11 +354,16 @@ class TickProcessor:
                     self.orchestrator.exit_aggregator.add_tick(ce_key, ce_ltp, timestamp)
                     self.orchestrator.one_min_aggregator.add_tick(ce_key, ce_ltp, timestamp)
                     self.orchestrator.five_min_aggregator.add_tick(ce_key, ce_ltp, timestamp)
+                    # Sync to state for backtest consistency
+                    self.state_manager.option_oi[ce_key] = tick_data.get('ce_oi')
+
                 if pe_key and pe_ltp:
                     self.orchestrator.entry_aggregator.add_tick(pe_key, pe_ltp, timestamp)
                     self.orchestrator.exit_aggregator.add_tick(pe_key, pe_ltp, timestamp)
                     self.orchestrator.one_min_aggregator.add_tick(pe_key, pe_ltp, timestamp)
                     self.orchestrator.five_min_aggregator.add_tick(pe_key, pe_ltp, timestamp)
+                    # Sync to state for backtest consistency
+                    self.state_manager.option_oi[pe_key] = tick_data.get('pe_oi')
 
             self.state.tick_history[strike].append(tick_data)
 

@@ -16,8 +16,8 @@ class DataRecorder:
         self.filepath = os.path.join(os.getcwd(), self.filename)
         self.headers = [
             'timestamp', 'spot_price', 'index_price', 'atm_strike',
-            'ce_strike', 'ce_symbol', 'ce_ltp', 'ce_delta', 'ce_vega', 'ce_theta', 'ce_gamma', 'ce_open', 'ce_high', 'ce_low', 'ce_close',
-            'pe_strike', 'pe_symbol', 'pe_ltp', 'pe_delta', 'pe_vega', 'pe_theta', 'pe_gamma', 'pe_open', 'pe_high', 'pe_low', 'pe_close'
+            'ce_strike', 'ce_symbol', 'ce_ltp', 'ce_delta', 'ce_vega', 'ce_theta', 'ce_gamma', 'ce_open', 'ce_high', 'ce_low', 'ce_close', 'ce_oi',
+            'pe_strike', 'pe_symbol', 'pe_ltp', 'pe_delta', 'pe_vega', 'pe_theta', 'pe_gamma', 'pe_open', 'pe_high', 'pe_low', 'pe_close', 'pe_oi'
         ]
         self._initialize_csv()
 
@@ -54,6 +54,7 @@ class DataRecorder:
                         data.get('ce_high', ''),
                         data.get('ce_low', ''),
                         data.get('ce_close', ''),
+                        data.get('ce_oi', ''),
                         # PE side
                         strike,
                         data.get('pe_symbol', ''),
@@ -65,13 +66,14 @@ class DataRecorder:
                         data.get('pe_open', ''),
                         data.get('pe_high', ''),
                         data.get('pe_low', ''),
-                        data.get('pe_close', '')
+                        data.get('pe_close', ''),
+                        data.get('pe_oi', '')
                     ]
                     writer.writerow(row)
         except Exception as e:
             logger.error(f"Failed to record ticks to CSV: {e}")
 
-    def record_atp_snapshot(self, minute_ts, instrument_key, strike, side, atp, ltp, spot_price, futures_price):
+    def record_atp_snapshot(self, minute_ts, instrument_key, strike, side, atp, ltp, spot_price, futures_price, oi=None):
         """
         Records the closed-minute ATP snapshot for a single instrument.
         Called at minute rollover so values are frozen (not mid-candle).
@@ -85,14 +87,14 @@ class DataRecorder:
                     with open(self._atp_filepath, 'w', newline='') as f:
                         csv.writer(f).writerow([
                             'minute_ts', 'instrument_key', 'strike', 'side',
-                            'atp', 'ltp', 'spot_price', 'futures_price'
+                            'atp', 'ltp', 'spot_price', 'futures_price', 'oi'
                         ])
                     logger.info(f"Initialized ATP recorder: {self._atp_filepath}")
 
             with open(self._atp_filepath, 'a', newline='') as f:
                 csv.writer(f).writerow([
                     minute_ts.isoformat() if hasattr(minute_ts, 'isoformat') else str(minute_ts),
-                    instrument_key, strike, side, atp, ltp, spot_price, futures_price
+                    instrument_key, strike, side, atp, ltp, spot_price, futures_price, oi
                 ])
         except Exception as e:
             logger.error(f"Failed to record ATP snapshot to CSV: {e}")
