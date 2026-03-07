@@ -35,6 +35,11 @@ class BacktestOrchestrator(BaseOrchestrator):
             project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
             atp_file = os.path.join(project_root, f"atp_data_{self.instrument_name}_{backtest_date_str}.csv")
 
+            # Robust fallback for user's specific environment structure
+            if not os.path.exists(atp_file):
+                env_atp = os.path.join('/home/ec2-user/environment/Option_buying_March', f"atp_data_{self.instrument_name}_{backtest_date_str}.csv")
+                if os.path.exists(env_atp): atp_file = env_atp
+
             if os.path.exists(atp_file):
                 if not hasattr(self.state_manager, 'atp_history'):
                     self.state_manager.atp_history = {}
@@ -65,8 +70,24 @@ class BacktestOrchestrator(BaseOrchestrator):
 
     async def run_backtest_strategy_for_timestamp(self, timestamp, current_group):
         self.current_timestamp = timestamp
+        # 1. Update prices/strikes first to establish baseline ATMs
         await self._populate_state_for_tick(timestamp, current_group)
 
+        # 2. Identify Target Strike pair early so SellManager can use it for trend monitoring
+        strike_interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', fallback=50)
+        futures_atm = float(round(self.state_manager.spot_price / strike_interval) * strike_interval)
+
+        self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
+            expiry=self.atm_manager.signal_expiry_date,
+            reference_atm=futures_atm
+        )
+        if self.orchestrator_state.v2_target_strike_pair:
+             target_strike = self.orchestrator_state.v2_target_strike_pair['strike']
+             self.state_manager.target_strike = target_strike
+             for session in self.user_sessions.values():
+                 session.state_manager.target_strike = target_strike
+
+        # 3. Handle Short Strangle entry/candidates
         import datetime as _dt
         _strangle_start = _dt.datetime.strptime(
             self.config_manager.get('settings', 'strangle_start_time', fallback='09:16:00'),
@@ -81,20 +102,7 @@ class BacktestOrchestrator(BaseOrchestrator):
             if not (self.sell_manager.ce_placed and self.sell_manager.pe_placed):
                 await self.sell_manager.execute_short_strangle_backtest(timestamp)
 
-        # For BUY signal target selection, we strictly use Futures price.
-        strike_interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', fallback=50)
-        futures_atm = float(round(self.state_manager.spot_price / strike_interval) * strike_interval)
-
-        self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
-            expiry=self.atm_manager.signal_expiry_date,
-            reference_atm=futures_atm
-        )
-        if self.orchestrator_state.v2_target_strike_pair:
-             target_strike = self.orchestrator_state.v2_target_strike_pair['strike']
-             self.state_manager.target_strike = target_strike
-             for session in self.user_sessions.values():
-                 session.state_manager.target_strike = target_strike
-
+        # Re-populate state after target selection to ensure aggregators see the correct watchlist
         await self._populate_state_for_tick(timestamp, current_group)
 
         # Feeding aggregators
@@ -260,9 +268,9 @@ class BacktestOrchestrator(BaseOrchestrator):
     async def _populate_state_for_tick(self, timestamp, tick_df):
         if tick_df.empty: return
         fut_p = tick_df['spot_price'].iloc[0] if 'spot_price' in tick_df.columns and pd.notna(tick_df['spot_price'].iloc[0]) else 0
-        if not fut_p: fut_p = self.backtest_data_mgr.get_futures_price(timestamp) or 0
+        if not fut_p or fut_p == 0: fut_p = self.backtest_data_mgr.get_futures_price(timestamp) or 0
         idx_p = tick_df['index_price'].iloc[0] if 'index_price' in tick_df.columns and pd.notna(tick_df['index_price'].iloc[0]) else 0
-        if not idx_p: idx_p = self.backtest_data_mgr.get_index_price(timestamp) or fut_p
+        if not idx_p or idx_p == 0: idx_p = self.backtest_data_mgr.get_index_price(timestamp) or fut_p
 
         self.state_manager.timestamp = timestamp
         self.state_manager.spot_price = fut_p
@@ -270,13 +278,17 @@ class BacktestOrchestrator(BaseOrchestrator):
         self.state_manager.option_data.clear()
 
         # ATM for OI/Monitoring is Index-based
-        await self.atm_manager.update_strikes_and_subscribe(idx_p, is_futures=False)
-        index_atm = self.atm_manager.strikes.get('atm')
-        self.state_manager.atm_strike = index_atm
+        index_atm = None
+        if idx_p and idx_p > 0:
+            await self.atm_manager.update_strikes_and_subscribe(idx_p, is_futures=False)
+            index_atm = self.atm_manager.strikes.get('atm')
+            self.state_manager.atm_strike = index_atm
 
         # ATM for Buy Target selection is Futures-based
-        await self.atm_manager.update_strikes_and_subscribe(fut_p, is_futures=True)
-        futures_atm = self.atm_manager.strikes.get('futures_atm')
+        futures_atm = None
+        if fut_p and fut_p > 0:
+            await self.atm_manager.update_strikes_and_subscribe(fut_p, is_futures=True)
+            futures_atm = self.atm_manager.strikes.get('futures_atm')
 
         # Watchlist must cover both Index strikes (OI) and Futures strikes (Target selection)
         watchlist = set(self.strike_manager.get_strike_watchlist(index_atm))

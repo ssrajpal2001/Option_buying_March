@@ -860,6 +860,14 @@ class SellManager:
 
         # Resolve Target Strike Keys for slope checking (strictly driven by Futures as requested)
         target_strike = self.orchestrator.state_manager.target_strike
+        if target_strike is None:
+            # Fallback to Index ATM if target strike hasn't been identified yet
+            target_strike = self.orchestrator.state_manager.atm_strike
+
+        if target_strike is None:
+            logger.debug("[SellManager][Backtest] Skipping entry evaluation — Target Strike and ATM both None.")
+            return
+
         expiry = self.orchestrator.atm_manager.signal_expiry_date
         t_ce_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(target_strike, 'CALL', expiry)
         t_pe_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(target_strike, 'PUT', expiry)

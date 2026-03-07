@@ -63,8 +63,13 @@ class CSVDataFeeder:
                 discovery_name = f"market_data_{instrument}_{self.backtest_date}.csv"
                 discovery_path = os.path.join(project_root, discovery_name)
 
+                # Robust fallback for user's specific environment structure
+                if not os.path.exists(discovery_path):
+                    env_path = os.path.join('/home/ec2-user/environment/Option_buying_March', discovery_name)
+                    if os.path.exists(env_path): discovery_path = env_path
+
                 if os.path.isfile(discovery_path):
-                    logger.info(f"CSV DISCOVERY: Automatically identified recorded data file: {discovery_name}")
+                    logger.info(f"CSV DISCOVERY: Automatically identified recorded data file: {discovery_path}")
                     self.file_path = discovery_path
                 else:
                     logger.warning(f"CSV file NOT FOUND at {self.file_path} or {discovery_path}. Generating synthetic 1-minute timestamps for API-only backtest.")
