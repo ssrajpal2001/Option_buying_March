@@ -380,3 +380,6 @@ class BacktestOrchestrator(BaseOrchestrator):
 
         if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed and not self.sell_manager.strangle_closed:
             await self.sell_manager.close_all(timestamp)
+
+        if hasattr(self, 'sell_manager_v3') and self.sell_manager_v3.active:
+            await self.sell_manager_v3.close_all(timestamp)

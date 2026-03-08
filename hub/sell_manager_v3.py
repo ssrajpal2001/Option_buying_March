@@ -76,7 +76,20 @@ class SellManagerV3:
         if not self._cfg('enabled', False):
             return
 
-        # Check for config updates every 1 second
+        if getattr(self.orchestrator, 'profit_target_hit', False):
+            if self.active:
+                await self._exit_all(timestamp, "Daily Profit Target Hit")
+            return
+
+        # End of day close
+        end_time_str = self.orchestrator.config_manager.get('settings', 'end_time', fallback='15:25:00')
+        end_time = datetime.datetime.strptime(end_time_str, '%H:%M:%S').time()
+        if timestamp.time() >= end_time:
+            if self.active:
+                await self._exit_all(timestamp, "EOD Close")
+            return
+
+        # Check for config updates
         await self._check_config_updates(timestamp)
 
         if not self.active:
@@ -317,10 +330,10 @@ class SellManagerV3:
 
             rsi_threshold = rsi_cfg.get('threshold', 50)
 
-            logger.info(f"[SellV3] Indicator Check: RSI={rsi_val:.2f}, Price={combined_ltp:.2f}, PrevVWAP={combined_prev_atp:.2f}")
+            logger.info(f"[SellV3] Indicator Check: RSI={rsi_val:.4f}, Price={combined_ltp:.4f}, PrevVWAP={combined_prev_atp:.4f}")
 
             if combined_ltp > combined_prev_atp and rsi_val > rsi_threshold:
-                await self._exit_all(timestamp, f"Indicator Exit: Price > VWAP and RSI > {rsi_threshold}")
+                await self._exit_all(timestamp, f"Indicator Exit: Price({combined_ltp:.2f}) > VWAP({combined_prev_atp:.2f}) and RSI({rsi_val:.2f}) > {rsi_threshold}")
 
     async def _exit_all(self, timestamp, reason):
         logger.info(f"[SellV3] EXIT ALL: {reason}")
@@ -354,6 +367,11 @@ class SellManagerV3:
             # Restart happens on next tick because active is False
         else:
             logger.info("[SellV3] After 2:00 PM. No more trades today.")
+
+    async def close_all(self, timestamp):
+        """Forced exit of all V3 positions."""
+        if self.active:
+            await self._exit_all(timestamp, "Forced Close")
 
     def reconnect_positions(self):
         # Since we use strike/key in state, we don't strictly need to reconnect contract objects
