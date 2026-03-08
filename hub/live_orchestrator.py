@@ -15,6 +15,9 @@ class LiveOrchestrator(BaseOrchestrator):
         self.sell_manager = SellManager(self)
         self.sell_manager.load_state()
 
+        from hub.sell_manager_v3 import SellManagerV3
+        self.sell_manager_v3 = SellManagerV3(self)
+
         from hub.oi_exit_monitor import OIExitMonitor
         self.oi_exit_monitor = OIExitMonitor(self)
 

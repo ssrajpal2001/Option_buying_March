@@ -166,6 +166,29 @@
                     "check_mode": "TICK"
                 }
             }
+        },
+        "sell_v3": {
+            "enabled": false,
+            "start_time": "09:16:05",
+            "entry_type": "SELL",
+            "product_type": "NRML",
+            "signal_expiry": "WEEKLY",
+            "trade_expiry": "WEEKLY",
+            "ltp_threshold": 50.0,
+            "ltp_exit_min": 20.0,
+            "profit_target_pct": 12.0,
+            "rsi": {
+                "period": 14,
+                "tf": 5,
+                "threshold": 50
+            },
+            "vwap": {
+                "tf": 5
+            },
+            "tsl": {
+                "enabled": false,
+                "value": 0.0
+            }
         }
     }
 }

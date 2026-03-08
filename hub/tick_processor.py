@@ -161,6 +161,11 @@ class TickProcessor:
         now_ts = asyncio.get_event_loop().time()
         timestamp = self.orchestrator._get_timestamp()
 
+        # Check if V3 Sell Side is enabled. If so, we bypass standard V2 Signal/Sell logic
+        # to ensure the bot strictly follows the new strategy without interference.
+        v3_enabled = self.orchestrator.json_config.get_value(
+            f"{self.orchestrator.instrument_name}.sell_v3.enabled", False)
+
         # HEARTBEAT (every 5 minutes)
         if not self.orchestrator.is_backtest:
             if now_ts - self.last_heartbeat_time >= 300.0:
@@ -288,19 +293,22 @@ class TickProcessor:
             # during the breach check loop below.
 
         # 2. Crossover Breach Check (Per User) — gated by buy.start_time from JSON
-        _buy_start = self._get_buy_start_time()
-        _buy_active = self.orchestrator.is_backtest or timestamp.time() >= _buy_start
-
+        # BYPASS if V3 enabled
+        _buy_active = False
         any_monitoring = False
-        for user_id, session in self.orchestrator.user_sessions.items():
-            if _buy_active and (self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0)):
-                await session.signal_monitor.check_crossover_breach(
-                    timestamp=timestamp,
-                    current_atm=current_atm
-                )
+        if not v3_enabled:
+            _buy_start = self._get_buy_start_time()
+            _buy_active = self.orchestrator.is_backtest or timestamp.time() >= _buy_start
 
-            if session.signal_monitor.is_monitoring():
-                any_monitoring = True
+            for user_id, session in self.orchestrator.user_sessions.items():
+                if _buy_active and (self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0)):
+                    await session.signal_monitor.check_crossover_breach(
+                        timestamp=timestamp,
+                        current_atm=current_atm
+                    )
+
+                if session.signal_monitor.is_monitoring():
+                    any_monitoring = True
 
         if self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0):
              self.last_crossover_check_time = now_ts
@@ -326,11 +334,16 @@ class TickProcessor:
                     )
 
         # Condition 4: Sell-side per-tick logic (individual slope entry + LTP exit)
-        if hasattr(self.orchestrator, 'sell_manager'):
+        # BYPASS if V3 enabled
+        if hasattr(self.orchestrator, 'sell_manager') and not v3_enabled:
             sm = self.orchestrator.sell_manager
             if not sm.strangle_closed and (sm.ce_candidates or sm.pe_candidates or sm.ce_placed or sm.pe_placed):
                 sell_ticks = self._build_sell_ticks(backtest_current_tick)
                 await sm.on_tick(sell_ticks, timestamp)
+
+        # Condition 4b: Sell-side V3 per-tick logic
+        if hasattr(self.orchestrator, 'sell_manager_v3'):
+            await self.orchestrator.sell_manager_v3.on_tick(timestamp)
 
         # Condition 5: OI-based exit monitor (self-throttled via check_interval_seconds)
         if hasattr(self.orchestrator, 'oi_exit_monitor') and current_atm:

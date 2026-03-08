@@ -14,6 +14,7 @@
   <button class="tab-btn active" onclick="switchTab('general')">General</button>
   <button class="tab-btn" onclick="switchTab('buy')">Buy Side</button>
   <button class="tab-btn" onclick="switchTab('sell')">Sell Side</button>
+  <button class="tab-btn" onclick="switchTab('sell_v3')">Sell Side V3</button>
   <button class="tab-btn" onclick="switchTab('oi')">OI Exit</button>
 </div>
 
@@ -27,6 +28,7 @@
         {% set toggles_general = [
           ('Buy Side Enabled',    'NIFTY.buy.enabled'),
           ('Sell Side Enabled',   'NIFTY.sell.enabled'),
+          ('Sell V3 Enabled',     'NIFTY.sell_v3.enabled'),
           ('OI Exit Enabled',     'NIFTY.oi_exit.enabled'),
           ('Profit Target Exit',  'NIFTY.profit_target_exit.enabled'),
           ('Range 9:15 Gate',     'NIFTY.range_915_gate_enabled'),
@@ -142,6 +144,91 @@
         <div>
           <label class="field-label">Sell Exit Formula</label>
           <input type="text" class="input-field font-mono text-xs" data-path="NIFTY.sell.exit_formula"/>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════ TAB: SELL SIDE V3 ═══════════════════ -->
+<div id="tab-sell_v3" class="tab-content hidden">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+    <div class="card p-5">
+      <div class="section-label">V3 Strategy Status</div>
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Strategy Enabled</span>
+          <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.enabled" onclick="toggleSwitch(this)">
+            <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+          </button>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="field-label">Start Time</label>
+            <input type="text" class="input-field" data-path="NIFTY.sell_v3.start_time"/>
+          </div>
+          <div>
+            <label class="field-label">LTP Entry Threshold</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_threshold"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <div class="section-label">Profit & Risk Management</div>
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="field-label">Target Profit (%)</label>
+            <input type="number" class="input-field" step="0.5" data-path="NIFTY.sell_v3.profit_target_pct"/>
+          </div>
+          <div>
+            <label class="field-label">LTP Exit Min (< 20)</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_exit_min"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <div class="section-label">Dynamic TSL (Rupees)</div>
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm">TSL Toggle (Lock Profit)</span>
+          <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.tsl.enabled" onclick="toggleSwitch(this)">
+            <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+          </button>
+        </div>
+        <div>
+          <label class="field-label">TSL Value (Rupees to Lock)</label>
+          <input type="number" class="input-field" data-path="NIFTY.sell_v3.tsl.value"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <div class="section-label">Exit Indicators (5m)</div>
+      <div class="space-y-3">
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="field-label">RSI Period</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.rsi.period"/>
+          </div>
+          <div>
+            <label class="field-label">RSI TF (min)</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.rsi.tf"/>
+          </div>
+          <div>
+            <label class="field-label">RSI Threshold</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.rsi.threshold"/>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">VWAP TF (min)</label>
+          <input type="number" class="input-field" data-path="NIFTY.sell_v3.vwap.tf"/>
         </div>
       </div>
     </div>
