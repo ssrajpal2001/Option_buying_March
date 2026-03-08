@@ -144,16 +144,27 @@ class BacktestOrchestrator(BaseOrchestrator):
         current_atm = self.atm_manager.strikes.get('atm')
 
         summary_extra_info = ""
+
+        # Update Floating P&L for all active trades (V1, V2, or V3)
+        if self.pnl_tracker.is_trade_active():
+            await self._update_pnl_for_active_trades(timestamp)
+
+        # Handle Session Logic
         for session in self.user_sessions.values():
             if not v3_enabled:
                 await session.signal_monitor.check_crossover_breach(timestamp=timestamp, current_atm=current_atm)
 
+            # Trade Management (V1/V2)
             if session.is_in_trade():
                 pos = session.state_manager.call_position or session.state_manager.put_position
-                if self.pnl_tracker.is_trade_active(): await self._update_pnl_for_active_trades(timestamp)
                 await session.manage_active_trades(timestamp=timestamp, current_ticks=current_data_for_logic, current_atm=current_atm)
                 if pos and not summary_extra_info:
                     summary_extra_info = self._get_summary_extra(pos)
+
+        # V3 Summary Info
+        if v3_enabled and self.sell_manager_v3.active:
+            if not summary_extra_info:
+                summary_extra_info = self._get_summary_extra(None)
 
         # Condition 4: Sell-side per-tick logic (evaluation and exits)
         if hasattr(self, 'sell_manager') and not v3_enabled:
