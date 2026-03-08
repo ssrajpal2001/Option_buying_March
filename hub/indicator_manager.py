@@ -19,7 +19,7 @@ class IndicatorManager:
         self._r1_profit_cache = {}
         self._index_915_range = {} # (index_key, date) -> (high, low)
 
-    async def get_robust_ohlc(self, inst_key, timeframe_minutes, timestamp, include_current=True):
+    async def get_robust_ohlc(self, inst_key, timeframe_minutes, timestamp, include_current=True, for_full_day=True):
         """
         Returns OHLC data for the given instrument and timeframe.
         Attempts to use aggregators and local caches before hitting REST API.
@@ -37,7 +37,7 @@ class IndicatorManager:
                 instrument_key=inst_key,
                 timeframe_minutes=parsed_minutes,
                 current_timestamp=timestamp,
-                for_full_day=True,
+                for_full_day=for_full_day,
                 include_current=include_current
             )
 
@@ -81,7 +81,7 @@ class IndicatorManager:
                 instrument_key=inst_key,
                 timeframe_minutes=parsed_minutes,
                 current_timestamp=timestamp,
-                for_full_day=True,
+                for_full_day=for_full_day,
                 include_current=include_current
             )
 
@@ -428,7 +428,17 @@ class IndicatorManager:
 
         if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty:
             logger.debug(f"[IndicatorManager] Combined RSI: Missing OHLC for {key1} or {key2}")
-            return None
+            # Try to fetch history manually if robust_ohlc failed to provide enough back-data
+            if self.orchestrator.is_backtest:
+                for k in [key1, key2]:
+                    if k not in self.data_manager.backtest_ohlc_data:
+                        await self.data_manager.fetch_and_cache_api_ohlc(k, timestamp.date())
+                ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
+                ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
+                if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty:
+                    return None
+            else:
+                return None
 
         # Align by index (timestamp) and sum the close prices
         combined = pd.DataFrame({'close1': ohlc1['close'], 'close2': ohlc2['close']}).dropna()

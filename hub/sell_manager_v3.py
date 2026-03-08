@@ -26,7 +26,6 @@ class SellManagerV3:
         self.pe_leg = None
         self.total_premium_points = 0.0
         self.entry_timestamp = None
-        self.entry_candle_count = 0
         self.last_config_check_time = 0
         self.last_v3_log_time = 0
 
@@ -45,7 +44,6 @@ class SellManagerV3:
             'pe_leg': self.pe_leg,
             'total_premium_points': self.total_premium_points,
             'entry_timestamp': self.entry_timestamp.isoformat() if self.entry_timestamp else None,
-            'entry_candle_count': self.entry_candle_count,
             'tsl_wait_high_hit': self.tsl_wait_high_hit
         }
         try:
@@ -67,7 +65,6 @@ class SellManagerV3:
             self.total_premium_points = state.get('total_premium_points', 0.0)
             ts = state.get('entry_timestamp')
             self.entry_timestamp = datetime.datetime.fromisoformat(ts).replace(tzinfo=pytz.timezone('Asia/Kolkata')) if ts else None
-            self.entry_candle_count = state.get('entry_candle_count', 0)
             self.tsl_wait_high_hit = state.get('tsl_wait_high_hit', False)
 
             if self.active:
@@ -98,9 +95,6 @@ class SellManagerV3:
         if not self.active:
             await self._check_entry(timestamp)
         else:
-            if timestamp.second == 0 and timestamp.minute % 5 == 0:
-                self.entry_candle_count += 1
-                self.save_state()
             await self._check_exit(timestamp)
 
     async def _check_config_updates(self, timestamp):
@@ -176,12 +170,6 @@ class SellManagerV3:
             rsi_threshold = rsi_cfg.get('threshold', 50)
             if combined_ltp > combined_vwap and rsi_val > rsi_threshold:
                 logger.info(f"[SellV3] Entry Blocked: Indicators in Exit Zone (Price {combined_ltp:.2f} > VWAP {combined_vwap:.2f}, RSI {rsi_val:.2f} > {rsi_threshold}). Searching ITM to escape exit zone...")
-
-                # Logic: If Indicators are in exit zone, move ITM on BOTH sides to see if we can find a pair with combined_ltp < combined_vwap
-                # (ITM options have lower theta and higher delta, but more importantly, their VWAP (ATP) is typically much higher than ATM)
-                # However, the user said "ITM if < 50". If we are already at ATM and prices are > 50, moving ITM only makes prices LARGER.
-                # In most cases, if Price > VWAP at ATM, it will be Price > VWAP at ITM too.
-                # So we just block the trade to be safe.
                 return
 
         # 4. Execution Order (Lowest LTP first)
@@ -204,7 +192,6 @@ class SellManagerV3:
 
         self.active = True
         self.entry_timestamp = timestamp
-        self.entry_candle_count = 0
         self.total_premium_points = self.ce_leg['entry_ltp'] + self.pe_leg['entry_ltp']
         self.tsl_wait_high_hit = False
         self.save_state()
@@ -349,11 +336,6 @@ class SellManagerV3:
         # 4. Indicators Exit (5-min Candle Close)
         if timestamp.second == 0 and timestamp.minute % 5 == 0:
             # This logic fires at the start of the next 5-min candle, meaning the previous one just closed.
-            wait_candles = self._cfg('rsi.wait_candles', 14)
-            if self.entry_candle_count < wait_candles:
-                logger.debug(f"[SellV3] Indicator check skipped. Wait: {self.entry_candle_count}/{wait_candles} candles.")
-                return
-
             await self._check_indicator_exit(timestamp)
 
     async def _check_indicator_exit(self, timestamp):

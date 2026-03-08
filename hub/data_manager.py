@@ -209,13 +209,25 @@ class DataManager:
 
     async def fetch_and_cache_api_ohlc(self, instrument_key: str, date: datetime.date, interval: str = "1minute"):
         real_key = instrument_key
-        if self.config_manager.get_boolean('settings', 'backtest_enabled'):
+        is_bt = self.config_manager.get_boolean('settings', 'backtest_enabled')
+        if is_bt:
             parts = instrument_key.split()
             if len(parts) >= 6:
                 contract = await self.get_live_contract_details(int(parts[1]), datetime.datetime.strptime(f"{parts[3]} {parts[4]} {parts[5]}", "%d %b %Y").date(), parts[2])
                 if contract: real_key = contract.instrument_key
                 else: return pd.DataFrame()
-        df = await self._fetch_and_prepare_api_data(real_key, date - datetime.timedelta(days=4), date, interval)
+
+        # We fetch 10 days of history to be safe for weekend gaps.
+        df = await self._fetch_and_prepare_api_data(real_key, date - datetime.timedelta(days=10), date, interval)
+
+        if is_bt:
+            # Store in backtest_ohlc_data to make it available for all lookups in this session
+            if instrument_key not in self.backtest_ohlc_data:
+                self.backtest_ohlc_data[instrument_key] = df
+            else:
+                self.backtest_ohlc_data[instrument_key] = pd.concat([self.backtest_ohlc_data[instrument_key], df]).sort_index()
+                self.backtest_ohlc_data[instrument_key] = self.backtest_ohlc_data[instrument_key][~self.backtest_ohlc_data[instrument_key].index.duplicated(keep='last')]
+
         self.api_ohlc_cache[(instrument_key, date, interval)] = df.copy()
         return df
 
