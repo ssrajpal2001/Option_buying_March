@@ -43,3 +43,19 @@ INFO:     Finished server process [9269]
 INFO:     Started server process [9902]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'hub/backtest_orchestrator.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [9902]
+INFO:     Started server process [10163]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'hub/backtest_orchestrator.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [10163]
+INFO:     Started server process [10307]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
