@@ -12,6 +12,10 @@ class BacktestOrchestrator(BaseOrchestrator):
         self.backtest_data_mgr = BacktestDataManager(self)
         from hub.sell_manager import SellManager
         self.sell_manager = SellManager(self)
+
+        from hub.sell_manager_v3 import SellManagerV3
+        self.sell_manager_v3 = SellManagerV3(self)
+
         self._backtest_strangle_triggered = False
         self.profit_target_hit = False
 
@@ -66,7 +70,8 @@ class BacktestOrchestrator(BaseOrchestrator):
         buy_active = self.pnl_tracker and self.pnl_tracker.is_trade_active()
         sell_active = (hasattr(self, 'sell_manager') and
                        (self.sell_manager.ce_placed or self.sell_manager.pe_placed))
-        return buy_active or sell_active
+        sell_v3_active = (hasattr(self, 'sell_manager_v3') and self.sell_manager_v3.active)
+        return buy_active or sell_active or sell_v3_active
 
     async def run_backtest_strategy_for_timestamp(self, timestamp, current_group):
         self.current_timestamp = timestamp
@@ -154,6 +159,10 @@ class BacktestOrchestrator(BaseOrchestrator):
                 for inst_key, ltp in self.state_manager.option_prices.items():
                     sell_ticks[inst_key] = {'ltp': ltp}
                 await sm.on_tick(sell_ticks, timestamp)
+
+        # Condition 4b: Sell-side V3 per-tick logic
+        if hasattr(self, 'sell_manager_v3'):
+            await self.sell_manager_v3.on_tick(timestamp)
 
         from utils.logger import log_trade_summary
         # Log Total PnL (Realized + Floating) for a complete daily picture

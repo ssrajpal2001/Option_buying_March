@@ -1,25 +1,5 @@
 INFO:     Will watch for changes in these directories: ['/app']
-INFO:     Uvicorn running on http://0.0.0.0:5000 (Press CTRL+C to quit)
-INFO:     Started reloader process [5737] using StatReload
-INFO:     Started server process [5898]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     127.0.0.1:42772 - "GET /strategy HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42772 - "GET /static/app.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42772 - "GET /api/strategy HTTP/1.1" 200 OK
-WARNING:  StatReload detected changes in 'hub/sell_manager_v3.py'. Reloading...
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [5898]
-INFO:     Started server process [6401]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-WARNING:  StatReload detected changes in 'hub/price_feed_handler.py'. Reloading...
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [6401]
-INFO:     Started server process [6412]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
+ERROR:    [Errno 98] Address already in use
+INFO:     127.0.0.1:42648 - "GET /strategy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42648 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42648 - "GET /api/strategy HTTP/1.1" 200 OK
