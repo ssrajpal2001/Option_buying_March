@@ -180,7 +180,8 @@
             "rsi": {
                 "period": 14,
                 "tf": 5,
-                "threshold": 50
+                "threshold": 50,
+                "wait_candles": 14
             },
             "vwap": {
                 "tf": 5

@@ -126,20 +126,25 @@ class DataManager:
             if 'volume' in one_minute_df.columns: resampling_logic['volume'] = 'sum'
 
             if self.config_manager.get_boolean('settings', 'backtest_enabled', fallback=False):
-                resampled_buckets = []
-                today = current_timestamp.date()
-                df_filtered = one_minute_df[(one_minute_df.index.date == today) & (one_minute_df.index.time >= datetime.time(9, 15))].copy()
-                for i in range(0, len(df_filtered), parsed_minutes):
-                    group = df_filtered.iloc[i:i + parsed_minutes]
-                    if len(group) == parsed_minutes:
-                        bucket_start = group.index[0]
-                        if bucket_start + pd.Timedelta(minutes=parsed_minutes) > current_timestamp and not include_current: continue
-                        bucket = {'timestamp': bucket_start, 'open': group.iloc[0]['open'], 'high': group['high'].max(), 'low': group['low'].min(), 'close': group.iloc[-1]['close']}
-                        if 'volume' in group.columns: bucket['volume'] = group['volume'].sum()
-                        resampled_buckets.append(bucket)
-                resampled_df = pd.DataFrame(resampled_buckets).set_index('timestamp') if resampled_buckets else pd.DataFrame()
+                # Proper multi-day resampling for backtest
+                all_resampled = []
+                unique_dates = one_minute_df.index.normalize().unique()
+                for d in unique_dates:
+                    day_df = one_minute_df[one_minute_df.index.normalize() == d].copy()
+                    # Resample day starting from 9:15
+                    resampled_day = day_df.resample(f"{parsed_minutes}min", origin='start_day', offset='9h15min').agg(resampling_logic).dropna()
+                    all_resampled.append(resampled_day)
+
+                resampled_df = pd.concat(all_resampled).sort_index()
+                # Apply current timestamp filter
+                if not include_current:
+                    resampled_df = resampled_df[resampled_df.index < current_timestamp]
+                else:
+                    resampled_df = resampled_df[resampled_df.index <= current_timestamp]
             else:
-                resampled_df = one_minute_df.resample(f"{parsed_minutes}min").agg(resampling_logic).dropna()
+                # Live mode resample
+                resampled_df = one_minute_df.resample(f"{parsed_minutes}min", origin='start_day', offset='9h15min').agg(resampling_logic).dropna()
+
             return resampled_df
 
         is_backtest = self.config_manager.get_boolean('settings', 'backtest_enabled', fallback=False)

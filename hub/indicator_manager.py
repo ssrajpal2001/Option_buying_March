@@ -65,10 +65,8 @@ class IndicatorManager:
                         ohlc = ohlc[~ohlc.index.duplicated(keep='last')]
                     ohlc = ohlc.sort_index()
 
-        if ohlc is not None and not ohlc.empty:
-            first_ts = ohlc.index[0]
-            if first_ts.time() > time(9, 15):
-                ohlc = None
+        # [V3 Note] We allow data from before 9:15 for RSI history.
+        # Legacy check below might be too restrictive for some strategies.
 
         if (ohlc is None or ohlc.empty) and parsed_minutes > 1:
             one_min_ohlc = self.orchestrator.entry_aggregator.get_historical_ohlc(inst_key)
@@ -102,12 +100,14 @@ class IndicatorManager:
         # 1. Check ATP history first (allows lookups for previous candles in both live and backtest)
         atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
         if atp_hist:
-            current_minute = timestamp.replace(second=0, microsecond=0)
-            if current_minute.tzinfo is None:
-                current_minute = current_minute.tz_localize('Asia/Kolkata')
+            # We want the VWAP (ATP) from the candle that just finalized.
+            # If timestamp is 10:30:00, we want the state as of 10:29:59 (the 10:25-10:30 candle's final ATP).
+            search_ts = timestamp - datetime.timedelta(seconds=1)
+            if search_ts.tzinfo is None:
+                search_ts = pytz.timezone('Asia/Kolkata').localize(search_ts)
 
-            # Filter for timestamp-like keys and find latest available up to current_minute
-            candidates = [ts for ts in atp_hist.keys() if hasattr(ts, 'year') and ts <= current_minute]
+            # Filter for timestamp-like keys and find latest available up to search_ts
+            candidates = [ts for ts in atp_hist.keys() if hasattr(ts, 'year') and ts <= search_ts]
             if candidates:
                 return float(atp_hist[max(candidates)])
 
@@ -153,7 +153,15 @@ class IndicatorManager:
                     cum_pv += tp * live_candle['volume']
                     cum_vol += live_candle['volume']
 
-        return cum_pv / cum_vol if cum_vol > 0 else None
+        if cum_vol > 0:
+            return cum_pv / cum_vol
+
+        # Fallback to latest Close price if no volume data is available (common in backtests)
+        ohlc = await self.get_robust_ohlc(inst_key, 1, timestamp, include_current=True)
+        if ohlc is not None and not ohlc.empty:
+            return float(ohlc.iloc[-1]['close'])
+
+        return None
 
     async def get_vwap_slope_status(self, inst_key, timestamp, timeframe_minutes, count=1, live_vwap=None):
         if not inst_key:
@@ -412,9 +420,11 @@ class IndicatorManager:
         if not key1 or not key2:
             return None
 
+        # Ensure we request enough history to cover the RSI period across day boundaries.
+        # We need at least 'period + 1' candles.
         # Fetch historical data (exclude current running candle as requested)
-        ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False)
-        ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False)
+        ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
+        ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
 
         if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty:
             logger.debug(f"[IndicatorManager] Combined RSI: Missing OHLC for {key1} or {key2}")
