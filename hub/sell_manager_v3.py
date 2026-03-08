@@ -2,7 +2,9 @@ import json
 import os
 import datetime
 import pytz
+import asyncio
 from utils.logger import logger
+from .event_bus import event_bus
 
 class SellManagerV3:
     """
@@ -277,6 +279,9 @@ class SellManagerV3:
         if side == 'CE': self.ce_leg = leg
         else: self.pe_leg = leg
 
+        # Ensure live data feed starts for this contract immediately
+        await event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': key})
+
         # Place Order
         product_type = self._cfg('product_type', 'NRML')
         for broker in self.orchestrator.broker_manager.brokers:
@@ -373,6 +378,9 @@ class SellManagerV3:
 
             ltp = await self._get_ltp(leg['key'])
 
+            # Stop live data feed for this contract
+            await event_bus.publish('REMOVE_FROM_WATCHLIST', {'instrument_key': leg['key']})
+
             product_type = self._cfg('product_type', 'NRML')
             for broker in self.orchestrator.broker_manager.brokers:
                 if not broker.is_configured_for_instrument(self.instrument_name): continue
@@ -401,6 +409,14 @@ class SellManagerV3:
             await self._exit_all(timestamp, "Forced Close")
 
     def reconnect_positions(self):
-        # Since we use strike/key in state, we don't strictly need to reconnect contract objects
-        # as they are resolved at execution time, but it's good for consistency.
-        pass
+        """Restores live data subscriptions for active positions after bot restart."""
+        if not self.active:
+            return
+
+        logger.info(f"[SellV3] Reconnecting live data for active Strangle: {self.ce_leg['strike']}CE + {self.pe_leg['strike']}PE")
+
+        # We must use asyncio.create_task because this is called from sync finalize_initialization
+        if self.ce_leg and self.ce_leg.get('key'):
+            asyncio.create_task(event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': self.ce_leg['key']}))
+        if self.pe_leg and self.pe_leg.get('key'):
+            asyncio.create_task(event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': self.pe_leg['key']}))

@@ -147,6 +147,13 @@ class PriceFeedHandler:
                 for _, k in (sell_mgr.pe_candidates or []):
                     if k: relevant_keys.add(k)
 
+            # Include SellManagerV3 legs
+            if hasattr(self.trade_orchestrator, 'sell_manager_v3'):
+                v3 = self.trade_orchestrator.sell_manager_v3
+                if v3.active:
+                    if v3.ce_leg and v3.ce_leg.get('key'): relevant_keys.add(v3.ce_leg['key'])
+                    if v3.pe_leg and v3.pe_leg.get('key'): relevant_keys.add(v3.pe_leg['key'])
+
             self._relevant_keys_cache = relevant_keys
             self._last_keys_rebuild_time = asyncio.get_event_loop().time()
         except Exception as e:

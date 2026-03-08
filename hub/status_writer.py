@@ -30,6 +30,7 @@ class StatusWriter:
         orch = self.orchestrator
         sm = orch.state_manager
         sell_mgr = getattr(orch, 'sell_manager', None)
+        v3_mgr = getattr(orch, 'sell_manager_v3', None)
         oi_mon = getattr(orch, 'oi_exit_monitor', None)
 
         buy_data = {}
@@ -73,22 +74,43 @@ class StatusWriter:
         sell_total_qty = sell_lot_size * sell_broker_qty
 
         sell_data = {}
-        for side in ['CE', 'PE']:
-            placed = getattr(sell_mgr, f"{'ce' if side == 'CE' else 'pe'}_placed", False)
-            if sell_mgr and placed:
-                inst_key = getattr(sell_mgr, f'sell_{side.lower()}_key', None)
-                entry = getattr(sell_mgr, f'sell_{side.lower()}_entry_ltp', None) or 0
-                ltp = sm.option_prices.get(inst_key, 0) if inst_key else 0
-                strike = getattr(sell_mgr, f'sell_{side.lower()}_strike', None)
-                sell_data[side] = {
-                    "placed": True,
-                    "strike": strike,
-                    "entry": round(float(entry), 2),
-                    "ltp": round(float(ltp), 2),
-                    "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
-                }
-            else:
-                sell_data[side] = {"placed": False}
+        # Prioritize V3 status for web display if active
+        if v3_mgr and v3_mgr.active:
+            for side in ['CE', 'PE']:
+                leg = v3_mgr.ce_leg if side == 'CE' else v3_mgr.pe_leg
+                if leg:
+                    inst_key = leg.get('key')
+                    entry = leg.get('entry_ltp') or 0
+                    ltp = sm.option_prices.get(inst_key, 0) if inst_key else 0
+                    strike = leg.get('strike')
+                    sell_data[side] = {
+                        "placed": True,
+                        "strike": strike,
+                        "entry": round(float(entry), 2),
+                        "ltp": round(float(ltp), 2),
+                        "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
+                        "strategy": "V3"
+                    }
+                else:
+                    sell_data[side] = {"placed": False}
+        else:
+            for side in ['CE', 'PE']:
+                placed = getattr(sell_mgr, f"{'ce' if side == 'CE' else 'pe'}_placed", False)
+                if sell_mgr and placed:
+                    inst_key = getattr(sell_mgr, f'sell_{side.lower()}_key', None)
+                    entry = getattr(sell_mgr, f'sell_{side.lower()}_entry_ltp', None) or 0
+                    ltp = sm.option_prices.get(inst_key, 0) if inst_key else 0
+                    strike = getattr(sell_mgr, f'sell_{side.lower()}_strike', None)
+                    sell_data[side] = {
+                        "placed": True,
+                        "strike": strike,
+                        "entry": round(float(entry), 2),
+                        "ltp": round(float(ltp), 2),
+                        "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
+                        "strategy": "V2"
+                    }
+                else:
+                    sell_data[side] = {"placed": False}
 
         oi_snap = {}
         if oi_mon:
