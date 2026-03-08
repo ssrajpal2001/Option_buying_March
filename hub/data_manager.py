@@ -217,8 +217,8 @@ class DataManager:
                 if contract: real_key = contract.instrument_key
                 else: return pd.DataFrame()
 
-        # We fetch 10 days of history to be safe for weekend gaps.
-        df = await self._fetch_and_prepare_api_data(real_key, date - datetime.timedelta(days=10), date, interval)
+        # We fetch 4 days of history to be safe for weekend gaps.
+        df = await self._fetch_and_prepare_api_data(real_key, date - datetime.timedelta(days=4), date, interval)
 
         if is_bt:
             # Store in backtest_ohlc_data to make it available for all lookups in this session
