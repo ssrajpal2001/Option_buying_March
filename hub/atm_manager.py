@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import pandas as pd
 from utils.logger import logger
 from hub.event_bus import event_bus
 from hub.expiry_manager import ExpiryManager
