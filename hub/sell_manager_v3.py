@@ -119,11 +119,12 @@ class SellManagerV3:
                 logger.info(f"[SellV3] Strategy Update: Profit Target changed from {old_pct}% to {new_pct}%")
             if old_tsl_val != new_tsl_val:
                 logger.info(f"[SellV3] Strategy Update: TSL Value changed from {old_tsl_val} to {new_tsl_val}")
+                # Reset TSL status to allow re-locking at the new value
+                self.tsl_wait_high_hit = False
+
             if old_tsl_en != new_tsl_en:
                 logger.info(f"[SellV3] Strategy Update: TSL Enabled changed from {old_tsl_en} to {new_tsl_en}")
-
-            # Reset TSL high hit if TSL is turned OFF and then ON again
-            if not old_tsl_en and new_tsl_en:
+                # Reset TSL status when toggling
                 self.tsl_wait_high_hit = False
 
             self.last_config_check_time = mtime
@@ -315,25 +316,21 @@ class SellManagerV3:
             rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp
         )
 
-        # For VWAP we need previous 5-min candle's VWAP (ATP).
+        # For VWAP we use the current cumulative VWAP (ATP) at the 5-minute boundary.
         # We calculate Combined VWAP = CE ATP + PE ATP.
-        # We use calculate_vwap which correctly handles atp_history lookups.
-        prev_5m = (timestamp - datetime.timedelta(minutes=5)).replace(second=0, microsecond=0)
-        if prev_5m.tzinfo is None: prev_5m = pytz.timezone('Asia/Kolkata').localize(prev_5m)
+        ce_atp = await self.orchestrator.indicator_manager.calculate_vwap(self.ce_leg['key'], timestamp)
+        pe_atp = await self.orchestrator.indicator_manager.calculate_vwap(self.pe_leg['key'], timestamp)
 
-        ce_prev_atp = await self.orchestrator.indicator_manager.calculate_vwap(self.ce_leg['key'], prev_5m)
-        pe_prev_atp = await self.orchestrator.indicator_manager.calculate_vwap(self.pe_leg['key'], prev_5m)
-
-        if rsi_val is not None and ce_prev_atp and pe_prev_atp:
+        if rsi_val is not None and ce_atp and pe_atp:
             combined_ltp = (await self._get_ltp(self.ce_leg['key'])) + (await self._get_ltp(self.pe_leg['key']))
-            combined_prev_atp = ce_prev_atp + pe_prev_atp
+            combined_vwap = ce_atp + pe_atp
 
             rsi_threshold = rsi_cfg.get('threshold', 50)
 
-            logger.info(f"[SellV3] Indicator Check: RSI={rsi_val:.4f}, Price={combined_ltp:.4f}, PrevVWAP={combined_prev_atp:.4f}")
+            logger.info(f"[SellV3] Indicator Check: RSI={rsi_val:.4f}, Price={combined_ltp:.4f}, VWAP={combined_vwap:.4f}")
 
-            if combined_ltp > combined_prev_atp and rsi_val > rsi_threshold:
-                await self._exit_all(timestamp, f"Indicator Exit: Price({combined_ltp:.2f}) > VWAP({combined_prev_atp:.2f}) and RSI({rsi_val:.2f}) > {rsi_threshold}")
+            if combined_ltp > combined_vwap and rsi_val > rsi_threshold:
+                await self._exit_all(timestamp, f"Indicator Exit: Price({combined_ltp:.2f}) > VWAP({combined_vwap:.2f}) and RSI({rsi_val:.2f}) > {rsi_threshold}")
 
     async def _exit_all(self, timestamp, reason):
         logger.info(f"[SellV3] EXIT ALL: {reason}")

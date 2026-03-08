@@ -75,3 +75,19 @@ INFO:     Finished server process [11051]
 INFO:     Started server process [11108]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'hub/sell_manager_v3.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11108]
+INFO:     Started server process [12036]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'hub/sell_manager_v3.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [12036]
+INFO:     Started server process [12047]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

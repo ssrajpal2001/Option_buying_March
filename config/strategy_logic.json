@@ -168,7 +168,7 @@
             }
         },
         "sell_v3": {
-            "enabled": false,
+            "enabled": true,
             "start_time": "09:16:05",
             "entry_type": "SELL",
             "product_type": "NRML",
