@@ -35,3 +35,11 @@ INFO:     Finished server process [9126]
 INFO:     Started server process [9269]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'hub/indicator_manager.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [9269]
+INFO:     Started server process [9902]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

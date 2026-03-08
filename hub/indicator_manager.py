@@ -98,21 +98,27 @@ class IndicatorManager:
     async def calculate_vwap(self, inst_key, timestamp):
         if not inst_key:
             return None
-        if not self.orchestrator.is_backtest:
-            atps = getattr(self.state_manager, 'option_atps', {})
-            live_atp = atps.get(inst_key)
-            if live_atp and live_atp > 0:
-                return float(live_atp)
 
+        # 1. Check ATP history first (allows lookups for previous candles in both live and backtest)
         atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
         if atp_hist:
             current_minute = timestamp.replace(second=0, microsecond=0)
             if current_minute.tzinfo is None:
                 current_minute = current_minute.tz_localize('Asia/Kolkata')
-            candidates = {ts: v for ts, v in atp_hist.items()
-                          if isinstance(ts, type(current_minute)) and ts <= current_minute}
+
+            # Filter for timestamp-like keys and find latest available up to current_minute
+            candidates = [ts for ts in atp_hist.keys() if hasattr(ts, 'year') and ts <= current_minute]
             if candidates:
-                return float(atp_hist[max(candidates.keys())])
+                return float(atp_hist[max(candidates)])
+
+        # 2. Fallback to current live ATP if history is missing and we are looking for 'now'
+        if not self.orchestrator.is_backtest:
+            now = self.orchestrator._get_timestamp()
+            if (now - timestamp).total_seconds() < 60:
+                atps = getattr(self.state_manager, 'option_atps', {})
+                live_atp = atps.get(inst_key)
+                if live_atp and live_atp > 0:
+                    return float(live_atp)
 
         current_day = timestamp.date()
         state_key = (inst_key, current_day)
