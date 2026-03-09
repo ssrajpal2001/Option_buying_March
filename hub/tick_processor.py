@@ -345,7 +345,8 @@ class TickProcessor:
             await self.orchestrator.sell_manager_v3.on_tick(timestamp)
 
         # Condition 5: OI-based exit monitor (self-throttled via check_interval_seconds)
-        if hasattr(self.orchestrator, 'oi_exit_monitor') and current_atm:
+        # BYPASS if V3 enabled to avoid confusion with ATM shifts
+        if hasattr(self.orchestrator, 'oi_exit_monitor') and current_atm and not v3_enabled:
             await self.orchestrator.oi_exit_monitor.check(timestamp, current_atm)
 
         # Condition 6: Write live status for web dashboard (self-throttled to every 5s)

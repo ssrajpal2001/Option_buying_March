@@ -171,22 +171,32 @@ class SellManagerV3:
             return
 
         # 4. Execution Order (Lowest LTP first)
+        success = False
         if ce_ltp < pe_ltp:
             # Sell CE first
             logger.info(f"[SellV3] Side Selection: CE({ce_ltp:.2f}) < PE({pe_ltp:.2f}). Selling CE first.")
-            await self._execute_sell('CE', ce_strike, ce_key, ce_ltp, timestamp)
-            # Match PE
-            pe_strike, pe_key, pe_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
-            logger.info(f"[SellV3] Matching PE: Found {pe_strike} at {pe_ltp:.2f} (Target >= {ce_ltp:.2f})")
-            await self._execute_sell('PE', pe_strike, pe_key, pe_ltp, timestamp)
+            if await self._execute_sell('CE', ce_strike, ce_key, ce_ltp, timestamp):
+                # Match PE
+                pe_strike, pe_key, pe_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
+                if pe_key:
+                    logger.info(f"[SellV3] Matching PE: Found {pe_strike} at {pe_ltp:.2f} (Target >= {ce_ltp:.2f})")
+                    if await self._execute_sell('PE', pe_strike, pe_key, pe_ltp, timestamp):
+                        success = True
         else:
             # Sell PE first
             logger.info(f"[SellV3] Side Selection: PE({pe_ltp:.2f}) <= CE({ce_ltp:.2f}). Selling PE first.")
-            await self._execute_sell('PE', pe_strike, pe_key, pe_ltp, timestamp)
-            # Match CE
-            ce_strike, ce_key, ce_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
-            logger.info(f"[SellV3] Matching CE: Found {ce_strike} at {ce_ltp:.2f} (Target >= {pe_ltp:.2f})")
-            await self._execute_sell('CE', ce_strike, ce_key, ce_ltp, timestamp)
+            if await self._execute_sell('PE', pe_strike, pe_key, pe_ltp, timestamp):
+                # Match CE
+                ce_strike, ce_key, ce_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
+                if ce_key:
+                    logger.info(f"[SellV3] Matching CE: Found {ce_strike} at {ce_ltp:.2f} (Target >= {pe_ltp:.2f})")
+                    if await self._execute_sell('CE', ce_strike, ce_key, ce_ltp, timestamp):
+                        success = True
+
+        if not success:
+            logger.error("[SellV3] Entry failed: One or more legs could not be executed.")
+            # Partial cleanup if one leg succeeded but the other failed
+            return
 
         self.active = True
         self.entry_timestamp = timestamp
@@ -280,7 +290,7 @@ class SellManagerV3:
 
         if not contract:
             logger.error(f"[SellV3] Contract not found for {side} {strike}")
-            return
+            return False
 
         atp = self.orchestrator.state_manager.option_atps.get(key) or ltp
 
@@ -300,11 +310,16 @@ class SellManagerV3:
 
         # Place Order
         product_type = self._cfg('product_type', 'NRML')
+        order_success = True
         for broker in self.orchestrator.broker_manager.brokers:
             if not broker.is_configured_for_instrument(self.instrument_name): continue
             qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * contract.lot_size
             if not self.orchestrator.is_backtest and not getattr(broker, 'paper_trade', False):
-                broker.place_order(contract, 'SELL', qty, expiry, product_type=product_type)
+                try:
+                    broker.place_order(contract, 'SELL', qty, expiry, product_type=product_type)
+                except Exception as e:
+                    logger.error(f"[SellV3] Order failed on broker {broker.instance_name}: {e}")
+                    order_success = False
 
             # Log for backtest PnL tracking
             if self.orchestrator.is_backtest and self.orchestrator.pnl_tracker:
@@ -312,6 +327,8 @@ class SellManagerV3:
                     side=side, instrument_key=key, entry_price=ltp, timestamp=timestamp,
                     strike_price=strike, contract=contract, strategy_log=f"SellV3 {side}", entry_type='SELL', quantity=qty // contract.lot_size
                 )
+
+        return order_success
 
     async def _check_exit(self, timestamp):
         # 1. LTP < 20 Exit (Tick by Tick)
@@ -381,7 +398,7 @@ class SellManagerV3:
 
             rsi_threshold = rsi_cfg.get('threshold', 50)
 
-            logger.info(f"[SellV3] Indicator Check: RSI={rsi_val:.4f}, Price={combined_ltp:.4f}, VWAP={combined_vwap:.4f}")
+            logger.info(f"[SellV3] Indicator Check ({self.ce_leg['strike']}CE + {self.pe_leg['strike']}PE): RSI={rsi_val:.4f}, Price={combined_ltp:.4f}, VWAP={combined_vwap:.4f}")
 
             if combined_ltp > combined_vwap and rsi_val > rsi_threshold:
                 await self._exit_all(timestamp, f"Indicator Exit: Price({combined_ltp:.2f}) > VWAP({combined_vwap:.2f}) and RSI({rsi_val:.2f}) > {rsi_threshold}")
@@ -435,7 +452,6 @@ class SellManagerV3:
         logger.info(f"[SellV3] Reconnecting live data for active Strangle: {self.ce_leg['strike']}CE + {self.pe_leg['strike']}PE")
 
         # We must use asyncio.create_task because this is called from sync finalize_initialization
-        if self.ce_leg and self.ce_leg.get('key'):
-            asyncio.create_task(event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': self.ce_leg['key']}))
-        if self.pe_leg and self.pe_leg.get('key'):
-            asyncio.create_task(event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': self.pe_leg['key']}))
+        for leg in [self.ce_leg, self.pe_leg]:
+            if leg and leg.get('key'):
+                asyncio.create_task(event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': leg['key']}))

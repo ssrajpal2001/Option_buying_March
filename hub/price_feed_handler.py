@@ -95,6 +95,11 @@ class PriceFeedHandler:
         if tasks:
             await asyncio.gather(*tasks)
 
+    def add_to_cache(self, instrument_key):
+        """Immediately adds an instrument key to the relevance cache."""
+        if instrument_key:
+            self._relevant_keys_cache.add(instrument_key)
+
     def _rebuild_relevant_keys(self):
         """Rebuilds the cache of instrument keys this orchestrator cares about."""
         try:

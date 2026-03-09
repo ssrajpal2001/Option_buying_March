@@ -33,6 +33,9 @@ class LiveOrchestrator(BaseOrchestrator):
         if instrument_key and instrument_key not in self.subscribed_instruments:
             logger.debug(f"Dynamically adding {instrument_key} to watchlist for live P&L display.")
             self.subscribed_instruments.add(instrument_key)
+            # Immediately inject into price handler cache to avoid 10s wait loop
+            if hasattr(self, 'price_feed_handler'):
+                self.price_feed_handler.add_to_cache(instrument_key)
             self.websocket.subscribe([instrument_key])
 
     async def handle_remove_from_watchlist(self, data):
