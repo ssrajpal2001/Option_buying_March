@@ -180,7 +180,7 @@ class TickProcessor:
                         p_ltp = self.state_manager.get_ltp(v3.pe_leg['key'])
                         if c_ltp and p_ltp:
                             profit = v3.total_premium_points - (c_ltp + p_ltp)
-                        session_info.append(f"V3:Trade({v3.ce_leg['strike']}CE+{v3.pe_leg['strike']}PE, PnL:{profit:.2f})")
+                        session_info.append(f"V3:Trade({int(v3.ce_leg['strike'])}CE+{int(v3.pe_leg['strike'])}PE, PnL:{profit:.2f})")
                     else:
                         session_info.append("V3:Idle")
                 else:

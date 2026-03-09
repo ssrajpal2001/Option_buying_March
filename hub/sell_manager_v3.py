@@ -373,9 +373,16 @@ class SellManagerV3:
                 return
 
         # 4. Indicators Exit (5-min Candle Close)
-        # User fix: Trigger 10 seconds into the new 5-minute interval.
-        # This allows the API time to finalize and provide data for the closed candle.
-        if timestamp.minute % 5 == 0 and timestamp.second >= 10 and timestamp.minute != self.last_indicator_check_minute:
+        # User fix: Trigger 10 seconds into the new 5-minute interval (LIVE only).
+        # In BACKTEST, we trigger on any tick within the boundary minute.
+        is_boundary = (timestamp.minute % 5 == 0)
+        trigger_now = False
+        if self.orchestrator.is_backtest:
+            trigger_now = is_boundary
+        else:
+            trigger_now = is_boundary and (timestamp.second >= 10)
+
+        if trigger_now and timestamp.minute != self.last_indicator_check_minute:
             # This logic fires slightly after the boundary (e.g. 09:20:10, 09:25:10)
             self.last_indicator_check_minute = timestamp.minute
 

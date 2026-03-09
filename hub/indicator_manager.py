@@ -69,7 +69,7 @@ class IndicatorManager:
         # [V3 Strategy] "Historical Stitching":
         # Always attempt to complement aggregator data with API history to ensure
         # indicators like RSI (14-period) are available immediately for new strikes.
-        if not self.orchestrator.is_backtest:
+        if True: # Enabled for both Live and Backtest
             # Determine how many candles we currently have
             current_len = len(ohlc) if ohlc is not None else 0
             # Target: at least 20 candles (for a 14-period RSI buffer)
