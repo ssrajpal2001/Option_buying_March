@@ -32,6 +32,7 @@ class SellManagerV3:
         self.last_config_check_time = 0
         self.last_v3_log_time = 0
         self.last_indicator_check_minute = -1
+        self.last_exit_timestamp = None
 
         # TSL State
         self.tsl_wait_high_hit = False
@@ -142,6 +143,14 @@ class SellManagerV3:
         if timestamp.time() >= time(14, 0, 0):
             return
 
+        # Re-entry Cooldown: Wait at least 60 seconds after an exit
+        if self.last_exit_timestamp:
+            elapsed = (timestamp - self.last_exit_timestamp).total_seconds()
+            if elapsed < 60:
+                if (timestamp.second % 20) == 0:
+                    logger.debug(f"[SellV3] Re-entry cooldown: {60 - elapsed:.0f}s remaining.")
+                return
+
         # 1. ATM based on Spot
         index_price = self.orchestrator.state_manager.index_price
         interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
@@ -169,28 +178,58 @@ class SellManagerV3:
             logger.warning(f"[SellV3] Could not find suitable strikes for entry.")
             return
 
-        # 4. Execution Order (Lowest LTP first)
-        success = False
+        # 4. Final Match & Indicator Pre-flight Check
+        # User Requirement: Value SHOUDL BE BELOW VWAMP AND RSI < 50 to execute trade.
+        # This prevents immediate re-entry (churning) after an exit.
+
+        # Step 4a: Resolve the final matching pair BEFORE selling
         if ce_ltp < pe_ltp:
-            # Sell CE first
-            logger.info(f"[SellV3] Side Selection: CE({ce_ltp:.2f}) < PE({pe_ltp:.2f}). Selling CE first.")
-            if await self._execute_sell('CE', ce_strike, ce_key, ce_ltp, timestamp):
-                # Match PE
-                pe_strike, pe_key, pe_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
-                if pe_key:
-                    logger.info(f"[SellV3] Matching PE: Found {pe_strike} at {pe_ltp:.2f} (Target >= {ce_ltp:.2f})")
-                    if await self._execute_sell('PE', pe_strike, pe_key, pe_ltp, timestamp):
-                        success = True
+            match_strike, match_key, match_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
+            final_ce_key, final_pe_key = ce_key, match_key
+            final_ce_ltp, final_pe_ltp = ce_ltp, match_ltp
         else:
-            # Sell PE first
-            logger.info(f"[SellV3] Side Selection: PE({pe_ltp:.2f}) <= CE({ce_ltp:.2f}). Selling PE first.")
+            match_strike, match_key, match_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
+            final_ce_key, final_pe_key = match_key, pe_key
+            final_ce_ltp, final_pe_ltp = match_ltp, pe_ltp
+
+        if not final_ce_key or not final_pe_key:
+            logger.warning("[SellV3] Entry blocked: Could not resolve matching leg.")
+            return
+
+        # Step 4b: Indicator Check
+        rsi_cfg = self._cfg('rsi', {})
+        rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
+            final_ce_key, final_pe_key, rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp
+        )
+        ce_atp = await self.orchestrator.indicator_manager.calculate_vwap(final_ce_key, timestamp)
+        pe_atp = await self.orchestrator.indicator_manager.calculate_vwap(final_pe_key, timestamp)
+
+        if rsi_val is not None and ce_atp and pe_atp:
+            combined_ltp = final_ce_ltp + final_pe_ltp
+            combined_vwap = ce_atp + pe_atp
+            rsi_threshold = rsi_cfg.get('threshold', 50)
+
+            # Entry Logic: Below VWAP and Below RSI 50
+            if combined_ltp > combined_vwap or rsi_val > rsi_threshold:
+                logger.info(f"[SellV3] Entry Filtered (Exit Zone): Price {combined_ltp:.2f} > VWAP {combined_vwap:.2f} OR RSI {rsi_val:.2f} > {rsi_threshold}. Waiting for pullback...")
+                return
+        else:
+            # If indicators are missing, we should probably wait to be safe.
+            logger.debug("[SellV3] Entry delayed: Waiting for indicators to stabilize...")
+            return
+
+        # 5. Execution Order (Lowest LTP first)
+        success = False
+        if final_ce_ltp < final_pe_ltp:
+            logger.info(f"[SellV3] Side Selection: CE({final_ce_ltp:.2f}) < PE({final_pe_ltp:.2f}). Selling CE first.")
+            if await self._execute_sell('CE', ce_strike, ce_key, ce_ltp, timestamp):
+                if await self._execute_sell('PE', match_strike, match_key, match_ltp, timestamp):
+                    success = True
+        else:
+            logger.info(f"[SellV3] Side Selection: PE({final_pe_ltp:.2f}) <= CE({final_ce_ltp:.2f}). Selling PE first.")
             if await self._execute_sell('PE', pe_strike, pe_key, pe_ltp, timestamp):
-                # Match CE
-                ce_strike, ce_key, ce_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
-                if ce_key:
-                    logger.info(f"[SellV3] Matching CE: Found {ce_strike} at {ce_ltp:.2f} (Target >= {pe_ltp:.2f})")
-                    if await self._execute_sell('CE', ce_strike, ce_key, ce_ltp, timestamp):
-                        success = True
+                if await self._execute_sell('CE', match_strike, match_key, match_ltp, timestamp):
+                    success = True
 
         if not success:
             logger.error("[SellV3] Entry failed: One or more legs could not be executed.")
@@ -432,6 +471,7 @@ class SellManagerV3:
 
     async def _exit_all(self, timestamp, reason):
         logger.info(f"[SellV3] EXIT ALL: {reason}")
+        self.last_exit_timestamp = timestamp
 
         for leg in [self.ce_leg, self.pe_leg]:
             if not leg: continue
