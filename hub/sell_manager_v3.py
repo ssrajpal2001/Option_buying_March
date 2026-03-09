@@ -369,9 +369,10 @@ class SellManagerV3:
                 return
 
         # 4. Indicators Exit (5-min Candle Close)
-        # Trigger as soon as we cross into a new 5-minute interval
-        if timestamp.minute % 5 == 0 and timestamp.minute != self.last_indicator_check_minute:
-            # This logic fires at the start of the next 5-min candle (e.g. 09:20:00, 09:25:00)
+        # User fix: Trigger 10 seconds into the new 5-minute interval.
+        # This allows the API time to finalize and provide data for the closed candle.
+        if timestamp.minute % 5 == 0 and timestamp.second >= 10 and timestamp.minute != self.last_indicator_check_minute:
+            # This logic fires slightly after the boundary (e.g. 09:20:10, 09:25:10)
             self.last_indicator_check_minute = timestamp.minute
 
             # Note: 14-candle wait is handled by IndicatorManager history buffer.
