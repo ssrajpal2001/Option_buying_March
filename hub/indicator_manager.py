@@ -3,7 +3,8 @@ from utils.support_resistance import SupportResistanceCalculator
 import pandas as pd
 import asyncio
 import pytz
-from datetime import time
+import datetime as dt
+from datetime import datetime, time, timedelta
 
 class IndicatorManager:
     def __init__(self, orchestrator):
@@ -102,7 +103,7 @@ class IndicatorManager:
         if atp_hist:
             # We want the VWAP (ATP) from the candle that just finalized.
             # If timestamp is 10:30:00, we want the state as of 10:29:59 (the 10:25-10:30 candle's final ATP).
-            search_ts = timestamp - datetime.timedelta(seconds=1)
+            search_ts = timestamp - timedelta(seconds=1)
             if search_ts.tzinfo is None:
                 search_ts = pytz.timezone('Asia/Kolkata').localize(search_ts)
 

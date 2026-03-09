@@ -1,8 +1,9 @@
 import json
 import os
-import datetime
+import datetime as dt
 import pytz
 import asyncio
+from datetime import datetime, time, timedelta
 from utils.logger import logger
 from .event_bus import event_bus
 
@@ -67,7 +68,7 @@ class SellManagerV3:
             self.pe_leg = state.get('pe_leg')
             self.total_premium_points = state.get('total_premium_points', 0.0)
             ts = state.get('entry_timestamp')
-            self.entry_timestamp = datetime.datetime.fromisoformat(ts).replace(tzinfo=pytz.timezone('Asia/Kolkata')) if ts else None
+            self.entry_timestamp = datetime.fromisoformat(ts).replace(tzinfo=pytz.timezone('Asia/Kolkata')) if ts else None
             self.tsl_wait_high_hit = state.get('tsl_wait_high_hit', False)
 
             if self.active:
@@ -86,7 +87,7 @@ class SellManagerV3:
 
         # End of day close
         end_time_str = self.orchestrator.config_manager.get('settings', 'end_time', fallback='15:25:00')
-        end_time = datetime.datetime.strptime(end_time_str, '%H:%M:%S').time()
+        end_time = datetime.strptime(end_time_str, '%H:%M:%S').time()
         if timestamp.time() >= end_time:
             if self.active:
                 await self._exit_all(timestamp, "EOD Close")
@@ -102,7 +103,11 @@ class SellManagerV3:
 
     async def _check_config_updates(self, timestamp):
         # Check for changes in the JSON file every 5 seconds
-        if (timestamp - datetime.datetime.fromtimestamp(self.last_config_check_time, tz=pytz.timezone('Asia/Kolkata'))).total_seconds() < 5:
+        last_dt = datetime.fromtimestamp(self.last_config_check_time)
+        if last_dt.tzinfo is None:
+            last_dt = pytz.timezone('Asia/Kolkata').localize(last_dt)
+
+        if (timestamp - last_dt).total_seconds() < 5:
             return
 
         mtime = os.path.getmtime(self.orchestrator.json_config.json_path)
@@ -133,9 +138,9 @@ class SellManagerV3:
             self.last_config_check_time = mtime
 
     async def _check_entry(self, timestamp):
-        if timestamp.time() < datetime.time(9, 16, 5):
+        if timestamp.time() < time(9, 16, 5):
             return
-        if timestamp.time() >= datetime.time(14, 0, 0):
+        if timestamp.time() >= time(14, 0, 0):
             return
 
         # 1. ATM based on Spot
@@ -164,23 +169,6 @@ class SellManagerV3:
         if not ce_key or not pe_key:
             logger.warning(f"[SellV3] Could not find suitable strikes for entry.")
             return
-
-        # 3. Pre-flight Indicator Check (Prevent immediate churning)
-        # Check if the strikes we found would trigger an exit immediately.
-        rsi_cfg = self._cfg('rsi', {})
-        rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
-            ce_key, pe_key, rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp
-        )
-        ce_atp = await self.orchestrator.indicator_manager.calculate_vwap(ce_key, timestamp)
-        pe_atp = await self.orchestrator.indicator_manager.calculate_vwap(pe_key, timestamp)
-
-        if rsi_val is not None and ce_atp and pe_atp:
-            combined_ltp = ce_ltp + pe_ltp
-            combined_vwap = ce_atp + pe_atp
-            rsi_threshold = rsi_cfg.get('threshold', 50)
-            if combined_ltp > combined_vwap and rsi_val > rsi_threshold:
-                logger.info(f"[SellV3] Entry Blocked: Indicators in Exit Zone (Price {combined_ltp:.2f} > VWAP {combined_vwap:.2f}, RSI {rsi_val:.2f} > {rsi_threshold}). Searching ITM to escape exit zone...")
-                return
 
         # 4. Execution Order (Lowest LTP first)
         if ce_ltp < pe_ltp:
@@ -218,11 +206,16 @@ class SellManagerV3:
 
             ltp = await self._get_ltp(key)
             if ltp is None:
-                if (datetime.datetime.now().second % 10) == 0:
-                    logger.debug(f"[SellV3] {side} {curr_strike}: LTP is None. Ensuring feed started.")
+                # User fix: DO NOT break. Continue searching other ITM strikes.
+                if (datetime.now().second % 10) == 0:
+                    logger.debug(f"[SellV3] {side} {curr_strike}: LTP is None. Ensuring feed started and continuing search ITM...")
                 # We should trigger a feed subscription just in case
                 await event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': key})
-                break
+
+                # Move ITM and continue
+                if side == 'CALL': curr_strike -= interval
+                else: curr_strike += interval
+                continue
 
             if ltp >= threshold:
                 logger.info(f"[SellV3] Found {side} strike {curr_strike} with LTP {ltp:.2f} (Threshold: {threshold})")
@@ -236,7 +229,7 @@ class SellManagerV3:
             else:
                 curr_strike += interval
 
-        logger.warning(f"[SellV3] No {side} strike found >= {threshold} within 10 ITM strikes of ATM {start_strike}")
+        logger.warning(f"[SellV3] No {side} strike found >= {threshold} within 10 ITM strikes of ATM {start_strike}. (Checked up to {curr_strike})")
         return None, None, None
 
     async def _find_matching_strike(self, target_ltp, side, expiry):
@@ -423,7 +416,7 @@ class SellManagerV3:
         self.save_state()
 
         # Check for restart
-        if timestamp.time() < datetime.time(14, 0, 0):
+        if timestamp.time() < time(14, 0, 0):
             logger.info("[SellV3] Restarting strategy...")
             # Restart happens on next tick because active is False
         else:
