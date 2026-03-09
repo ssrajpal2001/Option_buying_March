@@ -30,6 +30,7 @@ class SellManagerV3:
         self.entry_timestamp = None
         self.last_config_check_time = 0
         self.last_v3_log_time = 0
+        self.last_indicator_check_minute = -1
 
         # TSL State
         self.tsl_wait_high_hit = False
@@ -137,14 +138,21 @@ class SellManagerV3:
         if timestamp.time() >= datetime.time(14, 0, 0):
             return
 
-        logger.info(f"[SellV3] Attempting entry at {timestamp}")
-
         # 1. ATM based on Spot
         index_price = self.orchestrator.state_manager.index_price
         interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
         if not index_price:
+            if (timestamp.second % 10) == 0:
+                logger.debug(f"[SellV3] Waiting for Index Spot price to begin entry...")
             return
+
         atm = int(round(index_price / interval) * interval)
+
+        # Log entry attempt at most every 5 seconds to reduce noise
+        now_ts = (timestamp.hour * 3600) + (timestamp.minute * 60) + timestamp.second
+        if now_ts - getattr(self, '_last_entry_attempt_log', 0) >= 5:
+            self._last_entry_attempt_log = now_ts
+            logger.info(f"[SellV3] Attempting entry at {timestamp} (Spot: {index_price}, ATM: {atm})")
 
         # 2. Strike Selection
         expiry = self.orchestrator.atm_manager.signal_expiry_date
@@ -202,18 +210,33 @@ class SellManagerV3:
     async def _find_strike_ge(self, start_strike, side, expiry, threshold, direction='ITM'):
         interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
         curr_strike = start_strike
-        for _ in range(10): # Max 10 strikes away
+        for i in range(10): # Max 10 strikes away
             key = self.orchestrator.atm_manager.find_instrument_key_by_strike(curr_strike, side, expiry)
-            if not key: break
+            if not key:
+                logger.debug(f"[SellV3] {side} {curr_strike}: Key not found in lookup.")
+                break
+
             ltp = await self._get_ltp(key)
-            if ltp and ltp >= threshold:
+            if ltp is None:
+                if (datetime.datetime.now().second % 10) == 0:
+                    logger.debug(f"[SellV3] {side} {curr_strike}: LTP is None. Ensuring feed started.")
+                # We should trigger a feed subscription just in case
+                await event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': key})
+                break
+
+            if ltp >= threshold:
+                logger.info(f"[SellV3] Found {side} strike {curr_strike} with LTP {ltp:.2f} (Threshold: {threshold})")
                 return curr_strike, key, ltp
+
+            logger.debug(f"[SellV3] {side} {curr_strike}: LTP {ltp:.2f} < {threshold}. Moving ITM.")
 
             # Move ITM
             if side == 'CALL':
                 curr_strike -= interval
             else:
                 curr_strike += interval
+
+        logger.warning(f"[SellV3] No {side} strike found >= {threshold} within 10 ITM strikes of ATM {start_strike}")
         return None, None, None
 
     async def _find_matching_strike(self, target_ltp, side, expiry):
@@ -339,8 +362,11 @@ class SellManagerV3:
                 return
 
         # 4. Indicators Exit (5-min Candle Close)
-        if timestamp.second == 0 and timestamp.minute % 5 == 0:
-            # This logic fires at the start of the next 5-min candle, meaning the previous one just closed.
+        if timestamp.minute % 5 == 0 and timestamp.minute != self.last_indicator_check_minute:
+            # This logic fires at the start of the next 5-min candle (e.g. 09:20:00, 09:25:00)
+            self.last_indicator_check_minute = timestamp.minute
+
+            # Note: 14-candle wait is handled by IndicatorManager history buffer.
             await self._check_indicator_exit(timestamp)
 
     async def _check_indicator_exit(self, timestamp):

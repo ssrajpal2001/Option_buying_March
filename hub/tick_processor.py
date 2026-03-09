@@ -294,11 +294,10 @@ class TickProcessor:
 
         # 2. Crossover Breach Check (Per User) — gated by buy.start_time from JSON
         # BYPASS if V3 enabled
-        _buy_active = False
-        any_monitoring = False
         if not v3_enabled:
             _buy_start = self._get_buy_start_time()
             _buy_active = self.orchestrator.is_backtest or timestamp.time() >= _buy_start
+            any_monitoring = False
 
             for user_id, session in self.orchestrator.user_sessions.items():
                 if _buy_active and (self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0)):
@@ -310,16 +309,16 @@ class TickProcessor:
                 if session.signal_monitor.is_monitoring():
                     any_monitoring = True
 
-        if self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0):
-             self.last_crossover_check_time = now_ts
+            if self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0):
+                 self.last_crossover_check_time = now_ts
 
-        if not _buy_active:
-            logger.debug(
-                f"V2: Buy side inactive until {_buy_start} (now {timestamp.strftime('%H:%M:%S')})")
-        elif not any_monitoring:
-            # Periodic status log while scanning for a target strike
-            if now_ts - self.last_crossover_check_time >= 60.0:
-                logger.debug(f"V2: Scanning watchlist around ATM {current_atm} for target strike...")
+            if not _buy_active:
+                logger.debug(
+                    f"V2: Buy side inactive until {_buy_start} (now {timestamp.strftime('%H:%M:%S')})")
+            elif not any_monitoring:
+                # Periodic status log while scanning for a target strike
+                if now_ts - self.last_crossover_check_time >= 60.0:
+                    logger.debug(f"V2: Scanning watchlist around ATM {current_atm} for target strike...")
 
         # Condition 3: Manage any active trades for ALL isolated users.
         # Throttled to avoid excessive processing on every tick.

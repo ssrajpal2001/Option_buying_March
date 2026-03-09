@@ -426,18 +426,17 @@ class IndicatorManager:
         ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
         ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
 
-        if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty:
-            logger.debug(f"[IndicatorManager] Combined RSI: Missing OHLC for {key1} or {key2}")
-            # Try to fetch history manually if robust_ohlc failed to provide enough back-data
-            if self.orchestrator.is_backtest:
-                for k in [key1, key2]:
-                    if k not in self.data_manager.backtest_ohlc_data:
-                        await self.data_manager.fetch_and_cache_api_ohlc(k, timestamp.date())
-                ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
-                ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
-                if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty:
-                    return None
-            else:
+        if ohlc1 is None or len(ohlc1) < period + 1 or ohlc2 is None or len(ohlc2) < period + 1:
+            logger.debug(f"[IndicatorManager] Combined RSI: Missing or insufficient OHLC for {key1} or {key2}. Fetching from API...")
+            # Try to fetch history manually from API
+            for k in [key1, key2]:
+                # This call handles both live and backtest by using the rest client
+                await self.data_manager.fetch_and_cache_api_ohlc(k, timestamp.date())
+
+            ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
+            ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
+
+            if ohlc1 is None or ohlc2 is None or len(ohlc1) < period + 1 or len(ohlc2) < period + 1:
                 return None
 
         # Align by index (timestamp) and sum the close prices

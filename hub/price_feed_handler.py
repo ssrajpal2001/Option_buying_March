@@ -150,9 +150,20 @@ class PriceFeedHandler:
             # Include SellManagerV3 legs
             if hasattr(self.trade_orchestrator, 'sell_manager_v3'):
                 v3 = self.trade_orchestrator.sell_manager_v3
-                if v3.active:
-                    if v3.ce_leg and v3.ce_leg.get('key'): relevant_keys.add(v3.ce_leg['key'])
-                    if v3.pe_leg and v3.pe_leg.get('key'): relevant_keys.add(v3.pe_leg['key'])
+                if v3._cfg('enabled', False):
+                    if v3.active:
+                        if v3.ce_leg and v3.ce_leg.get('key'): relevant_keys.add(v3.ce_leg['key'])
+                        if v3.pe_leg and v3.pe_leg.get('key'): relevant_keys.add(v3.pe_leg['key'])
+                    else:
+                        # Also include potential entry candidates (10 ITM strikes)
+                        atm = self.atm_manager.strikes.get('atm')
+                        if atm:
+                            interval = self.trade_orchestrator.config_manager.get_int(self.trade_orchestrator.instrument_name, 'strike_interval', 50)
+                            for i in range(11):
+                                c_key = self.atm_manager.find_instrument_key_by_strike(atm - i*interval, 'CALL', expiry)
+                                if c_key: relevant_keys.add(c_key)
+                                p_key = self.atm_manager.find_instrument_key_by_strike(atm + i*interval, 'PUT', expiry)
+                                if p_key: relevant_keys.add(p_key)
 
             self._relevant_keys_cache = relevant_keys
             self._last_keys_rebuild_time = asyncio.get_event_loop().time()
@@ -269,12 +280,24 @@ class PriceFeedHandler:
                     if instrument_key not in self.state_manager.option_data:
                         self.state_manager.option_data[instrument_key] = {}
 
-                    self.state_manager.option_data[instrument_key].update({
-                        'open': ff.ltpc.o,
-                        'high': ff.ltpc.h,
-                        'low': ff.ltpc.l,
-                        'close': ff.ltpc.cp # Previous close or current? Usually prev.
-                    })
+                    # LTPC in V3 has cp (close price), but not o, h, l.
+                    # Those are in marketOHLC if available.
+                    self.state_manager.option_data[instrument_key]['close'] = ff.ltpc.cp
+
+                    if hasattr(ff, 'marketOHLC') and ff.marketOHLC.ohlc:
+                        # Find the daily candle if it exists
+                        day_ohlc = next((o for o in ff.marketOHLC.ohlc if o.interval == '1d'), None)
+                        if not day_ohlc and ff.marketOHLC.ohlc:
+                            day_ohlc = ff.marketOHLC.ohlc[0]
+
+                        if day_ohlc:
+                            self.state_manager.option_data[instrument_key].update({
+                                'open': day_ohlc.open,
+                                'high': day_ohlc.high,
+                                'low': day_ohlc.low,
+                                'close': day_ohlc.close
+                            })
+
                     self._sync_market_data('option_data', instrument_key, self.state_manager.option_data[instrument_key])
 
             elif feed.HasField('ltpc'):
