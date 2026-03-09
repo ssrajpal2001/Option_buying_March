@@ -171,9 +171,22 @@ class TickProcessor:
             if now_ts - self.last_heartbeat_time >= 300.0:
                 self.last_heartbeat_time = now_ts
                 session_info = []
-                for uid, session in self.orchestrator.user_sessions.items():
-                    status = "In Trade" if session.is_in_trade() else ("Monitoring" if session.signal_monitor.is_monitoring() else "Idle")
-                    session_info.append(f"{uid or 'Global'}:{status}")
+
+                if v3_enabled:
+                    v3 = getattr(self.orchestrator, 'sell_manager_v3', None)
+                    if v3 and v3.active:
+                        profit = 0
+                        c_ltp = self.state_manager.get_ltp(v3.ce_leg['key'])
+                        p_ltp = self.state_manager.get_ltp(v3.pe_leg['key'])
+                        if c_ltp and p_ltp:
+                            profit = v3.total_premium_points - (c_ltp + p_ltp)
+                        session_info.append(f"V3:Trade({v3.ce_leg['strike']}CE+{v3.pe_leg['strike']}PE, PnL:{profit:.2f})")
+                    else:
+                        session_info.append("V3:Idle")
+                else:
+                    for uid, session in self.orchestrator.user_sessions.items():
+                        status = "In Trade" if session.is_in_trade() else ("Monitoring" if session.signal_monitor.is_monitoring() else "Idle")
+                        session_info.append(f"{uid or 'Global'}:{status}")
 
                 # Diagnostic: Time since last exchange update
                 lag_str = "N/A"
@@ -260,37 +273,39 @@ class TickProcessor:
                     self.orchestrator.data_recorder.record_ticks(timestamp, futures_price, index_price, current_atm, recording_data)
 
         # 1. THROTTLE Target Strike Check to 60 seconds (1 minute)
-        # Strategy logic: We only need to re-evaluate the target strike every minute once one is found.
-        # If no target strike is active, we check every 2 seconds to ensure fast startup/recovery.
-        target_throttle = 60.0 if self.state.v2_target_strike_pair else 2.0
-        if self.orchestrator.is_backtest or (now_ts - self.last_target_strike_check_time >= target_throttle):
-            self.last_target_strike_check_time = now_ts
+        # BYPASS if V3 enabled
+        if not v3_enabled:
+            # Strategy logic: We only need to re-evaluate the target strike every minute once one is found.
+            # If no target strike is active, we check every 2 seconds to ensure fast startup/recovery.
+            target_throttle = 60.0 if self.state.v2_target_strike_pair else 2.0
+            if self.orchestrator.is_backtest or (now_ts - self.last_target_strike_check_time >= target_throttle):
+                self.last_target_strike_check_time = now_ts
 
-            # Use StrikeManager to find the best strike pair (using default signal expiry)
-            # Driven by FUTURES ATM as requested for BUY activation.
-            self.state.v2_target_strike_pair = self.orchestrator.strike_manager.find_and_get_target_strike_pair(
-                expiry=self.atm_manager.signal_expiry_date,
-                reference_atm=futures_atm
-            )
+                # Use StrikeManager to find the best strike pair (using default signal expiry)
+                # Driven by FUTURES ATM as requested for BUY activation.
+                self.state.v2_target_strike_pair = self.orchestrator.strike_manager.find_and_get_target_strike_pair(
+                    expiry=self.atm_manager.signal_expiry_date,
+                    reference_atm=futures_atm
+                )
 
-            v2_signal_found = self.state.v2_target_strike_pair is not None
-            if v2_signal_found:
-                target_strike = float(self.state.v2_target_strike_pair['strike'])
-                self.state_manager.target_strike = target_strike
-                # Sync target strike to all active user sessions for display
-                for session in self.orchestrator.user_sessions.values():
-                    session.state_manager.target_strike = target_strike
-            elif self.state_manager.target_strike is not None:
-                # Fallback: if signal lost temporarily, keep last target for display stability
-                for session in self.orchestrator.user_sessions.values():
-                    session.state_manager.target_strike = self.state_manager.target_strike
-            else:
-                # If no pair found this tick, DO NOT clear immediately if we were already monitoring.
-                # This prevents "TARGET: N/A" flickering if one tick is missing premiums.
-                pass
+                v2_signal_found = self.state.v2_target_strike_pair is not None
+                if v2_signal_found:
+                    target_strike = float(self.state.v2_target_strike_pair['strike'])
+                    self.state_manager.target_strike = target_strike
+                    # Sync target strike to all active user sessions for display
+                    for session in self.orchestrator.user_sessions.values():
+                        session.state_manager.target_strike = target_strike
+                elif self.state_manager.target_strike is not None:
+                    # Fallback: if signal lost temporarily, keep last target for display stability
+                    for session in self.orchestrator.user_sessions.values():
+                        session.state_manager.target_strike = self.state_manager.target_strike
+                else:
+                    # If no pair found this tick, DO NOT clear immediately if we were already monitoring.
+                    # This prevents "TARGET: N/A" flickering if one tick is missing premiums.
+                    pass
 
-            # Monitoring management is now handled inside each UserSession's SignalMonitor
-            # during the breach check loop below.
+                # Monitoring management is now handled inside each UserSession's SignalMonitor
+                # during the breach check loop below.
 
         # 2. Crossover Breach Check (Per User) — gated by buy.start_time from JSON
         # BYPASS if V3 enabled

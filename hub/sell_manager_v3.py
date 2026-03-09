@@ -103,10 +103,7 @@ class SellManagerV3:
 
     async def _check_config_updates(self, timestamp):
         # Check for changes in the JSON file every 5 seconds
-        last_dt = datetime.fromtimestamp(self.last_config_check_time)
-        if last_dt.tzinfo is None:
-            last_dt = pytz.timezone('Asia/Kolkata').localize(last_dt)
-
+        last_dt = datetime.fromtimestamp(self.last_config_check_time, tz=pytz.timezone('Asia/Kolkata'))
         if (timestamp - last_dt).total_seconds() < 5:
             return
 
@@ -372,6 +369,7 @@ class SellManagerV3:
                 return
 
         # 4. Indicators Exit (5-min Candle Close)
+        # Trigger as soon as we cross into a new 5-minute interval
         if timestamp.minute % 5 == 0 and timestamp.minute != self.last_indicator_check_minute:
             # This logic fires at the start of the next 5-min candle (e.g. 09:20:00, 09:25:00)
             self.last_indicator_check_minute = timestamp.minute
@@ -392,16 +390,30 @@ class SellManagerV3:
         ce_atp = await self.orchestrator.indicator_manager.calculate_vwap(self.ce_leg['key'], timestamp)
         pe_atp = await self.orchestrator.indicator_manager.calculate_vwap(self.pe_leg['key'], timestamp)
 
-        if rsi_val is not None and ce_atp and pe_atp:
-            combined_ltp = (await self._get_ltp(self.ce_leg['key'])) + (await self._get_ltp(self.pe_leg['key']))
-            combined_vwap = ce_atp + pe_atp
+        combined_ltp = None
+        if self.ce_leg and self.pe_leg:
+            c_ltp = await self._get_ltp(self.ce_leg['key'])
+            p_ltp = await self._get_ltp(self.pe_leg['key'])
+            if c_ltp and p_ltp:
+                combined_ltp = c_ltp + p_ltp
 
+        if rsi_val is not None and ce_atp and pe_atp and combined_ltp is not None:
+            combined_vwap = ce_atp + pe_atp
             rsi_threshold = rsi_cfg.get('threshold', 50)
 
-            logger.info(f"[SellV3] Indicator Check ({self.ce_leg['strike']}CE + {self.pe_leg['strike']}PE): RSI={rsi_val:.4f}, Price={combined_ltp:.4f}, VWAP={combined_vwap:.4f}")
+            logger.info(f"[SellV3] Indicator Check ({self.ce_leg['strike']}CE + {self.pe_leg['strike']}PE): "
+                        f"RSI={rsi_val:.2f}, Combined Price={combined_ltp:.2f}, Combined VWAP={combined_vwap:.2f} "
+                        f"(CE_VWAP:{ce_atp:.2f}, PE_VWAP:{pe_atp:.2f})")
 
             if combined_ltp > combined_vwap and rsi_val > rsi_threshold:
                 await self._exit_all(timestamp, f"Indicator Exit: Price({combined_ltp:.2f}) > VWAP({combined_vwap:.2f}) and RSI({rsi_val:.2f}) > {rsi_threshold}")
+        else:
+            reasons = []
+            if rsi_val is None: reasons.append("Missing RSI (History)")
+            if not ce_atp: reasons.append(f"Missing CE VWAP({self.ce_leg['strike']})")
+            if not pe_atp: reasons.append(f"Missing PE VWAP({self.pe_leg['strike']})")
+            if combined_ltp is None: reasons.append("Missing Current LTP")
+            logger.warning(f"[SellV3] Indicator Check Skipped: {', '.join(reasons)}")
 
     async def _exit_all(self, timestamp, reason):
         logger.info(f"[SellV3] EXIT ALL: {reason}")
