@@ -66,8 +66,30 @@ class IndicatorManager:
                         ohlc = ohlc[~ohlc.index.duplicated(keep='last')]
                     ohlc = ohlc.sort_index()
 
-        # [V3 Note] We allow data from before 9:15 for RSI history.
-        # Legacy check below might be too restrictive for some strategies.
+        # [V3 Strategy] "Historical Stitching":
+        # Always attempt to complement aggregator data with API history to ensure
+        # indicators like RSI (14-period) are available immediately for new strikes.
+        if not self.orchestrator.is_backtest:
+            # Determine how many candles we currently have
+            current_len = len(ohlc) if ohlc is not None else 0
+            # Target: at least 20 candles (for a 14-period RSI buffer)
+            if current_len < 20:
+                logger.debug(f"[IndicatorManager] Stitching history for {inst_key} ({current_len} candles in memory)")
+                hist_api = await self.data_manager.get_historical_ohlc(
+                    instrument_key=inst_key,
+                    timeframe_minutes=parsed_minutes,
+                    current_timestamp=timestamp,
+                    for_full_day=True,
+                    include_current=False # Don't duplicate the 'live' running candle
+                )
+                if hist_api is not None and not hist_api.empty:
+                    if ohlc is None or ohlc.empty:
+                        ohlc = hist_api
+                    else:
+                        # Merge API history (older) with Aggregator data (newer)
+                        ohlc = pd.concat([hist_api, ohlc])
+                        ohlc = ohlc[~ohlc.index.duplicated(keep='last')]
+                        ohlc = ohlc.sort_index()
 
         if (ohlc is None or ohlc.empty) and parsed_minutes > 1:
             one_min_ohlc = self.orchestrator.entry_aggregator.get_historical_ohlc(inst_key)

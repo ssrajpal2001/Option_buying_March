@@ -398,16 +398,19 @@ class SellManagerV3:
             if c_ltp and p_ltp:
                 combined_ltp = c_ltp + p_ltp
 
-        if rsi_val is not None and ce_atp and pe_atp and combined_ltp is not None:
+        if ce_atp and pe_atp and combined_ltp is not None:
             combined_vwap = ce_atp + pe_atp
-            rsi_threshold = rsi_cfg.get('threshold', 50)
 
+            # Log current state regardless of RSI status for visibility
+            rsi_str = f"{rsi_val:.2f}" if rsi_val is not None else "WAIT"
             logger.info(f"[SellV3] Indicator Check ({self.ce_leg['strike']}CE + {self.pe_leg['strike']}PE): "
-                        f"RSI={rsi_val:.2f}, Combined Price={combined_ltp:.2f}, Combined VWAP={combined_vwap:.2f} "
+                        f"RSI={rsi_str}, Combined Price={combined_ltp:.2f}, Combined VWAP={combined_vwap:.2f} "
                         f"(CE_VWAP:{ce_atp:.2f}, PE_VWAP:{pe_atp:.2f})")
 
-            if combined_ltp > combined_vwap and rsi_val > rsi_threshold:
-                await self._exit_all(timestamp, f"Indicator Exit: Price({combined_ltp:.2f}) > VWAP({combined_vwap:.2f}) and RSI({rsi_val:.2f}) > {rsi_threshold}")
+            if rsi_val is not None:
+                rsi_threshold = rsi_cfg.get('threshold', 50)
+                if combined_ltp > combined_vwap and rsi_val > rsi_threshold:
+                    await self._exit_all(timestamp, f"Indicator Exit: Price({combined_ltp:.2f}) > VWAP({combined_vwap:.2f}) and RSI({rsi_val:.2f}) > {rsi_threshold}")
         else:
             reasons = []
             if rsi_val is None: reasons.append("Missing RSI (History)")
