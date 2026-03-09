@@ -435,7 +435,7 @@ class IndicatorManager:
 
         return float(atr) if pd.notna(atr) else None
 
-    async def calculate_combined_rsi(self, key1, key2, timeframe_minutes, period, timestamp):
+    async def calculate_combined_rsi(self, key1, key2, timeframe_minutes, period, timestamp, include_current=False):
         """
         Calculates RSI on the sum of close prices of two instruments.
         Uses Wilder's smoothing (standard RSI).
@@ -445,9 +445,9 @@ class IndicatorManager:
 
         # Ensure we request enough history to cover the RSI period across day boundaries.
         # We need at least 'period + 1' candles.
-        # Fetch historical data (exclude current running candle as requested)
-        ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
-        ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
+        # Fetch historical data
+        ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
+        ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
 
         if ohlc1 is None or len(ohlc1) < period + 1 or ohlc2 is None or len(ohlc2) < period + 1:
             logger.debug(f"[IndicatorManager] Combined RSI: Missing or insufficient OHLC for {key1} or {key2}. Fetching from API...")
@@ -456,14 +456,19 @@ class IndicatorManager:
                 # This call handles both live and backtest by using the rest client
                 await self.data_manager.fetch_and_cache_api_ohlc(k, timestamp.date())
 
-            ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
-            ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=False, for_full_day=True)
+            ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
+            ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
 
             if ohlc1 is None or ohlc2 is None or len(ohlc1) < period + 1 or len(ohlc2) < period + 1:
                 return None
 
         # Align by index (timestamp) and sum the close prices
-        combined = pd.DataFrame({'close1': ohlc1['close'], 'close2': ohlc2['close']}).dropna()
+        # Using inner join to ensure we only sum candles that exist in both series
+        combined = pd.merge(
+            ohlc1[['close']].rename(columns={'close': 'close1'}),
+            ohlc2[['close']].rename(columns={'close': 'close2'}),
+            left_index=True, right_index=True, how='inner'
+        )
 
         if len(combined) < period + 1:
             logger.debug(f"[IndicatorManager] Combined RSI: Insufficient data points ({len(combined)} < {period+1})")

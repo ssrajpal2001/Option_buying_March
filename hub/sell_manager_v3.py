@@ -138,9 +138,18 @@ class SellManagerV3:
             self.last_config_check_time = mtime
 
     async def _check_entry(self, timestamp):
+        # Time Constraints
         if timestamp.time() < time(9, 16, 5):
             return
         if timestamp.time() >= time(14, 0, 0):
+            return
+
+        # User Fix: Restrict entry to 5-minute settled boundaries to reduce over-trading
+        # Exception: Allow immediate entry at 9:16:05 (start of day)
+        is_start_of_day = (timestamp.time() >= time(9, 16, 5) and timestamp.time() < time(9, 17, 0))
+        is_settled_boundary = (timestamp.minute % 5 == 0 and timestamp.second >= 10)
+
+        if not is_start_of_day and not is_settled_boundary:
             return
 
         # Re-entry Cooldown: Wait at least 60 seconds after an exit
@@ -187,19 +196,23 @@ class SellManagerV3:
             match_strike, match_key, match_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
             final_ce_key, final_pe_key = ce_key, match_key
             final_ce_ltp, final_pe_ltp = ce_ltp, match_ltp
+            final_ce_strike, final_pe_strike = ce_strike, match_strike
         else:
             match_strike, match_key, match_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
             final_ce_key, final_pe_key = match_key, pe_key
             final_ce_ltp, final_pe_ltp = match_ltp, pe_ltp
+            final_ce_strike, final_pe_strike = match_strike, pe_strike
 
         if not final_ce_key or not final_pe_key:
             logger.warning("[SellV3] Entry blocked: Could not resolve matching leg.")
             return
 
         # Step 4b: Indicator Check
+        # For entry, we use finalized candles (include_current=False) to match the exit logic
         rsi_cfg = self._cfg('rsi', {})
         rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
-            final_ce_key, final_pe_key, rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp
+            final_ce_key, final_pe_key, rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
+            include_current=False
         )
         ce_atp = await self.orchestrator.indicator_manager.calculate_vwap(final_ce_key, timestamp)
         pe_atp = await self.orchestrator.indicator_manager.calculate_vwap(final_pe_key, timestamp)
@@ -209,9 +222,12 @@ class SellManagerV3:
             combined_vwap = ce_atp + pe_atp
             rsi_threshold = rsi_cfg.get('threshold', 50)
 
+            logger.info(f"[SellV3] Entry Scan ({int(final_ce_strike)}CE+{int(final_pe_strike)}PE): "
+                        f"LTP:{combined_ltp:.2f}, VWAP:{combined_vwap:.2f}, RSI:{rsi_val:.2f}")
+
             # Entry Logic: Below VWAP and Below RSI 50
             if combined_ltp > combined_vwap or rsi_val > rsi_threshold:
-                logger.info(f"[SellV3] Entry Filtered (Exit Zone): Price {combined_ltp:.2f} > VWAP {combined_vwap:.2f} OR RSI {rsi_val:.2f} > {rsi_threshold}. Waiting for pullback...")
+                logger.info(f"[SellV3] Entry Filtered: Price > VWAP OR RSI > {rsi_threshold}. Waiting for pullback...")
                 return
         else:
             # If indicators are missing, we should probably wait to be safe.
@@ -430,23 +446,25 @@ class SellManagerV3:
 
     async def _check_indicator_exit(self, timestamp):
         # Combined RSI > 50
+        # For exit, we use the completed candles (include_current=False) as requested
+        tf = self._cfg('rsi.tf', 5)
         rsi_cfg = self._cfg('rsi', {})
         rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
             self.ce_leg['key'], self.pe_leg['key'],
-            rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp
+            tf, rsi_cfg.get('period', 14), timestamp,
+            include_current=False
         )
 
-        # For VWAP we use the current cumulative VWAP (ATP) at the 5-minute boundary.
-        # We calculate Combined VWAP = CE ATP + PE ATP.
+        # For VWAP and Price, we use the last finalized candle's data
         ce_atp = await self.orchestrator.indicator_manager.calculate_vwap(self.ce_leg['key'], timestamp)
         pe_atp = await self.orchestrator.indicator_manager.calculate_vwap(self.pe_leg['key'], timestamp)
 
         combined_ltp = None
-        if self.ce_leg and self.pe_leg:
-            c_ltp = await self._get_ltp(self.ce_leg['key'])
-            p_ltp = await self._get_ltp(self.pe_leg['key'])
-            if c_ltp and p_ltp:
-                combined_ltp = c_ltp + p_ltp
+        ohlc1 = await self.orchestrator.indicator_manager.get_robust_ohlc(self.ce_leg['key'], tf, timestamp, include_current=False)
+        ohlc2 = await self.orchestrator.indicator_manager.get_robust_ohlc(self.pe_leg['key'], tf, timestamp, include_current=False)
+
+        if ohlc1 is not None and not ohlc1.empty and ohlc2 is not None and not ohlc2.empty:
+            combined_ltp = float(ohlc1.iloc[-1]['close'] + ohlc2.iloc[-1]['close'])
 
         if ce_atp and pe_atp and combined_ltp is not None:
             combined_vwap = ce_atp + pe_atp

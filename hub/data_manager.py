@@ -132,7 +132,8 @@ class DataManager:
                 for d in unique_dates:
                     day_df = one_minute_df[one_minute_df.index.normalize() == d].copy()
                     # Resample day starting from 9:15. Using a consistent offset for all legs.
-                    resampled_day = day_df.resample(f"{parsed_minutes}min", origin='start_day', offset='15min').agg(resampling_logic).dropna()
+                    # We use a 1s shift to ensure 9:15 is the start of the first bucket.
+                    resampled_day = day_df.resample(f"{parsed_minutes}min", origin='start_day', offset='9h15m').agg(resampling_logic).dropna()
                     all_resampled.append(resampled_day)
 
                 resampled_df = pd.concat(all_resampled).sort_index()
@@ -143,7 +144,7 @@ class DataManager:
                     resampled_df = resampled_df[resampled_df.index <= current_timestamp]
             else:
                 # Live mode resample
-                resampled_df = one_minute_df.resample(f"{parsed_minutes}min", origin='start_day', offset='15min').agg(resampling_logic).dropna()
+                resampled_df = one_minute_df.resample(f"{parsed_minutes}min", origin='start_day', offset='9h15m').agg(resampling_logic).dropna()
 
             return resampled_df
 
