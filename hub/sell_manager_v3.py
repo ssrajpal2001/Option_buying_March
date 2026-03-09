@@ -98,7 +98,9 @@ class SellManagerV3:
 
         if not self.active:
             await self._check_entry(timestamp)
-        else:
+
+        # We allow immediate management on the same tick if entry just happened
+        if self.active:
             await self._check_exit(timestamp)
 
     async def _check_config_updates(self, timestamp):
@@ -199,6 +201,8 @@ class SellManagerV3:
         self.entry_timestamp = timestamp
         self.total_premium_points = self.ce_leg['entry_ltp'] + self.pe_leg['entry_ltp']
         self.tsl_wait_high_hit = False
+        # Reset indicator timer to allow immediate exit check if entry happens on boundary
+        self.last_indicator_check_minute = -1
         self.save_state()
         logger.info(f"[SellV3] Strangle Entered. Total Premium: {self.total_premium_points:.2f}")
 
