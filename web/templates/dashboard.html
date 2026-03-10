@@ -75,7 +75,7 @@
       <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded" style="background:#3b1f00;color:#fb923c">SELL SIDE</span>
       <span class="text-xs" style="color:#64748b">NRML · Strangle</span>
     </div>
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-2 gap-3 mb-3">
       <div class="rounded-lg p-3" style="background:#0f172a;border:1px solid #1e293b">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold" style="color:#818cf8">SELL CE</span>
@@ -99,6 +99,19 @@
           <div>LTP <span id="sell-pe-ltp" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="sell-pe-pnl">--</div>
+      </div>
+    </div>
+
+    <div id="v3-indicators" class="rounded-lg p-3 hidden" style="background:#0f172a;border:1px solid #334155">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex-1">
+          <div class="text-[10px] uppercase font-bold mb-1" style="color:#64748b">Synthetic RSI (14p)</div>
+          <div id="v3-rsi" class="text-lg font-bold text-white">--</div>
+        </div>
+        <div class="flex-1 border-l pl-4" style="border-color:#1e293b">
+          <div class="text-[10px] uppercase font-bold mb-1" style="color:#64748b">Combined VWAP</div>
+          <div id="v3-vwap" class="text-lg font-bold text-white">--</div>
+        </div>
       </div>
     </div>
   </div>
@@ -246,6 +259,15 @@ function updateDashboard(d) {
   });
 
   const sell = d.sell || {};
+    const v3Ind = sell.v3_indicators;
+    if (v3Ind) {
+      document.getElementById('v3-indicators').classList.remove('hidden');
+      document.getElementById('v3-rsi').textContent = v3Ind.rsi !== null ? v3Ind.rsi.toFixed(2) : '--';
+      document.getElementById('v3-vwap').textContent = v3Ind.vwap !== null ? v3Ind.vwap.toFixed(2) : '--';
+    } else {
+      document.getElementById('v3-indicators').classList.add('hidden');
+    }
+
   ['CE', 'PE'].forEach(side => {
     const s = side.toLowerCase();
     const pos = sell[side] || {};
@@ -313,10 +335,10 @@ function updateDashboard(d) {
         <td class="py-1 pr-3 font-bold" style="color:${typeColor}">${escapeHtml(t.type)}</td>
         <td class="py-1 pr-3 font-bold" style="color:${dirColor}">${escapeHtml(t.direction)}</td>
         <td class="py-1 pr-3 text-right text-white">${t.strike || '--'}</td>
-        <td class="py-1 pr-3 text-right" style="color:#94a3b8">${t.entry_price ? t.entry_price.toFixed(2) : '--'}</td>
-        <td class="py-1 pr-3 text-right" style="color:#94a3b8">${t.exit_price ? t.exit_price.toFixed(2) : '--'}</td>
-        <td class="py-1 pr-3 text-right font-bold" style="color:${pnlColor}">${ptsSign}${t.pnl_pts !== undefined ? t.pnl_pts.toFixed(2) : '--'}</td>
-        <td class="py-1 pr-3 text-right font-bold" style="color:${pnlColor}">${rsSign}${t.pnl_rs !== undefined ? t.pnl_rs.toFixed(0) : '--'}</td>
+        <td class="py-1 pr-3 text-right" style="color:#94a3b8">${t.entry_price ? parseFloat(t.entry_price).toFixed(2) : '--'}</td>
+        <td class="py-1 pr-3 text-right" style="color:#94a3b8">${t.exit_price ? parseFloat(t.exit_price).toFixed(2) : '--'}</td>
+        <td class="py-1 pr-3 text-right font-bold" style="color:${pnlColor}">${ptsSign}${t.pnl_pts !== undefined ? parseFloat(t.pnl_pts).toFixed(2) : '--'}</td>
+        <td class="py-1 pr-3 text-right font-bold" style="color:${pnlColor}">${rsSign}${t.pnl_rs !== undefined ? parseFloat(t.pnl_rs).toFixed(0) : '--'}</td>
         <td class="py-1" style="color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.reason)}</td>
       </tr>`;
     }).join('');

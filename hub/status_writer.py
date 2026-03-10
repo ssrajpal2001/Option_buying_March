@@ -16,17 +16,17 @@ class StatusWriter:
     def record_error(self, error_msg):
         self.last_error = {"message": str(error_msg), "ts": time.time()}
 
-    def maybe_write(self, timestamp, current_atm):
+    async def maybe_write(self, timestamp, current_atm):
         now = time.monotonic()
         if (now - self.last_write_ts) < self.write_interval:
             return
         self.last_write_ts = now
         try:
-            self._write(timestamp, current_atm)
+            await self._write(timestamp, current_atm)
         except Exception as e:
             logger.warning(f"[StatusWriter] Failed to write status: {e}")
 
-    def _write(self, timestamp, current_atm):
+    async def _write(self, timestamp, current_atm):
         orch = self.orchestrator
         sm = orch.state_manager
         sell_mgr = getattr(orch, 'sell_manager', None)
@@ -74,8 +74,9 @@ class StatusWriter:
         sell_total_qty = sell_lot_size * sell_broker_qty
 
         sell_data = {}
+        v3_active = v3_mgr and v3_mgr.active
         # Prioritize V3 status for web display if active
-        if v3_mgr and v3_mgr.active:
+        if v3_active:
             for side in ['CE', 'PE']:
                 leg = v3_mgr.ce_leg if side == 'CE' else v3_mgr.pe_leg
                 if leg:
@@ -93,6 +94,46 @@ class StatusWriter:
                     }
                 else:
                     sell_data[side] = {"placed": False}
+
+            # Add Synthetic Indicators for V3
+            try:
+                rsi_cfg = v3_mgr._cfg('rsi', {})
+                v3_rsi = await orch.indicator_manager.calculate_combined_rsi(
+                    v3_mgr.ce_leg['key'], v3_mgr.pe_leg['key'],
+                    rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
+                    include_current=True
+                )
+
+                ce_atp = await orch.indicator_manager.calculate_vwap(v3_mgr.ce_leg['key'], timestamp)
+                pe_atp = await orch.indicator_manager.calculate_vwap(v3_mgr.pe_leg['key'], timestamp)
+
+                sell_data['v3_indicators'] = {
+                    "rsi": round(v3_rsi, 2) if v3_rsi is not None else None,
+                    "vwap": round(ce_atp + pe_atp, 2) if (ce_atp and pe_atp) else None
+                }
+            except Exception:
+                pass
+        elif v3_mgr and v3_mgr._cfg('enabled', False):
+            # Show indicators for current ATM even if not active
+            try:
+                expiry = orch.atm_manager.signal_expiry_date
+                ce_key = orch.atm_manager.find_instrument_key_by_strike(current_atm, 'CALL', expiry)
+                pe_key = orch.atm_manager.find_instrument_key_by_strike(current_atm, 'PUT', expiry)
+                if ce_key and pe_key:
+                    rsi_cfg = v3_mgr._cfg('rsi', {})
+                    v3_rsi = await orch.indicator_manager.calculate_combined_rsi(
+                        ce_key, pe_key, rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
+                        include_current=True
+                    )
+                    ce_atp = await orch.indicator_manager.calculate_vwap(ce_key, timestamp)
+                    pe_atp = await orch.indicator_manager.calculate_vwap(pe_key, timestamp)
+
+                    sell_data['v3_indicators'] = {
+                        "rsi": round(v3_rsi, 2) if v3_rsi is not None else None,
+                        "vwap": round(ce_atp + pe_atp, 2) if (ce_atp and pe_atp) else None
+                    }
+            except Exception:
+                pass
         else:
             for side in ['CE', 'PE']:
                 placed = getattr(sell_mgr, f"{'ce' if side == 'CE' else 'pe'}_placed", False)

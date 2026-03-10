@@ -33,6 +33,7 @@ class SellManagerV3:
         self.last_v3_log_time = 0
         self.last_indicator_check_minute = -1
         self.last_exit_timestamp = None
+        self.closed_trades = [] # Persistent history of closed trades
 
         # TSL State
         self.tsl_wait_high_hit = False
@@ -49,7 +50,8 @@ class SellManagerV3:
             'pe_leg': self.pe_leg,
             'total_premium_points': self.total_premium_points,
             'entry_timestamp': self.entry_timestamp.isoformat() if self.entry_timestamp else None,
-            'tsl_wait_high_hit': self.tsl_wait_high_hit
+            'tsl_wait_high_hit': self.tsl_wait_high_hit,
+            'closed_trades': self.closed_trades
         }
         try:
             os.makedirs('config', exist_ok=True)
@@ -71,6 +73,14 @@ class SellManagerV3:
             ts = state.get('entry_timestamp')
             self.entry_timestamp = datetime.fromisoformat(ts).replace(tzinfo=pytz.timezone('Asia/Kolkata')) if ts else None
             self.tsl_wait_high_hit = state.get('tsl_wait_high_hit', False)
+            self.closed_trades = state.get('closed_trades', [])
+
+            # Sync to orchestrator trade log for dashboard persistence
+            trade_log = getattr(self.orchestrator, 'trade_log', None)
+            if trade_log:
+                # We add them in reverse order because LiveTradeLog.add inserts at index 0
+                for trade in reversed(self.closed_trades):
+                    trade_log.add(trade)
 
             if self.active:
                 logger.info(f"[SellV3] Recovered active trade from {self.entry_timestamp}")
@@ -533,28 +543,34 @@ class SellManagerV3:
             try:
                 from .live_trade_log import LiveTradeLog
                 trade_log = getattr(self.orchestrator, 'trade_log', None)
-                if trade_log:
-                    entry_ltp = leg.get('entry_ltp', 0)
-                    pnl_pts = entry_ltp - ltp
-                    # Calculate total Rupee PnL across all configured brokers
-                    total_pnl_rs = 0
-                    for broker in self.orchestrator.broker_manager.brokers:
-                        if not broker.is_configured_for_instrument(self.instrument_name): continue
-                        b_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1)
-                        total_pnl_rs += pnl_pts * b_qty * contract.lot_size
+                entry_ltp = leg.get('entry_ltp', 0)
+                pnl_pts = entry_ltp - ltp
+                # Calculate total Rupee PnL across all configured brokers
+                total_pnl_rs = 0
+                for broker in self.orchestrator.broker_manager.brokers:
+                    if not broker.is_configured_for_instrument(self.instrument_name): continue
+                    b_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1)
+                    total_pnl_rs += pnl_pts * b_qty * contract.lot_size
 
-                    trade_log.add(LiveTradeLog.make_entry(
-                        trade_type='SELL',
-                        direction=leg['side'],
-                        strike=leg['strike'],
-                        entry_price=entry_ltp,
-                        exit_price=ltp,
-                        pnl_pts=pnl_pts,
-                        pnl_rs=total_pnl_rs,
-                        reason=reason,
-                        order_id=str(order_id) if order_id else '',
-                        timestamp=timestamp,
-                    ))
+                entry = LiveTradeLog.make_entry(
+                    trade_type='SELL',
+                    direction=leg['side'],
+                    strike=leg['strike'],
+                    entry_price=entry_ltp,
+                    exit_price=ltp,
+                    pnl_pts=pnl_pts,
+                    pnl_rs=total_pnl_rs,
+                    reason=reason,
+                    order_id=str(order_id) if order_id else '',
+                    timestamp=timestamp,
+                )
+
+                # Persistence: Add to persistent list
+                self.closed_trades.insert(0, entry)
+                if len(self.closed_trades) > 50: self.closed_trades = self.closed_trades[:50]
+
+                if trade_log:
+                    trade_log.add(entry)
             except Exception as e:
                 logger.error(f"[SellV3] Failed to log trade to Order Book: {e}")
 
