@@ -162,9 +162,23 @@ class StatusWriter:
 
         session_pnl = 0.0
         trade_count = 0
+
+        # Realized P&L and counts from Buy Side (User Sessions)
         for session in orch.user_sessions.values():
             session_pnl += float(getattr(session.state_manager, 'total_pnl', 0) or 0)
             trade_count += int(getattr(session.state_manager, 'trade_count', 0) or 0)
+
+        # Realized P&L and counts from Sell Side V3
+        # V3 trades are logged with date strings. Filter for today to get "Session" P&L.
+        today_str = timestamp.strftime('%Y-%m-%d') if hasattr(timestamp, 'strftime') else ""
+
+        if v3_mgr:
+            v3_today_trades = [t for t in v3_mgr.closed_trades if t.get('date') == today_str]
+            for trade in v3_today_trades:
+                session_pnl += float(trade.get('pnl_rs', 0) or 0)
+
+            # Count each completed pair (Strangle) as one 'trade' for the header count
+            trade_count += len(v3_today_trades) // 2
 
         for side, pos_info in buy_data.items():
             if pos_info.get('status') == 'ACTIVE':

@@ -82,12 +82,20 @@ class SellManagerV3:
             # Sync to orchestrator trade log for dashboard persistence
             trade_log = getattr(self.orchestrator, 'trade_log', None)
             if trade_log:
-                # Clear any transient entries to avoid duplicates on reload
-                trade_log.trades = []
+                # Deduplicate by order_id or timestamp/strike if order_id is missing (backtest)
+                existing_fingerprints = set()
+                for t in trade_log.trades:
+                    if t.get('order_id'): existing_fingerprints.add(t['order_id'])
+                    else: existing_fingerprints.add(f"{t.get('time')}_{t.get('strike')}_{t.get('direction')}")
+
                 # We add them in reverse order because LiveTradeLog.add inserts at index 0
+                count = 0
                 for trade in reversed(self.closed_trades):
-                    trade_log.add(trade)
-                logger.debug(f"[SellV3] Synchronized {len(self.closed_trades)} trades to dashboard log.")
+                    fp = trade.get('order_id') if trade.get('order_id') else f"{trade.get('time')}_{trade.get('strike')}_{trade.get('direction')}"
+                    if fp not in existing_fingerprints:
+                        trade_log.add(trade)
+                        count += 1
+                logger.debug(f"[SellV3] Synchronized {count} new trades to dashboard log (Total: {len(trade_log.trades)}).")
 
             if self.active:
                 logger.info(f"[SellV3] Recovered active trade from {self.entry_timestamp}")
@@ -388,7 +396,8 @@ class SellManagerV3:
             'key': key,
             'entry_ltp': ltp,
             'entry_atp': atp,
-            'side': side
+            'side': side,
+            'lot_size': contract.lot_size
         }
 
         if side == 'CE': self.ce_leg = leg
@@ -574,8 +583,8 @@ class SellManagerV3:
         retained_sides = [s for s in ['CE', 'PE'] if s not in [l[0] for l in legs_to_close]]
         for side in retained_sides:
             leg = self.ce_leg if side == 'CE' else self.pe_leg
-            ltp = await self._get_ltp(leg['key'])
-            await self._record_trade_log(side, leg, ltp, timestamp, f"Smart Roll ({reason})")
+            roll_ltp = final_ce_ltp if side == 'CE' else final_pe_ltp
+            await self._record_trade_log(side, leg, roll_ltp, timestamp, f"Smart Roll ({reason})")
 
         # 5. Execute necessary broker entries
         if ('CE', self.ce_leg) in legs_to_close:
@@ -629,16 +638,18 @@ class SellManagerV3:
             entry_ltp = leg.get('entry_ltp', 0)
             pnl_pts = entry_ltp - ltp
 
-            expiry = self.orchestrator.atm_manager.signal_expiry_date
-            lookup = self.orchestrator.atm_manager.contract_lookup.get(expiry, {})
-            contract = lookup.get(float(leg['strike']), {}).get(leg['side'])
+            # Use stored lot_size or fallback to avoid None crashes during lookup latency
+            lot_size = leg.get('lot_size')
+            if lot_size is None:
+                lot_size = self.orchestrator.config_manager.get_int(self.instrument_name, 'lot_size', 50)
+                logger.debug(f"[SellV3] Lot size not found in leg state, using fallback: {lot_size}")
 
             # Calculate total Rupee PnL across all configured brokers
             total_pnl_rs = 0
             for broker in self.orchestrator.broker_manager.brokers:
                 if not broker.is_configured_for_instrument(self.instrument_name): continue
                 b_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1)
-                total_pnl_rs += pnl_pts * b_qty * contract.lot_size
+                total_pnl_rs += pnl_pts * b_qty * lot_size
 
             entry = LiveTradeLog.make_entry(
                 trade_type='SELL',
@@ -666,62 +677,10 @@ class SellManagerV3:
         logger.info(f"[SellV3] EXIT ALL: {reason}")
         self.last_exit_timestamp = timestamp
 
-        for leg in [self.ce_leg, self.pe_leg]:
+        # We process legs sequentially to avoid race conditions on state
+        for side, leg in [('CE', self.ce_leg), ('PE', self.pe_leg)]:
             if not leg: continue
-            expiry = self.orchestrator.atm_manager.signal_expiry_date
-            lookup = self.orchestrator.atm_manager.contract_lookup.get(expiry, {})
-            contract = lookup.get(float(leg['strike']), {}).get(leg['side'])
-
-            ltp = await self._get_ltp(leg['key'])
-
-            # Stop live data feed for this contract
-            await event_bus.publish('REMOVE_FROM_WATCHLIST', {'instrument_key': leg['key']})
-
-            product_type = self._cfg('product_type', 'NRML')
-            order_id = ""
-            for broker in self.orchestrator.broker_manager.brokers:
-                if not broker.is_configured_for_instrument(self.instrument_name): continue
-                qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * contract.lot_size
-                if not self.orchestrator.is_backtest and not getattr(broker, 'paper_trade', False):
-                    order_id = broker.place_order(contract, 'BUY', qty, expiry, product_type=product_type)
-
-                if self.orchestrator.is_backtest and self.orchestrator.pnl_tracker:
-                    self.orchestrator.pnl_tracker.exit_trade(side=leg['side'], exit_price=ltp, timestamp=timestamp, reason=reason, instrument_key=leg['key'])
-
-            # Record in LiveTradeLog for Web UI Order Book
-            try:
-                from .live_trade_log import LiveTradeLog
-                trade_log = getattr(self.orchestrator, 'trade_log', None)
-                entry_ltp = leg.get('entry_ltp', 0)
-                pnl_pts = entry_ltp - ltp
-                # Calculate total Rupee PnL across all configured brokers
-                total_pnl_rs = 0
-                for broker in self.orchestrator.broker_manager.brokers:
-                    if not broker.is_configured_for_instrument(self.instrument_name): continue
-                    b_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1)
-                    total_pnl_rs += pnl_pts * b_qty * contract.lot_size
-
-                entry = LiveTradeLog.make_entry(
-                    trade_type='SELL',
-                    direction=leg['side'],
-                    strike=leg['strike'],
-                    entry_price=entry_ltp,
-                    exit_price=ltp,
-                    pnl_pts=pnl_pts,
-                    pnl_rs=total_pnl_rs,
-                    reason=reason,
-                    order_id=str(order_id) if order_id else '',
-                    timestamp=timestamp,
-                )
-
-                # Persistence: Add to persistent list
-                self.closed_trades.insert(0, entry)
-                if len(self.closed_trades) > 50: self.closed_trades = self.closed_trades[:50]
-
-                if trade_log:
-                    trade_log.add(entry)
-            except Exception as e:
-                logger.error(f"[SellV3] Failed to log trade to Order Book: {e}")
+            await self._execute_leg_exit(side, leg, timestamp, reason)
 
         self.active = False
         self.ce_leg = None
