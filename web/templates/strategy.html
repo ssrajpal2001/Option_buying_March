@@ -194,9 +194,15 @@
             <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_exit_min"/>
           </div>
         </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Ratio Exit Enabled (3:1)</span>
+          <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.ratio_exit.enabled" onclick="toggleSwitch(this)">
+            <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+          </button>
+        </div>
         <div>
-          <label class="field-label">Ratio Threshold (e.g., 3.0)</label>
-          <input type="number" class="input-field" step="0.1" data-path="NIFTY.sell_v3.ratio_threshold"/>
+          <label class="field-label">Ratio Threshold (re-balance)</label>
+          <input type="number" class="input-field" step="0.1" data-path="NIFTY.sell_v3.ratio_exit.threshold"/>
         </div>
       </div>
     </div>

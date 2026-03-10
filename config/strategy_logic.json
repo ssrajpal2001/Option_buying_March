@@ -177,7 +177,10 @@
             "trade_expiry": "WEEKLY",
             "ltp_threshold": 50.0,
             "ltp_exit_min": 20.0,
-            "ratio_threshold": 3.0,
+            "ratio_exit": {
+                "enabled": true,
+                "threshold": 3.0
+            },
             "profit_target_pct": 12.0,
             "rsi": {
                 "period": 14,

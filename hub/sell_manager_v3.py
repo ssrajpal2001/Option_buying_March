@@ -477,17 +477,18 @@ class SellManagerV3:
 
         # 2b. Ratio Exit (Tick by Tick)
         # Hits if Highest_LTP / Lowest_LTP >= Threshold
-        ratio_threshold = self._cfg('ratio_threshold', 3.0)
-        high_ltp = max(ce_ltp, pe_ltp)
-        low_ltp = min(ce_ltp, pe_ltp)
-        if low_ltp > 0:
-            current_ratio = high_ltp / low_ltp
-            if current_ratio >= ratio_threshold:
-                if can_roll:
-                    await self._perform_smart_roll(timestamp, f"Ratio {current_ratio:.2f} >= {ratio_threshold}")
-                else:
-                    await self._exit_all(timestamp, f"Ratio {current_ratio:.2f} hit (Post-EntryEnd)")
-                return
+        if self._cfg('ratio_exit.enabled', True):
+            ratio_threshold = self._cfg('ratio_exit.threshold', 3.0)
+            high_ltp = max(ce_ltp, pe_ltp)
+            low_ltp = min(ce_ltp, pe_ltp)
+            if low_ltp > 0:
+                current_ratio = high_ltp / low_ltp
+                if current_ratio >= ratio_threshold:
+                    if can_roll:
+                        await self._perform_smart_roll(timestamp, f"Ratio {current_ratio:.2f} >= {ratio_threshold}")
+                    else:
+                        await self._exit_all(timestamp, f"Ratio {current_ratio:.2f} hit (Post-EntryEnd)")
+                    return
 
         # 3. Dynamic TSL (Tick by Tick)
         if self._cfg('tsl.enabled', False):
