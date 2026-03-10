@@ -170,12 +170,14 @@
         "sell_v3": {
             "enabled": true,
             "start_time": "09:16:05",
+            "entry_end_time": "14:00:00",
             "entry_type": "SELL",
             "product_type": "NRML",
             "signal_expiry": "WEEKLY",
             "trade_expiry": "WEEKLY",
             "ltp_threshold": 50.0,
             "ltp_exit_min": 20.0,
+            "ratio_threshold": 3.0,
             "profit_target_pct": 12.0,
             "rsi": {
                 "period": 14,

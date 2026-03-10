@@ -170,9 +170,13 @@
             <input type="text" class="input-field" data-path="NIFTY.sell_v3.start_time"/>
           </div>
           <div>
-            <label class="field-label">LTP Entry Threshold</label>
-            <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_threshold"/>
+            <label class="field-label">Entry End Time</label>
+            <input type="text" class="input-field" data-path="NIFTY.sell_v3.entry_end_time"/>
           </div>
+        </div>
+        <div>
+          <label class="field-label">LTP Entry Threshold</label>
+          <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_threshold"/>
         </div>
       </div>
     </div>
@@ -189,6 +193,10 @@
             <label class="field-label">LTP Exit Min (< 20)</label>
             <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_exit_min"/>
           </div>
+        </div>
+        <div>
+          <label class="field-label">Ratio Threshold (e.g., 3.0)</label>
+          <input type="number" class="input-field" step="0.1" data-path="NIFTY.sell_v3.ratio_threshold"/>
         </div>
       </div>
     </div>

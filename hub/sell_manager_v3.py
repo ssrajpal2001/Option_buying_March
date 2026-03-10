@@ -164,18 +164,28 @@ class SellManagerV3:
 
     async def _check_entry(self, timestamp):
         # Time Constraints
-        if timestamp.time() < time(9, 16, 5):
+        start_time_str = self._cfg('start_time', '09:16:05')
+        start_time_obj = datetime.strptime(start_time_str, '%H:%M:%S').time()
+
+        end_time_str = self._cfg('entry_end_time', '14:00:00')
+        end_time_obj = datetime.strptime(end_time_str, '%H:%M:%S').time()
+
+        if timestamp.time() < start_time_obj:
             return
-        if timestamp.time() >= time(14, 0, 0):
+        if timestamp.time() >= end_time_obj:
             return
 
         # User Fix: Restrict entry to TF-settled boundaries to reduce over-trading
-        # Exception: Allow immediate entry at 9:16:05 (start of day)
+        # Exception 1: Allow immediate entry at 9:16:05 (start of day)
+        # Exception 2: Allow immediate scan if we just exited a trade (last_exit_timestamp is set)
         tf = self._cfg('rsi.tf', 5)
-        is_start_of_day = (timestamp.time() >= time(9, 16, 5) and timestamp.time() < time(9, 17, 0))
+        is_start_of_day = (timestamp.time() >= start_time_obj and timestamp.time() < (datetime.combine(dt.date.today(), start_time_obj) + timedelta(minutes=1)).time())
         is_settled_boundary = (timestamp.minute % tf == 0 and timestamp.second >= 10)
 
-        if not is_start_of_day and not is_settled_boundary:
+        # Bypass TF wait if a trade was recently closed (Indicator Exit)
+        was_recently_closed = self.last_exit_timestamp is not None
+
+        if not is_start_of_day and not is_settled_boundary and not was_recently_closed:
             # In backtest with 1-minute steps, second is always 0. We must allow boundary checks.
             # We also allow entry if CSV is missing (synthetic timestamps) to ensures results appear.
             feeder_file = getattr(self.orchestrator.websocket, 'file_path', '')
@@ -430,6 +440,11 @@ class SellManagerV3:
         return order_success
 
     async def _check_exit(self, timestamp):
+        # Time Constraints for Smart Rolling
+        end_time_str = self._cfg('entry_end_time', '14:00:00')
+        end_time_obj = datetime.strptime(end_time_str, '%H:%M:%S').time()
+        can_roll = timestamp.time() < end_time_obj
+
         # 1. LTP < 20 Exit (Tick by Tick)
         ce_ltp = await self._get_ltp(self.ce_leg['key'])
         pe_ltp = await self._get_ltp(self.pe_leg['key'])
@@ -438,7 +453,10 @@ class SellManagerV3:
 
         ltp_exit_min = self._cfg('ltp_exit_min', 20.0)
         if ce_ltp < ltp_exit_min or pe_ltp < ltp_exit_min:
-            await self._exit_all(timestamp, f"LTP below {ltp_exit_min}")
+            if can_roll:
+                await self._perform_smart_roll(timestamp, f"LTP below {ltp_exit_min}")
+            else:
+                await self._exit_all(timestamp, f"LTP below {ltp_exit_min} (Post-EntryEnd)")
             return
 
         # 2. Target Profit 12% Exit (Tick by Tick)
@@ -449,11 +467,25 @@ class SellManagerV3:
 
         if profit_points >= target_points:
             # Smart Rolling Check
-            if self._cfg('smart_rolling_enabled', True):
+            if can_roll and self._cfg('smart_rolling_enabled', True):
                 await self._perform_smart_roll(timestamp, f"Target Profit {target_pct}% hit")
             else:
                 await self._exit_all(timestamp, f"Target Profit {target_pct}% hit")
             return
+
+        # 2b. Ratio Exit (Tick by Tick)
+        # Hits if Highest_LTP / Lowest_LTP >= Threshold
+        ratio_threshold = self._cfg('ratio_threshold', 3.0)
+        high_ltp = max(ce_ltp, pe_ltp)
+        low_ltp = min(ce_ltp, pe_ltp)
+        if low_ltp > 0:
+            current_ratio = high_ltp / low_ltp
+            if current_ratio >= ratio_threshold:
+                if can_roll:
+                    await self._perform_smart_roll(timestamp, f"Ratio {current_ratio:.2f} >= {ratio_threshold}")
+                else:
+                    await self._exit_all(timestamp, f"Ratio {current_ratio:.2f} hit (Post-EntryEnd)")
+                return
 
         # 3. Dynamic TSL (Tick by Tick)
         if self._cfg('tsl.enabled', False):
@@ -690,11 +722,14 @@ class SellManagerV3:
         self.save_state()
 
         # Check for restart
-        if timestamp.time() < time(14, 0, 0):
-            logger.info("[SellV3] Restarting strategy...")
+        end_time_str = self._cfg('entry_end_time', '14:00:00')
+        end_time_obj = datetime.strptime(end_time_str, '%H:%M:%S').time()
+
+        if timestamp.time() < end_time_obj:
+            logger.info("[SellV3] Waiting for next entry opportunity...")
             # Restart happens on next tick because active is False
         else:
-            logger.info("[SellV3] After 2:00 PM. No more trades today.")
+            logger.info(f"[SellV3] After {end_time_str}. No more trades today.")
 
     async def close_all(self, timestamp):
         """Forced exit of all V3 positions."""
