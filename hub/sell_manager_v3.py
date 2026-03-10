@@ -308,6 +308,8 @@ class SellManagerV3:
         self.entry_timestamp = timestamp
         self.total_premium_points = self.ce_leg['entry_ltp'] + self.pe_leg['entry_ltp']
         self.tsl_wait_high_hit = False
+        # Reset re-entry scan bypass
+        self.last_exit_timestamp = None
         # Reset indicator timer to allow immediate exit check if entry happens on boundary
         self.last_indicator_check_minute = -1
         self.save_state()

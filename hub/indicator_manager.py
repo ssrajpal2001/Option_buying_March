@@ -435,7 +435,7 @@ class IndicatorManager:
 
         return float(atr) if pd.notna(atr) else None
 
-    async def calculate_combined_rsi(self, key1, key2, timeframe_minutes, period, timestamp, include_current=False):
+    async def calculate_combined_rsi(self, key1, key2, timeframe_minutes, period, timestamp, include_current=False, skip_api=False):
         """
         Calculates RSI on the sum of close prices of two instruments.
         Uses Wilder's smoothing (standard RSI).
@@ -450,6 +450,9 @@ class IndicatorManager:
         ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
 
         if ohlc1 is None or len(ohlc1) < period + 1 or ohlc2 is None or len(ohlc2) < period + 1:
+            if skip_api:
+                return None
+
             logger.debug(f"[IndicatorManager] Combined RSI: Missing or insufficient OHLC for {key1} or {key2}. Fetching from API...")
             # Try to fetch history manually from API
             for k in [key1, key2]:

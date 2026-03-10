@@ -101,7 +101,7 @@ class StatusWriter:
                 v3_rsi = await orch.indicator_manager.calculate_combined_rsi(
                     v3_mgr.ce_leg['key'], v3_mgr.pe_leg['key'],
                     rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
-                    include_current=True
+                    include_current=True, skip_api=True
                 )
 
                 ce_atp = await orch.indicator_manager.calculate_vwap(v3_mgr.ce_leg['key'], timestamp)
@@ -123,7 +123,7 @@ class StatusWriter:
                     rsi_cfg = v3_mgr._cfg('rsi', {})
                     v3_rsi = await orch.indicator_manager.calculate_combined_rsi(
                         ce_key, pe_key, rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
-                        include_current=True
+                        include_current=True, skip_api=True
                     )
                     ce_atp = await orch.indicator_manager.calculate_vwap(ce_key, timestamp)
                     pe_atp = await orch.indicator_manager.calculate_vwap(pe_key, timestamp)
