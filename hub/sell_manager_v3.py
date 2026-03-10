@@ -57,11 +57,13 @@ class SellManagerV3:
             os.makedirs('config', exist_ok=True)
             with open(self.state_file, 'w') as f:
                 json.dump(state, f, indent=2)
+            logger.debug(f"[SellV3] State saved to {self.state_file} (Active: {self.active}, Closed: {len(self.closed_trades)})")
         except Exception as e:
-            logger.error(f"[SellV3] Failed to save state: {e}")
+            logger.error(f"[SellV3] Failed to save state to {self.state_file}: {e}")
 
     def load_state(self):
         if not os.path.exists(self.state_file):
+            logger.debug(f"[SellV3] No state file found at {self.state_file}")
             return
         try:
             with open(self.state_file, 'r') as f:
@@ -75,17 +77,22 @@ class SellManagerV3:
             self.tsl_wait_high_hit = state.get('tsl_wait_high_hit', False)
             self.closed_trades = state.get('closed_trades', [])
 
+            logger.info(f"[SellV3] State loaded from {self.state_file}. History: {len(self.closed_trades)} trades.")
+
             # Sync to orchestrator trade log for dashboard persistence
             trade_log = getattr(self.orchestrator, 'trade_log', None)
             if trade_log:
+                # Clear any transient entries to avoid duplicates on reload
+                trade_log.trades = []
                 # We add them in reverse order because LiveTradeLog.add inserts at index 0
                 for trade in reversed(self.closed_trades):
                     trade_log.add(trade)
+                logger.debug(f"[SellV3] Synchronized {len(self.closed_trades)} trades to dashboard log.")
 
             if self.active:
                 logger.info(f"[SellV3] Recovered active trade from {self.entry_timestamp}")
         except Exception as e:
-            logger.error(f"[SellV3] Failed to load state: {e}")
+            logger.error(f"[SellV3] Failed to load state from {self.state_file}: {e}")
 
     async def on_tick(self, timestamp):
         if not self._cfg('enabled', False):
@@ -431,7 +438,11 @@ class SellManagerV3:
         target_points = (target_pct / 100.0) * self.total_premium_points
 
         if profit_points >= target_points:
-            await self._exit_all(timestamp, f"Target Profit {target_pct}% hit")
+            # Smart Rolling Check
+            if self._cfg('smart_rolling_enabled', True):
+                await self._perform_smart_roll(timestamp, f"Target Profit {target_pct}% hit")
+            else:
+                await self._exit_all(timestamp, f"Target Profit {target_pct}% hit")
             return
 
         # 3. Dynamic TSL (Tick by Tick)
@@ -512,6 +523,144 @@ class SellManagerV3:
             if not pe_atp: reasons.append(f"Missing PE VWAP({self.pe_leg['strike']})")
             if combined_ltp is None: reasons.append("Missing Current LTP")
             logger.warning(f"[SellV3] Indicator Check Skipped: {', '.join(reasons)}")
+
+    async def _perform_smart_roll(self, timestamp, reason):
+        """
+        Brokerage Optimization: If new target strike matches current strike,
+        skip broker orders and perform a virtual roll (internal price reset).
+        """
+        logger.info(f"[SellV3] SMART ROLL INITIATED: {reason}")
+
+        # 1. Determine New Target strikes based on current Spot
+        index_price = self.orchestrator.state_manager.index_price
+        interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
+        atm = int(round(index_price / interval) * interval)
+        expiry = self.orchestrator.atm_manager.signal_expiry_date
+        ltp_threshold = self._cfg('ltp_threshold', 50.0)
+
+        # We use a similar search logic but potentially restricted to current context
+        new_ce_strike, new_ce_key, new_ce_ltp = await self._find_strike_ge(atm, 'CALL', expiry, ltp_threshold)
+        new_pe_strike, new_pe_key, new_pe_ltp = await self._find_strike_ge(atm, 'PUT', expiry, ltp_threshold)
+
+        if not new_ce_key or not new_pe_key:
+            logger.warning("[SellV3] Smart Roll failed: Could not find new target strikes. Falling back to Full Exit.")
+            await self._exit_all(timestamp, f"{reason} (Roll Failed)")
+            return
+
+        # Match strikes
+        if new_ce_ltp < new_pe_ltp:
+            match_pe_strike, match_pe_key, match_pe_ltp = await self._find_matching_strike(new_ce_ltp, 'PUT', expiry)
+            final_ce_strike, final_ce_key, final_ce_ltp = new_ce_strike, new_ce_key, new_ce_ltp
+            final_pe_strike, final_pe_key, final_pe_ltp = match_pe_strike, match_pe_key, match_pe_ltp
+        else:
+            match_ce_strike, match_ce_key, match_ce_ltp = await self._find_matching_strike(new_pe_ltp, 'CALL', expiry)
+            final_ce_strike, final_ce_key, final_ce_ltp = match_ce_strike, match_ce_key, match_ce_ltp
+            final_pe_strike, final_pe_key, final_pe_ltp = new_pe_strike, new_pe_key, new_pe_ltp
+
+        # 2. Compare with current legs
+        legs_to_close = []
+        if float(final_ce_strike) != float(self.ce_leg['strike']):
+            legs_to_close.append(('CE', self.ce_leg))
+        if float(final_pe_strike) != float(self.pe_leg['strike']):
+            legs_to_close.append(('PE', self.pe_leg))
+
+        logger.info(f"[SellV3] Roll Comparison: CE({self.ce_leg['strike']}->{final_ce_strike}), PE({self.pe_leg['strike']}->{final_pe_strike})")
+
+        # 3. Execute necessary broker exits
+        for side, leg in legs_to_close:
+            await self._execute_leg_exit(side, leg, timestamp, f"Roll Exit ({reason})")
+
+        # 4. Record Virtual Exits for retained legs (for Order Book P&L)
+        retained_sides = [s for s in ['CE', 'PE'] if s not in [l[0] for l in legs_to_close]]
+        for side in retained_sides:
+            leg = self.ce_leg if side == 'CE' else self.pe_leg
+            ltp = await self._get_ltp(leg['key'])
+            await self._record_trade_log(side, leg, ltp, timestamp, f"Smart Roll ({reason})")
+
+        # 5. Execute necessary broker entries
+        if ('CE', self.ce_leg) in legs_to_close:
+            await self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp)
+        else:
+            # Update retained CE leg state
+            self.ce_leg['entry_ltp'] = final_ce_ltp
+            self.ce_leg['entry_atp'] = self.orchestrator.state_manager.option_atps.get(final_ce_key) or final_ce_ltp
+
+        if ('PE', self.pe_leg) in legs_to_close:
+            await self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp)
+        else:
+            # Update retained PE leg state
+            self.pe_leg['entry_ltp'] = final_pe_ltp
+            self.pe_leg['entry_atp'] = self.orchestrator.state_manager.option_atps.get(final_pe_key) or final_pe_ltp
+
+        # 6. Finalize State
+        self.entry_timestamp = timestamp
+        self.total_premium_points = self.ce_leg['entry_ltp'] + self.pe_leg['entry_ltp']
+        self.tsl_wait_high_hit = False
+        self.save_state()
+        logger.info(f"[SellV3] Smart Roll Complete. New Combined Premium: {self.total_premium_points:.2f}")
+
+    async def _execute_leg_exit(self, side, leg, timestamp, reason):
+        expiry = self.orchestrator.atm_manager.signal_expiry_date
+        lookup = self.orchestrator.atm_manager.contract_lookup.get(expiry, {})
+        contract = lookup.get(float(leg['strike']), {}).get(leg['side'])
+
+        ltp = await self._get_ltp(leg['key'])
+
+        # Stop live data feed for this contract if it's being replaced
+        await event_bus.publish('REMOVE_FROM_WATCHLIST', {'instrument_key': leg['key']})
+
+        product_type = self._cfg('product_type', 'NRML')
+        order_id = ""
+        for broker in self.orchestrator.broker_manager.brokers:
+            if not broker.is_configured_for_instrument(self.instrument_name): continue
+            qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1) * contract.lot_size
+            if not self.orchestrator.is_backtest and not getattr(broker, 'paper_trade', False):
+                order_id = broker.place_order(contract, 'BUY', qty, expiry, product_type=product_type)
+
+            if self.orchestrator.is_backtest and self.orchestrator.pnl_tracker:
+                self.orchestrator.pnl_tracker.exit_trade(side=leg['side'], exit_price=ltp, timestamp=timestamp, reason=reason, instrument_key=leg['key'])
+
+        await self._record_trade_log(side, leg, ltp, timestamp, reason, order_id)
+
+    async def _record_trade_log(self, side, leg, ltp, timestamp, reason, order_id=""):
+        try:
+            from .live_trade_log import LiveTradeLog
+            trade_log = getattr(self.orchestrator, 'trade_log', None)
+            entry_ltp = leg.get('entry_ltp', 0)
+            pnl_pts = entry_ltp - ltp
+
+            expiry = self.orchestrator.atm_manager.signal_expiry_date
+            lookup = self.orchestrator.atm_manager.contract_lookup.get(expiry, {})
+            contract = lookup.get(float(leg['strike']), {}).get(leg['side'])
+
+            # Calculate total Rupee PnL across all configured brokers
+            total_pnl_rs = 0
+            for broker in self.orchestrator.broker_manager.brokers:
+                if not broker.is_configured_for_instrument(self.instrument_name): continue
+                b_qty = broker.config_manager.get_int(broker.instance_name, 'quantity', 1)
+                total_pnl_rs += pnl_pts * b_qty * contract.lot_size
+
+            entry = LiveTradeLog.make_entry(
+                trade_type='SELL',
+                direction=leg['side'],
+                strike=leg['strike'],
+                entry_price=entry_ltp,
+                exit_price=ltp,
+                pnl_pts=pnl_pts,
+                pnl_rs=total_pnl_rs,
+                reason=reason,
+                order_id=str(order_id) if order_id else '',
+                timestamp=timestamp,
+            )
+
+            # Persistence: Add to persistent list
+            self.closed_trades.insert(0, entry)
+            if len(self.closed_trades) > 50: self.closed_trades = self.closed_trades[:50]
+
+            if trade_log:
+                trade_log.add(entry)
+        except Exception as e:
+            logger.error(f"[SellV3] Failed to log trade: {e}")
 
     async def _exit_all(self, timestamp, reason):
         logger.info(f"[SellV3] EXIT ALL: {reason}")
