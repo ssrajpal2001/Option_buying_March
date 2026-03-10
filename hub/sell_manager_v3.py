@@ -169,17 +169,18 @@ class SellManagerV3:
         if timestamp.time() >= time(14, 0, 0):
             return
 
-        # User Fix: Restrict entry to 5-minute settled boundaries to reduce over-trading
+        # User Fix: Restrict entry to TF-settled boundaries to reduce over-trading
         # Exception: Allow immediate entry at 9:16:05 (start of day)
+        tf = self._cfg('rsi.tf', 5)
         is_start_of_day = (timestamp.time() >= time(9, 16, 5) and timestamp.time() < time(9, 17, 0))
-        is_settled_boundary = (timestamp.minute % 5 == 0 and timestamp.second >= 10)
+        is_settled_boundary = (timestamp.minute % tf == 0 and timestamp.second >= 10)
 
         if not is_start_of_day and not is_settled_boundary:
             # In backtest with 1-minute steps, second is always 0. We must allow boundary checks.
             # We also allow entry if CSV is missing (synthetic timestamps) to ensures results appear.
             feeder_file = getattr(self.orchestrator.websocket, 'file_path', '')
             if self.orchestrator.is_backtest:
-                if (timestamp.minute % 5 == 0) or (not os.path.isfile(feeder_file)):
+                if (timestamp.minute % tf == 0) or (not os.path.isfile(feeder_file)):
                     pass
                 else:
                     return
@@ -473,10 +474,11 @@ class SellManagerV3:
                 await self._exit_all(timestamp, f"TSL Locked Profit hit at {tsl_value_rupees} Rupees")
                 return
 
-        # 4. Indicators Exit (5-min Candle Close)
-        # User fix: Trigger 10 seconds into the new 5-minute interval (LIVE only).
+        # 4. Indicators Exit (TF-min Candle Close)
+        # User fix: Trigger 10 seconds into the new TF-minute interval (LIVE only).
         # In BACKTEST, we trigger on any tick within the boundary minute.
-        is_boundary = (timestamp.minute % 5 == 0)
+        tf = self._cfg('rsi.tf', 5)
+        is_boundary = (timestamp.minute % tf == 0)
         trigger_now = False
         if self.orchestrator.is_backtest:
             trigger_now = is_boundary

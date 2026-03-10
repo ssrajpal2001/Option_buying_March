@@ -179,11 +179,11 @@
             "profit_target_pct": 12.0,
             "rsi": {
                 "period": 14,
-                "tf": 5,
+                "tf": 20,
                 "threshold": 50
             },
             "vwap": {
-                "tf": 5
+                "tf": 20
             },
             "tsl": {
                 "enabled": false,
