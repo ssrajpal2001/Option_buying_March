@@ -739,11 +739,26 @@ class SellManagerV3:
             await self._exit_all(timestamp, "Forced Close")
 
     def reconnect_positions(self):
-        """Restores live data subscriptions for active positions after bot restart."""
+        """Restores live data subscriptions and PnL tracking for active positions after bot restart."""
         if not self.active:
             return
 
-        logger.info(f"[SellV3] Reconnecting live data for active Strangle: {self.ce_leg['strike']}CE + {self.pe_leg['strike']}PE")
+        logger.info(f"[SellV3] Reconnecting active Strangle: {self.ce_leg['strike']}CE + {self.pe_leg['strike']}PE")
+
+        # Register with backtest PnL tracker to ensure continuous report generation
+        if self.orchestrator.is_backtest and self.orchestrator.pnl_tracker:
+            expiry = self.orchestrator.atm_manager.signal_expiry_date
+            lookup = self.orchestrator.atm_manager.contract_lookup.get(expiry, {})
+            for leg in [self.ce_leg, self.pe_leg]:
+                if not leg: continue
+                contract = lookup.get(float(leg['strike']), {}).get(leg['side'])
+                if contract:
+                    # We use standard 1x quantity for recovered legs
+                    self.orchestrator.pnl_tracker.enter_trade(
+                        side=leg['side'], instrument_key=leg['key'], entry_price=leg['entry_ltp'],
+                        timestamp=self.entry_timestamp, strike_price=leg['strike'], contract=contract,
+                        strategy_log=f"SellV3 {leg['side']} (Recovered)", entry_type='SELL', quantity=1
+                    )
 
         # We must use asyncio.create_task because this is called from sync finalize_initialization
         for leg in [self.ce_leg, self.pe_leg]:
