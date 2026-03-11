@@ -190,9 +190,22 @@
             "vwap": {
                 "tf": 5
             },
+            "vwap_slope_exit": {
+                "enabled": false,
+                "threshold_pct": 1.0
+            },
+            "ltp_balance_enabled": true,
+            "reentry_strike_offset": 2,
             "tsl": {
                 "enabled": false,
                 "value": 0.0
+            },
+            "tsl_scalable": {
+                "enabled": false,
+                "base_profit": 1000,
+                "base_lock": 200,
+                "step_profit": 250,
+                "step_lock": 200
             }
         }
     }

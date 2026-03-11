@@ -35,8 +35,12 @@ class SellManagerV3:
         self.last_exit_timestamp = None
         self.closed_trades = [] # Persistent history of closed trades
 
+        # Strategy State
+        self.lowest_combined_vwap = None
+
         # TSL State
         self.tsl_wait_high_hit = False
+        self.tsl_scalable_lock_points = 0.0 # Trailing lock in points
 
         self.load_state()
 
@@ -50,7 +54,9 @@ class SellManagerV3:
             'pe_leg': self.pe_leg,
             'total_premium_points': self.total_premium_points,
             'entry_timestamp': self.entry_timestamp.isoformat() if self.entry_timestamp else None,
+            'lowest_combined_vwap': self.lowest_combined_vwap,
             'tsl_wait_high_hit': self.tsl_wait_high_hit,
+            'tsl_scalable_lock_points': self.tsl_scalable_lock_points,
             'closed_trades': self.closed_trades
         }
         try:
@@ -74,7 +80,9 @@ class SellManagerV3:
             self.total_premium_points = state.get('total_premium_points', 0.0)
             ts = state.get('entry_timestamp')
             self.entry_timestamp = datetime.fromisoformat(ts).replace(tzinfo=pytz.timezone('Asia/Kolkata')) if ts else None
+            self.lowest_combined_vwap = state.get('lowest_combined_vwap')
             self.tsl_wait_high_hit = state.get('tsl_wait_high_hit', False)
+            self.tsl_scalable_lock_points = state.get('tsl_scalable_lock_points', 0.0)
             self.closed_trades = state.get('closed_trades', [])
 
             logger.info(f"[SellV3] State loaded from {self.state_file}. History: {len(self.closed_trades)} trades.")
@@ -221,72 +229,104 @@ class SellManagerV3:
             self._last_entry_attempt_log = now_ts
             logger.info(f"[SellV3] Attempting entry at {timestamp} (Spot: {index_price}, ATM: {atm})")
 
-        # 2. Strike Selection
+        # 2. Multi-Strike Scan (ATM +/- Offset)
         expiry = self.orchestrator.atm_manager.signal_expiry_date
         ltp_threshold = self._cfg('ltp_threshold', 50.0)
-
-        ce_strike, ce_key, ce_ltp = await self._find_strike_ge(atm, 'CALL', expiry, ltp_threshold, direction='ITM')
-        pe_strike, pe_key, pe_ltp = await self._find_strike_ge(atm, 'PUT', expiry, ltp_threshold, direction='ITM')
-
-        if not ce_key or not pe_key:
-            logger.warning(f"[SellV3] Could not find suitable strikes for entry.")
-            return
-
-        # 4. Final Match & Indicator Pre-flight Check
-        # User Requirement: Value SHOUDL BE BELOW VWAMP AND RSI < 50 to execute trade.
-        # This prevents immediate re-entry (churning) after an exit.
-
-        # Step 4a: Resolve the final matching pair BEFORE selling
-        if ce_ltp < pe_ltp:
-            match_strike, match_key, match_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
-            final_ce_key, final_pe_key = ce_key, match_key
-            final_ce_ltp, final_pe_ltp = ce_ltp, match_ltp
-            final_ce_strike, final_pe_strike = ce_strike, match_strike
-        else:
-            match_strike, match_key, match_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
-            final_ce_key, final_pe_key = match_key, pe_key
-            final_ce_ltp, final_pe_ltp = match_ltp, pe_ltp
-            final_ce_strike, final_pe_strike = match_strike, pe_strike
-
-        if not final_ce_key or not final_pe_key:
-            logger.warning("[SellV3] Entry blocked: Could not resolve matching leg.")
-            return
-
-        # Step 4b: Indicator Check
-        # For entry, we use finalized candles (include_current=False) to match the exit logic
+        offset = self._cfg('reentry_strike_offset', 2)
+        tf = self._cfg('rsi.tf', 5)
         rsi_cfg = self._cfg('rsi', {})
-        rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
-            final_ce_key, final_pe_key, rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
-            include_current=False
-        )
-        ce_atp = await self.orchestrator.indicator_manager.calculate_vwap(final_ce_key, timestamp)
-        pe_atp = await self.orchestrator.indicator_manager.calculate_vwap(final_pe_key, timestamp)
+        rsi_threshold = rsi_cfg.get('threshold', 50)
 
-        # If indicators are missing during backtest, we might be using synthetic data without history.
-        # We allow entry if indicators are None to ensure backtest results appear.
-        if self.orchestrator.is_backtest:
-            if rsi_val is None: rsi_val = 0.0
-            if ce_atp is None: ce_atp = final_ce_ltp
-            if pe_atp is None: pe_atp = final_pe_ltp
+        candidates = [] # list of {ce_leg, pe_leg, total_premium}
 
-        if rsi_val is not None and ce_atp and pe_atp:
-            combined_ltp = final_ce_ltp + final_pe_ltp
-            combined_vwap = ce_atp + pe_atp
-            rsi_threshold = rsi_cfg.get('threshold', 50)
+        # User Requirement: check ATM +- 2 for all straddle combination,not strangle combination
+        for i in range(-offset, offset + 1):
+            base_strike = atm + (i * interval)
 
-            logger.info(f"[SellV3] Entry Scan ({int(final_ce_strike)}CE+{int(final_pe_strike)}PE): "
-                        f"LTP:{combined_ltp:.2f}, VWAP:{combined_vwap:.2f}, RSI:{rsi_val:.2f}")
+            # CE and PE for the SAME strike (Straddle)
+            ce_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(base_strike, 'CALL', expiry)
+            pe_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(base_strike, 'PUT', expiry)
 
-            # Entry Logic: Below VWAP and Below RSI 50
-            if combined_ltp > combined_vwap or rsi_val > rsi_threshold:
-                logger.info(f"[SellV3] Entry Filtered: Price > VWAP OR RSI > {rsi_threshold}. Waiting for pullback...")
-                return
-        else:
-            # If indicators are missing, we should probably wait to be safe.
-            logger.debug("[SellV3] Entry delayed: Waiting for indicators to stabilize...")
+            if not ce_key or not pe_key: continue
+
+            ce_ltp = await self._get_ltp(ce_key)
+            pe_ltp = await self._get_ltp(pe_key)
+
+            if ce_ltp is None or pe_ltp is None: continue
+            if ce_ltp < ltp_threshold and pe_ltp < ltp_threshold: continue
+
+            # 3. Balancing Logic (if enabled)
+            # User Requirement: Sell pe or ce whichever is less and sell other side which is less than and near to sold leg.
+            final_ce_strike, final_pe_strike = base_strike, base_strike
+            final_ce_key, final_pe_key = ce_key, pe_key
+            final_ce_ltp, final_pe_ltp = ce_ltp, pe_ltp
+
+            if self._cfg('ltp_balance_enabled', True):
+                if ce_ltp < pe_ltp:
+                    # Match PE to CE
+                    match_strike, match_key, match_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
+                    if match_key:
+                        final_pe_strike, final_pe_key, final_pe_ltp = match_strike, match_key, match_ltp
+                else:
+                    # Match CE to PE
+                    match_strike, match_key, match_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
+                    if match_key:
+                        final_ce_strike, final_ce_key, final_ce_ltp = match_strike, match_key, match_ltp
+
+            # 4. Entry Criteria (Indicator Check)
+            # User Requirement: Entry id open or high above vwap and close below vwap...and rsi less than 50
+            # RSI Filter
+            rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
+                final_ce_key, final_pe_key, tf, rsi_cfg.get('period', 14), timestamp,
+                include_current=False
+            )
+
+            if rsi_val is None and self.orchestrator.is_backtest: rsi_val = 0.0
+            if rsi_val is None or rsi_val > rsi_threshold: continue
+
+            # VWAP Crossover Check
+            # Combined 5m candle
+            ce_vwap = await self.orchestrator.indicator_manager.calculate_vwap(final_ce_key, timestamp)
+            pe_vwap = await self.orchestrator.indicator_manager.calculate_vwap(final_pe_key, timestamp)
+
+            if ce_vwap is None or pe_vwap is None:
+                if self.orchestrator.is_backtest:
+                    ce_vwap, pe_vwap = final_ce_ltp, final_pe_ltp
+                else: continue
+
+            combined_vwap = ce_vwap + pe_vwap
+
+            ohlc1 = await self.orchestrator.indicator_manager.get_robust_ohlc(final_ce_key, tf, timestamp, include_current=False)
+            ohlc2 = await self.orchestrator.indicator_manager.get_robust_ohlc(final_pe_key, tf, timestamp, include_current=False)
+
+            if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty: continue
+
+            c1, c2 = ohlc1.iloc[-1], ohlc2.iloc[-1]
+            comb_open = c1['open'] + c2['open']
+            comb_high = c1['high'] + c2['high']
+            comb_close = c1['close'] + c2['close']
+
+            # (Open > VWAP OR High > VWAP) AND (Close <= VWAP)
+            if (comb_open > combined_vwap or comb_high > combined_vwap) and (comb_close <= combined_vwap):
+                candidates.append({
+                    'ce': {'strike': final_ce_strike, 'key': final_ce_key, 'ltp': final_ce_ltp},
+                    'pe': {'strike': final_pe_strike, 'key': final_pe_key, 'ltp': final_pe_ltp},
+                    'total_premium': final_ce_ltp + final_pe_ltp
+                })
+
+        if not candidates:
+            # We don't log "Entry Filtered" for every strike in range to avoid spam
             return
 
-        # 5. Execution Order (Lowest LTP first)
+        # 5. Best Candidate Selection
+        # User Requirement: IF MORE TANN ONE COMBINATION PASS TEH ENTRY CRIYTERIA ENTER IN THAT WHERE TOTAL PREMIUM IS LEAST
+        best = min(candidates, key=lambda x: x['total_premium'])
+
+        final_ce_strike, final_ce_key, final_ce_ltp = best['ce']['strike'], best['ce']['key'], best['ce']['ltp']
+        final_pe_strike, final_pe_key, final_pe_ltp = best['pe']['strike'], best['pe']['key'], best['pe']['ltp']
+        ce_strike, pe_strike = final_ce_strike, final_pe_strike # For _execute_sell logic compatibility
+
+        # 6. Execution Order (Lowest LTP first)
         success = False
         if final_ce_ltp < final_pe_ltp:
             logger.info(f"[SellV3] Side Selection: CE({final_ce_ltp:.2f}) < PE({final_pe_ltp:.2f}). Selling CE first.")
@@ -308,6 +348,8 @@ class SellManagerV3:
         self.entry_timestamp = timestamp
         self.total_premium_points = self.ce_leg['entry_ltp'] + self.pe_leg['entry_ltp']
         self.tsl_wait_high_hit = False
+        self.lowest_combined_vwap = None
+        self.tsl_scalable_lock_points = 0.0
         # Reset re-entry scan bypass
         self.last_exit_timestamp = None
         # Reset indicator timer to allow immediate exit check if entry happens on boundary
@@ -353,7 +395,7 @@ class SellManagerV3:
         return None, None, None
 
     async def _find_matching_strike(self, target_ltp, side, expiry):
-        """Find strike >= target_ltp and closest to it."""
+        """Find strike nearest to target_ltp. If balancing enabled, must be strictly LESS than target_ltp."""
         interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
         index_price = self.orchestrator.state_manager.index_price
         atm = int(round(index_price / interval) * interval)
@@ -362,8 +404,9 @@ class SellManagerV3:
         best_key = None
         best_ltp = None
         min_diff = float('inf')
+        balance_mode = self._cfg('ltp_balance_enabled', True)
 
-        logger.debug(f"[SellV3] Finding matching {side} strike for target LTP: {target_ltp:.2f}")
+        logger.debug(f"[SellV3] Finding matching {side} strike for target LTP: {target_ltp:.2f} (Balance: {balance_mode})")
 
         # Check a range of strikes (ATM +/- 15 to be safer)
         for i in range(-15, 16):
@@ -373,8 +416,18 @@ class SellManagerV3:
             ltp = await self._get_ltp(key)
             if ltp:
                 logger.debug(f"[SellV3] Candidate {side} {strike}: LTP {ltp:.2f}")
-                if ltp >= target_ltp:
-                    diff = ltp - target_ltp
+                if balance_mode:
+                    # User requirement: NEAREST AND LESS THEN target_ltp
+                    if ltp < target_ltp:
+                        diff = target_ltp - ltp
+                        if diff < min_diff:
+                            min_diff = diff
+                            best_strike = strike
+                            best_key = key
+                            best_ltp = ltp
+                else:
+                    # Legacy matching (nearest)
+                    diff = abs(ltp - target_ltp)
                     if diff < min_diff:
                         min_diff = diff
                         best_strike = strike
@@ -382,7 +435,7 @@ class SellManagerV3:
                         best_ltp = ltp
 
         if best_strike:
-            logger.info(f"[SellV3] Selected matching {side} {best_strike} at {best_ltp:.2f} (diff: {min_diff:.2f})")
+            logger.info(f"[SellV3] Selected matching {side} {best_strike} at {best_ltp:.2f}")
         else:
             logger.warning(f"[SellV3] No matching {side} strike found >= {target_ltp:.2f}")
 
@@ -490,7 +543,43 @@ class SellManagerV3:
                         await self._exit_all(timestamp, f"Ratio {current_ratio:.2f} hit (Post-EntryEnd)")
                     return
 
-        # 3. Dynamic TSL (Tick by Tick)
+        # 3. Scalable TSL (Lock Profit in Points)
+        # User Requirement: For 1 lot profit lock 200 if profit reaches 1000
+        # and for every increase in profit by 250 trail Profit by 200
+        if self._cfg('tsl_scalable.enabled', False):
+            base_profit = self._cfg('tsl_scalable.base_profit', 1000)
+            base_lock = self._cfg('tsl_scalable.base_lock', 200)
+            step_profit = self._cfg('tsl_scalable.step_profit', 250)
+            step_lock = self._cfg('tsl_scalable.step_lock', 200)
+
+            # Points-based calculation for scalability
+            lot_size = self.orchestrator.config_manager.get_int(self.instrument_name, 'lot_size', 50)
+            base_profit_pts = base_profit / lot_size
+            base_lock_pts = base_lock / lot_size
+            step_profit_pts = step_profit / lot_size
+            step_lock_pts = step_lock / lot_size
+
+            # Initial lock trigger
+            if self.tsl_scalable_lock_points == 0 and profit_points >= base_profit_pts:
+                self.tsl_scalable_lock_points = base_lock_pts
+                logger.info(f"[SellV3] Scalable TSL: First profit lock hit at {profit_points:.2f} pts. Locking {self.tsl_scalable_lock_points:.2f} pts.")
+
+            # Trailing step
+            if self.tsl_scalable_lock_points > 0:
+                # Calculate how many steps we've moved beyond the base
+                extra_profit = profit_points - base_profit_pts
+                if extra_profit >= step_profit_pts:
+                    steps = int(extra_profit // step_profit_pts)
+                    new_lock = base_lock_pts + (steps * step_lock_pts)
+                    if new_lock > self.tsl_scalable_lock_points:
+                        self.tsl_scalable_lock_points = new_lock
+                        logger.info(f"[SellV3] Scalable TSL: Profit increased. New lock: {self.tsl_scalable_lock_points:.2f} pts.")
+
+            if self.tsl_scalable_lock_points > 0 and profit_points <= self.tsl_scalable_lock_points:
+                await self._exit_all(timestamp, f"Scalable TSL Lock hit at {profit_points:.2f} pts (Lock: {self.tsl_scalable_lock_points:.2f})")
+                return
+
+        # 3b. Legacy Dynamic TSL (Tick by Tick)
         if self._cfg('tsl.enabled', False):
             tsl_value_rupees = self._cfg('tsl.value', 0.0)
             # Calculate current PnL in Rupees
@@ -509,7 +598,23 @@ class SellManagerV3:
                 await self._exit_all(timestamp, f"TSL Locked Profit hit at {tsl_value_rupees} Rupees")
                 return
 
-        # 4. Indicators Exit (TF-min Candle Close)
+        # 4. VWAP Slope Exit (Tracking Lowest Point)
+        # User Requirement: if the VWAP slope goes up by 1% from its lowest point, we're out.
+        if self._cfg('vwap_slope_exit.enabled', False):
+            ce_vwap = await self.orchestrator.indicator_manager.calculate_vwap(self.ce_leg['key'], timestamp)
+            pe_vwap = await self.orchestrator.indicator_manager.calculate_vwap(self.pe_leg['key'], timestamp)
+
+            if ce_vwap and pe_vwap:
+                comb_vwap = ce_vwap + pe_vwap
+                if self.lowest_combined_vwap is None or comb_vwap < self.lowest_combined_vwap:
+                    self.lowest_combined_vwap = comb_vwap
+
+                threshold_pct = self._cfg('vwap_slope_exit.threshold_pct', 1.0)
+                if comb_vwap >= self.lowest_combined_vwap * (1 + threshold_pct / 100.0):
+                    await self._exit_all(timestamp, f"VWAP Slope Exit: Current {comb_vwap:.2f} rose {threshold_pct}% from low {self.lowest_combined_vwap:.2f}")
+                    return
+
+        # 5. Indicators Exit (TF-min Candle Close)
         # User fix: Trigger 10 seconds into the new TF-minute interval (LIVE only).
         # In BACKTEST, we trigger on any tick within the boundary minute.
         tf = self._cfg('rsi.tf', 5)
