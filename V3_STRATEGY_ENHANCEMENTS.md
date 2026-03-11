@@ -1,4 +1,4 @@
-# V3 Strategy Enhancement Proposals
+# V3 Strategy Enhancement Proposals (Updated)
 
 This document outlines the proposed logic updates for Version 3 (V3) of the trading bot. All features will be configurable via the JSON configuration file and the Web UI.
 
@@ -9,22 +9,25 @@ This logic protects profits by monitoring the "lowest point" reached by the Comb
 *   **Trigger:** If the current Combined VWAP rises by **1% or more** from its recorded lowest point, the bot will exit the position.
 *   **Purpose:** To capture reversals in the premium decay trend.
 
-## 2. LTP Balanced Entry Logic
-This ensures the initial entry (or re-entry) is always premium-balanced with a conservative bias.
+## 2. Updated LTP Balanced Entry Logic
+While balancing logic currently exists, it is being updated to follow a "strictly lower" price rule for the second leg to ensure a conservative entry.
 
-*   **Logic:**
-    1.  The bot identifies the ATM/ITM strikes for CE and PE.
+*   **Updated Logic:**
+    1.  The bot identifies the initial candidates for CE and PE.
     2.  It identifies which side has the **lower LTP**.
     3.  It executes the sell order for the lower-priced leg first.
     4.  For the opposite side, it selects the strike that is **nearest to, but strictly less than**, the price of the first leg.
-*   **Example:** If CE is ₹60 and PE is ₹80, the bot sells CE at ₹60. It then scans PE strikes and might pick a strike at ₹58 (nearest below ₹60) instead of the one at ₹62.
+*   **Comparison:**
+    *   *Old Logic:* Picked the closest strike where LTP >= first leg.
+    *   *New Logic:* Picks the closest strike where LTP < first leg.
+*   **Example:** If CE is ₹60 and the closest PE strikes are ₹58 and ₹62, the bot will now select the **₹58** strike.
 
-## 3. Multi-Strike Re-entry Scan
+## 3. Multi-Strike Re-entry Scan (ATM ± Range)
 Instead of only monitoring the ATM, the bot will now scan a range of straddles to find the best re-entry opportunity.
 
 *   **Range:** Configurable offset from ATM (e.g., ATM ± 2 or ATM ± 4).
 *   **Entry Criteria (on 5-minute timeframe):**
-    *   **VWAP Crossover:** The combined 5m candle must have (Open > VWAP OR High > VWAP) AND (Close <= VWAP). This signifies a "rejection" or "pullback" below the VWAP.
+    *   **VWAP Crossover:** The combined 5m candle must have (**Open > VWAP** OR **High > VWAP**) AND (**Close <= VWAP**). This signifies a "rejection" or "pullback" below the VWAP.
     *   **RSI Filter:** Combined RSI must be below 50.
 *   **Selection:** If multiple strike combinations pass the criteria simultaneously, the bot will enter the one with the **lowest total premium** (least risk).
 
@@ -42,4 +45,4 @@ A more granular trailing stop-loss based on realized/floating profit.
     *   VWAP Slope Exit %
     *   Re-entry Strike Range (Offset)
     *   TSL Profit Thresholds and Lock Values
-    *   Enable/Disable LTP Balanced Entry
+    *   Enable/Disable the new LTP Balanced Logic
