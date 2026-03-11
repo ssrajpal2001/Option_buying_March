@@ -195,6 +195,7 @@
                 "threshold_pct": 1.0
             },
             "ltp_balance_enabled": true,
+            "multi_strike_scan_enabled": true,
             "reentry_strike_offset": 2,
             "tsl": {
                 "enabled": false,

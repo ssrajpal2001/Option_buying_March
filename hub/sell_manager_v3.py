@@ -229,7 +229,15 @@ class SellManagerV3:
             self._last_entry_attempt_log = now_ts
             logger.info(f"[SellV3] Attempting entry at {timestamp} (Spot: {index_price}, ATM: {atm})")
 
-        # 2. Multi-Strike Scan (ATM +/- Offset)
+        # 2. Strategy Phase (Initial vs Re-entry)
+        # User requirement: BALANCE RULE IS APPLICABEL ONLY AT START
+        today_str = timestamp.strftime('%Y-%m-%d')
+        # LiveTradeLog entries have a 'date' field (YYYY-MM-DD)
+        trades_today = [t for t in self.closed_trades if t.get('date') == today_str]
+        is_initial_entry = len(trades_today) == 0
+        phase_label = "Initial Entry" if is_initial_entry else "Re-entry"
+
+        # 3. Multi-Strike Scan (ATM +/- Offset)
         expiry = self.orchestrator.atm_manager.signal_expiry_date
         ltp_threshold = self._cfg('ltp_threshold', 50.0)
         offset = self._cfg('reentry_strike_offset', 2)
@@ -240,7 +248,8 @@ class SellManagerV3:
         candidates = [] # list of {ce_leg, pe_leg, total_premium}
 
         # User Requirement: check ATM +- 2 for all straddle combination,not strangle combination
-        for i in range(-offset, offset + 1):
+        scan_range = range(-offset, offset + 1) if self._cfg('multi_strike_scan_enabled', True) else range(0, 1)
+        for i in scan_range:
             base_strike = atm + (i * interval)
 
             # CE and PE for the SAME strike (Straddle)
@@ -255,13 +264,13 @@ class SellManagerV3:
             if ce_ltp is None or pe_ltp is None: continue
             if ce_ltp < ltp_threshold and pe_ltp < ltp_threshold: continue
 
-            # 3. Balancing Logic (if enabled)
-            # User Requirement: Sell pe or ce whichever is less and sell other side which is less than and near to sold leg.
+            # 4. Balancing vs Straddle Logic
+            # User Requirement: Balance for START, pure Straddle for Re-entry
             final_ce_strike, final_pe_strike = base_strike, base_strike
             final_ce_key, final_pe_key = ce_key, pe_key
             final_ce_ltp, final_pe_ltp = ce_ltp, pe_ltp
 
-            if self._cfg('ltp_balance_enabled', True):
+            if is_initial_entry and self._cfg('ltp_balance_enabled', True):
                 if ce_ltp < pe_ltp:
                     # Match PE to CE
                     match_strike, match_key, match_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
@@ -272,8 +281,11 @@ class SellManagerV3:
                     match_strike, match_key, match_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
                     if match_key:
                         final_ce_strike, final_ce_key, final_ce_ltp = match_strike, match_key, match_ltp
+            else:
+                # Re-entry mode: Keep it as a Straddle (ATM +/- offset)
+                pass
 
-            # 4. Entry Criteria (Indicator Check)
+            # 5. Entry Criteria (Indicator Check)
             # User Requirement: Entry id open or high above vwap and close below vwap...and rsi less than 50
             # RSI Filter
             rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
@@ -307,7 +319,14 @@ class SellManagerV3:
             comb_close = c1['close'] + c2['close']
 
             # (Open > VWAP OR High > VWAP) AND (Close <= VWAP)
-            if (comb_open > combined_vwap or comb_high > combined_vwap) and (comb_close <= combined_vwap):
+            # Detailed Logging for Crossover Rule
+            is_crossover = (comb_open > combined_vwap or comb_high > combined_vwap) and (comb_close <= combined_vwap)
+
+            logger.info(f"[SellV3][Scan {phase_label}] {int(final_ce_strike)}CE+{int(final_pe_strike)}PE (Base: {int(base_strike)}): "
+                         f"RSI:{rsi_val:.2f}, O:{comb_open:.2f}, H:{comb_high:.2f}, C:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
+                         f"| RSI_OK:{rsi_val <= rsi_threshold}, CROSS_OK:{is_crossover}")
+
+            if rsi_val <= rsi_threshold and is_crossover:
                 candidates.append({
                     'ce': {'strike': final_ce_strike, 'key': final_ce_key, 'ltp': final_ce_ltp},
                     'pe': {'strike': final_pe_strike, 'key': final_pe_key, 'ltp': final_pe_ltp},
