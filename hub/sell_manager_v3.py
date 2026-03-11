@@ -170,74 +170,16 @@ class SellManagerV3:
 
             self.last_config_check_time = mtime
 
-    async def _check_entry(self, timestamp):
-        # Time Constraints
-        start_time_str = self._cfg('start_time', '09:16:05')
-        start_time_obj = datetime.strptime(start_time_str, '%H:%M:%S').time()
-
-        end_time_str = self._cfg('entry_end_time', '14:00:00')
-        end_time_obj = datetime.strptime(end_time_str, '%H:%M:%S').time()
-
-        if timestamp.time() < start_time_obj:
-            return
-        if timestamp.time() >= end_time_obj:
-            return
-
-        # User Fix: Restrict entry to TF-settled boundaries to reduce over-trading
-        # Exception 1: Allow immediate entry at 9:16:05 (start of day)
-        # Exception 2: Allow immediate scan if we just exited a trade (last_exit_timestamp is set)
-        tf = self._cfg('rsi.tf', 5)
-        is_start_of_day = (timestamp.time() >= start_time_obj and timestamp.time() < (datetime.combine(dt.date.today(), start_time_obj) + timedelta(minutes=1)).time())
-        is_settled_boundary = (timestamp.minute % tf == 0 and timestamp.second >= 10)
-
-        # Bypass TF wait if a trade was recently closed (Indicator Exit)
-        was_recently_closed = self.last_exit_timestamp is not None
-
-        if not is_start_of_day and not is_settled_boundary and not was_recently_closed:
-            # In backtest with 1-minute steps, second is always 0. We must allow boundary checks.
-            # We also allow entry if CSV is missing (synthetic timestamps) to ensures results appear.
-            feeder_file = getattr(self.orchestrator.websocket, 'file_path', '')
-            if self.orchestrator.is_backtest:
-                if (timestamp.minute % tf == 0) or (not os.path.isfile(feeder_file)):
-                    pass
-                else:
-                    return
-            else:
-                return
-
-        # Re-entry Cooldown: Wait at least 60 seconds after an exit
-        if self.last_exit_timestamp:
-            elapsed = (timestamp - self.last_exit_timestamp).total_seconds()
-            if elapsed < 60:
-                if (timestamp.second % 20) == 0:
-                    logger.debug(f"[SellV3] Re-entry cooldown: {60 - elapsed:.0f}s remaining.")
-                return
-
+    async def _scan_for_best_candidate(self, timestamp, is_initial_entry):
+        """Scans multi-strike range for the best straddle/strangle candidate passing RSI/VWAP filters."""
         # 1. ATM based on Spot
         index_price = self.orchestrator.state_manager.index_price
         interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
-        if not index_price:
-            if (timestamp.second % 10) == 0:
-                logger.debug(f"[SellV3] Waiting for Index Spot price to begin entry...")
-            return
+        if not index_price: return None
 
         atm = int(round(index_price / interval) * interval)
-
-        # Log entry attempt at most every 5 seconds to reduce noise
-        now_ts = (timestamp.hour * 3600) + (timestamp.minute * 60) + timestamp.second
-        if now_ts - getattr(self, '_last_entry_attempt_log', 0) >= 5:
-            self._last_entry_attempt_log = now_ts
-            logger.info(f"[SellV3] Attempting entry at {timestamp} (Spot: {index_price}, ATM: {atm})")
-
-        # 2. Strategy Phase (Initial vs Re-entry)
-        # User requirement: BALANCE RULE IS APPLICABEL ONLY AT START
-        today_str = timestamp.strftime('%Y-%m-%d')
-        # LiveTradeLog entries have a 'date' field (YYYY-MM-DD)
-        trades_today = [t for t in self.closed_trades if t.get('date') == today_str]
-        is_initial_entry = len(trades_today) == 0
         phase_label = "Initial Entry" if is_initial_entry else "Re-entry"
 
-        # 3. Multi-Strike Scan (ATM +/- Offset)
         expiry = self.orchestrator.atm_manager.signal_expiry_date
         ltp_threshold = self._cfg('ltp_threshold', 50.0)
         offset = self._cfg('reentry_strike_offset', 2)
@@ -264,7 +206,7 @@ class SellManagerV3:
             if ce_ltp is None or pe_ltp is None: continue
             if ce_ltp < ltp_threshold and pe_ltp < ltp_threshold: continue
 
-            # 4. Balancing vs Straddle Logic
+            # Balancing vs Straddle Logic
             # User Requirement: Balance for START, pure Straddle for Re-entry
             final_ce_strike, final_pe_strike = base_strike, base_strike
             final_ce_key, final_pe_key = ce_key, pe_key
@@ -272,54 +214,33 @@ class SellManagerV3:
 
             if is_initial_entry and self._cfg('ltp_balance_enabled', True):
                 if ce_ltp < pe_ltp:
-                    # Match PE to CE
                     match_strike, match_key, match_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
-                    if match_key:
-                        final_pe_strike, final_pe_key, final_pe_ltp = match_strike, match_key, match_ltp
+                    if match_key: final_pe_strike, final_pe_key, final_pe_ltp = match_strike, match_key, match_ltp
                 else:
-                    # Match CE to PE
                     match_strike, match_key, match_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
-                    if match_key:
-                        final_ce_strike, final_ce_key, final_ce_ltp = match_strike, match_key, match_ltp
-            else:
-                # Re-entry mode: Keep it as a Straddle (ATM +/- offset)
-                pass
+                    if match_key: final_ce_strike, final_ce_key, final_ce_ltp = match_strike, match_key, match_ltp
 
-            # 5. Entry Criteria (Indicator Check)
-            # User Requirement: Entry id open or high above vwap and close below vwap...and rsi less than 50
-            # RSI Filter
+            # Entry Criteria (Indicator Check)
             rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
-                final_ce_key, final_pe_key, tf, rsi_cfg.get('period', 14), timestamp,
-                include_current=False
+                final_ce_key, final_pe_key, tf, rsi_cfg.get('period', 14), timestamp, include_current=False
             )
-
             if rsi_val is None and self.orchestrator.is_backtest: rsi_val = 0.0
             if rsi_val is None or rsi_val > rsi_threshold: continue
 
             # VWAP Crossover Check
-            # Combined 5m candle
             ce_vwap = await self.orchestrator.indicator_manager.calculate_vwap(final_ce_key, timestamp)
             pe_vwap = await self.orchestrator.indicator_manager.calculate_vwap(final_pe_key, timestamp)
-
             if ce_vwap is None or pe_vwap is None:
-                if self.orchestrator.is_backtest:
-                    ce_vwap, pe_vwap = final_ce_ltp, final_pe_ltp
+                if self.orchestrator.is_backtest: ce_vwap, pe_vwap = final_ce_ltp, final_pe_ltp
                 else: continue
 
             combined_vwap = ce_vwap + pe_vwap
-
             ohlc1 = await self.orchestrator.indicator_manager.get_robust_ohlc(final_ce_key, tf, timestamp, include_current=False)
             ohlc2 = await self.orchestrator.indicator_manager.get_robust_ohlc(final_pe_key, tf, timestamp, include_current=False)
-
             if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty: continue
 
             c1, c2 = ohlc1.iloc[-1], ohlc2.iloc[-1]
-            comb_open = c1['open'] + c2['open']
-            comb_high = c1['high'] + c2['high']
-            comb_close = c1['close'] + c2['close']
-
-            # (Open > VWAP OR High > VWAP) AND (Close <= VWAP)
-            # Detailed Logging for Crossover Rule
+            comb_open, comb_high, comb_close = c1['open'] + c2['open'], c1['high'] + c2['high'], c1['close'] + c2['close']
             is_crossover = (comb_open > combined_vwap or comb_high > combined_vwap) and (comb_close <= combined_vwap)
 
             logger.info(f"[SellV3][Scan {phase_label}] {int(final_ce_strike)}CE+{int(final_pe_strike)}PE (Base: {int(base_strike)}): "
@@ -333,34 +254,83 @@ class SellManagerV3:
                     'total_premium': final_ce_ltp + final_pe_ltp
                 })
 
-        if not candidates:
-            # We don't log "Entry Filtered" for every strike in range to avoid spam
-            return
+        if not candidates: return None
+        return min(candidates, key=lambda x: x['total_premium'])
 
-        # 5. Best Candidate Selection
-        # User Requirement: IF MORE TANN ONE COMBINATION PASS TEH ENTRY CRIYTERIA ENTER IN THAT WHERE TOTAL PREMIUM IS LEAST
-        best = min(candidates, key=lambda x: x['total_premium'])
+    async def _check_entry(self, timestamp):
+        # Time Constraints
+        start_time_str = self._cfg('start_time', '09:16:05')
+        start_time_obj = datetime.strptime(start_time_str, '%H:%M:%S').time()
+        end_time_str = self._cfg('entry_end_time', '14:00:00')
+        end_time_obj = datetime.strptime(end_time_str, '%H:%M:%S').time()
+
+        if timestamp.time() < start_time_obj or timestamp.time() >= end_time_obj: return
+
+        # User Fix: Restrict entry to TF-settled boundaries
+        tf = self._cfg('rsi.tf', 5)
+        is_start_of_day = (timestamp.time() >= start_time_obj and timestamp.time() < (datetime.combine(dt.date.today(), start_time_obj) + timedelta(minutes=1)).time())
+        is_settled_boundary = (timestamp.minute % tf == 0 and timestamp.second >= 10)
+        was_recently_closed = self.last_exit_timestamp is not None
+
+        if not is_start_of_day and not is_settled_boundary and not was_recently_closed:
+            if self.orchestrator.is_backtest and (timestamp.minute % tf == 0): pass
+            else: return
+
+        # Re-entry Cooldown: Wait at least 60 seconds after an exit
+        if self.last_exit_timestamp:
+            elapsed = (timestamp - self.last_exit_timestamp).total_seconds()
+            if elapsed < 60: return
+
+        # Log entry attempt at most every 5 seconds
+        now_ts = (timestamp.hour * 3600) + (timestamp.minute * 60) + timestamp.second
+        if now_ts - getattr(self, '_last_entry_attempt_log', 0) >= 5:
+            self._last_entry_attempt_log = now_ts
+            logger.info(f"[SellV3] Attempting entry at {timestamp} (Spot: {self.orchestrator.state_manager.index_price})")
+
+        # 2. Strategy Phase (Initial vs Re-entry)
+        today_str = timestamp.strftime('%Y-%m-%d')
+        trades_today = [t for t in self.closed_trades if t.get('date') == today_str and "Cleanup" not in t.get('reason', '')]
+        is_initial_entry = len(trades_today) == 0
+
+        # 3. Multi-Strike Scan
+        best = await self._scan_for_best_candidate(timestamp, is_initial_entry)
+        if not best: return
 
         final_ce_strike, final_ce_key, final_ce_ltp = best['ce']['strike'], best['ce']['key'], best['ce']['ltp']
         final_pe_strike, final_pe_key, final_pe_ltp = best['pe']['strike'], best['pe']['key'], best['pe']['ltp']
-        ce_strike, pe_strike = final_ce_strike, final_pe_strike # For _execute_sell logic compatibility
 
-        # 6. Execution Order (Lowest LTP first)
+        # 6. Execution Order (Initial: Lowest LTP first, Re-entry: Immediate both)
         success = False
-        if final_ce_ltp < final_pe_ltp:
-            logger.info(f"[SellV3] Side Selection: CE({final_ce_ltp:.2f}) < PE({final_pe_ltp:.2f}). Selling CE first.")
-            if await self._execute_sell('CE', ce_strike, ce_key, ce_ltp, timestamp):
-                if await self._execute_sell('PE', match_strike, match_key, match_ltp, timestamp):
-                    success = True
+        if is_initial_entry:
+            if final_ce_ltp < final_pe_ltp:
+                logger.info(f"[SellV3] Side Selection: CE({final_ce_ltp:.2f}) < PE({final_pe_ltp:.2f}). Selling CE first.")
+                if await self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp):
+                    if await self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp):
+                        success = True
+            else:
+                logger.info(f"[SellV3] Side Selection: PE({final_pe_ltp:.2f}) <= CE({final_ce_ltp:.2f}). Selling PE first.")
+                if await self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp):
+                    if await self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp):
+                        success = True
         else:
-            logger.info(f"[SellV3] Side Selection: PE({final_pe_ltp:.2f}) <= CE({final_ce_ltp:.2f}). Selling PE first.")
-            if await self._execute_sell('PE', pe_strike, pe_key, pe_ltp, timestamp):
-                if await self._execute_sell('CE', match_strike, match_key, match_ltp, timestamp):
-                    success = True
+            # Re-entry: Coordinated simultaneous execution
+            # We use gather to fire both orders as close as possible in live mode
+            results = await asyncio.gather(
+                self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp),
+                self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp),
+                return_exceptions=True
+            )
+            success = all(r is True for r in results)
 
         if not success:
-            logger.error("[SellV3] Entry failed: One or more legs could not be executed.")
+            logger.error("[SellV3] Entry failed: One or more legs could not be executed. Cleaning up orphans.")
             # Partial cleanup if one leg succeeded but the other failed
+            if self.ce_leg or self.pe_leg:
+                # Use _execute_leg_exit for a clean removal from PnL trackers and broker states
+                for side, leg in [('CE', self.ce_leg), ('PE', self.pe_leg)]:
+                    if leg: await self._execute_leg_exit(side, leg, timestamp, "Cleanup Orphaned Leg")
+                self.ce_leg = None
+                self.pe_leg = None
             return
 
         self.active = True
@@ -700,32 +670,20 @@ class SellManagerV3:
         skip broker orders and perform a virtual roll (internal price reset).
         """
         logger.info(f"[SellV3] SMART ROLL INITIATED: {reason}")
+        # Save old legs in case of failure
+        old_ce, old_pe = self.ce_leg, self.pe_leg
 
-        # 1. Determine New Target strikes based on current Spot
-        index_price = self.orchestrator.state_manager.index_price
-        interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
-        atm = int(round(index_price / interval) * interval)
-        expiry = self.orchestrator.atm_manager.signal_expiry_date
-        ltp_threshold = self._cfg('ltp_threshold', 50.0)
+        # 1. Determine New Target strikes based on multi-strike re-entry logic
+        # Smart Roll is by definition a re-entry phase
+        best = await self._scan_for_best_candidate(timestamp, is_initial_entry=False)
 
-        # We use a similar search logic but potentially restricted to current context
-        new_ce_strike, new_ce_key, new_ce_ltp = await self._find_strike_ge(atm, 'CALL', expiry, ltp_threshold)
-        new_pe_strike, new_pe_key, new_pe_ltp = await self._find_strike_ge(atm, 'PUT', expiry, ltp_threshold)
-
-        if not new_ce_key or not new_pe_key:
-            logger.warning("[SellV3] Smart Roll failed: Could not find new target strikes. Falling back to Full Exit.")
-            await self._exit_all(timestamp, f"{reason} (Roll Failed)")
+        if not best:
+            logger.warning("[SellV3] Smart Roll failed: No candidates passed filters. Falling back to Full Exit.")
+            await self._exit_all(timestamp, f"{reason} (No Roll Candidate)")
             return
 
-        # Match strikes
-        if new_ce_ltp < new_pe_ltp:
-            match_pe_strike, match_pe_key, match_pe_ltp = await self._find_matching_strike(new_ce_ltp, 'PUT', expiry)
-            final_ce_strike, final_ce_key, final_ce_ltp = new_ce_strike, new_ce_key, new_ce_ltp
-            final_pe_strike, final_pe_key, final_pe_ltp = match_pe_strike, match_pe_key, match_pe_ltp
-        else:
-            match_ce_strike, match_ce_key, match_ce_ltp = await self._find_matching_strike(new_pe_ltp, 'CALL', expiry)
-            final_ce_strike, final_ce_key, final_ce_ltp = match_ce_strike, match_ce_key, match_ce_ltp
-            final_pe_strike, final_pe_key, final_pe_ltp = new_pe_strike, new_pe_key, new_pe_ltp
+        final_ce_strike, final_ce_key, final_ce_ltp = best['ce']['strike'], best['ce']['key'], best['ce']['ltp']
+        final_pe_strike, final_pe_key, final_pe_ltp = best['pe']['strike'], best['pe']['key'], best['pe']['ltp']
 
         # 2. Compare with current legs
         legs_to_close = []
@@ -748,19 +706,27 @@ class SellManagerV3:
             await self._record_trade_log(side, leg, roll_ltp, timestamp, f"Smart Roll ({reason})")
 
         # 5. Execute necessary broker entries
-        if ('CE', self.ce_leg) in legs_to_close:
-            await self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp)
+        success = True
+        if ('CE', old_ce) in legs_to_close:
+            if not await self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp):
+                success = False
         else:
             # Update retained CE leg state
             self.ce_leg['entry_ltp'] = final_ce_ltp
             self.ce_leg['entry_atp'] = self.orchestrator.state_manager.option_atps.get(final_ce_key) or final_ce_ltp
 
-        if ('PE', self.pe_leg) in legs_to_close:
-            await self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp)
+        if ('PE', old_pe) in legs_to_close:
+            if not await self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp):
+                success = False
         else:
             # Update retained PE leg state
             self.pe_leg['entry_ltp'] = final_pe_ltp
             self.pe_leg['entry_atp'] = self.orchestrator.state_manager.option_atps.get(final_pe_key) or final_pe_ltp
+
+        if not success:
+            logger.error("[SellV3] Smart Roll failed: One or more entry legs could not be executed. Forced Full Exit.")
+            await self._exit_all(timestamp, f"Smart Roll Failure ({reason})")
+            return
 
         # 6. Finalize State
         self.entry_timestamp = timestamp
