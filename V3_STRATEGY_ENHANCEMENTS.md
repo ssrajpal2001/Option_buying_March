@@ -9,18 +9,17 @@ This logic protects profits by monitoring the "lowest point" reached by the Comb
 *   **Trigger:** If the current Combined VWAP rises by **1% or more** from its recorded lowest point, the bot will exit the position.
 *   **Purpose:** To capture reversals in the premium decay trend.
 
-## 2. Updated LTP Balanced Entry Logic
-While balancing logic currently exists, it is being updated to follow a "strictly lower" price rule for the second leg to ensure a conservative entry.
+## 2. Initial Entry Logic (09:16:05 AM)
+The very first trade of the day bypasses the scanner and crossover filters. It uses direct ATM/ITM selection for rapid execution.
 
-*   **Updated Logic:**
-    1.  The bot identifies the initial candidates for CE and PE.
-    2.  It identifies which side has the **lower LTP**.
-    3.  It executes the sell order for the lower-priced leg first.
-    4.  For the opposite side, it selects the strike that is **nearest to, but strictly less than**, the price of the first leg.
-*   **Comparison:**
-    *   *Old Logic:* Picked the closest strike where LTP >= first leg.
-    *   *New Logic:* Picks the closest strike where LTP < first leg.
-*   **Example:** If CE is ₹60 and the closest PE strikes are ₹58 and ₹62, the bot will now select the **₹58** strike.
+*   **Strike Selection:**
+    1.  Identifies the **ATM** based on Spot.
+    2.  Finds the side (CE or PE) with the **Lower LTP**.
+    3.  **Threshold Rule:** If that Lower LTP is **< 50**, the bot moves **1 strike ITM** to ensure sufficient premium.
+*   **Execution:**
+    1.  The bot sells the Lower LTP side first.
+    2.  **Strict Balancing:** For the other side, it selects the strike that is **nearest to, but strictly less than**, the price of the first leg sold.
+*   **Transition:** Once this initial position is closed, the bot switches to the "Multi-Strike Scanner" for all subsequent re-entries.
 
 ## 3. Multi-Strike Re-entry Scan (ATM ± Range)
 Instead of only monitoring the ATM, the bot will now scan a range of straddles to find the best re-entry opportunity.

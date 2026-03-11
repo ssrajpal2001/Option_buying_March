@@ -10,12 +10,13 @@ from .event_bus import event_bus
 class SellManagerV3:
     """
     V3 Sell Strategy:
-    - Entry: 9:16:05 AM, ATM based on Spot.
-    - Strike selection: First ITM/ATM >= 50 LTP.
-    - Lowest LTP leg sold first, then matching leg for other side.
+    - Initial Entry (09:16:05): Direct ATM selection, Lower LTP side first.
+    - If Lower LTP < 50, move 1 strike ITM.
+    - Match other side strictly lower premium.
+    - Re-entry scanner: After first trade, scan range for Straddles with crossover and RSI filters.
     - Combined RSI (5m) and Combined VWAP (ATP) exit.
     - Target Profit (12%), LTP < 20, and Dynamic TSL exits.
-    - Auto-restart before 2:00 PM.
+    - VWAP Slope Exit: 1% rise from lowest point since entry.
     """
 
     def __init__(self, orchestrator):
@@ -170,16 +171,81 @@ class SellManagerV3:
 
             self.last_config_check_time = mtime
 
-    async def _scan_for_best_candidate(self, timestamp, is_initial_entry):
-        """Scans multi-strike range for the best straddle/strangle candidate passing RSI/VWAP filters."""
-        # 1. ATM based on Spot
+    async def _perform_initial_entry(self, timestamp):
+        """Logic for the very first entry of the day: ATM side-selection with LTP >= 50 rule."""
+        index_price = self.orchestrator.state_manager.index_price
+        interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
+        if not index_price: return False
+
+        atm = int(round(index_price / interval) * interval)
+        expiry = self.orchestrator.atm_manager.signal_expiry_date
+
+        ce_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(atm, 'CALL', expiry)
+        pe_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(atm, 'PUT', expiry)
+
+        if not ce_key or not pe_key: return False
+        ce_ltp, pe_ltp = await self._get_ltp(ce_key), await self._get_ltp(pe_key)
+        if ce_ltp is None or pe_ltp is None: return False
+
+        # side with lower ltp
+        if ce_ltp < pe_ltp:
+            low_side, low_strike, low_key, low_ltp, other_side = 'CE', atm, ce_key, ce_ltp, 'PE'
+        else:
+            low_side, low_strike, low_key, low_ltp, other_side = 'PE', atm, pe_key, pe_ltp, 'CE'
+
+        # if lower < threshold, go 1 ITM
+        ltp_threshold = self._cfg('ltp_threshold', 50.0)
+        if low_ltp < ltp_threshold:
+            logger.info(f"[SellV3] Initial Entry: Lower LTP {low_ltp:.2f} < {ltp_threshold}. Moving 1 strike ITM.")
+            if low_side == 'CE': low_strike -= interval
+            else: low_strike += interval
+            low_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(low_strike, 'CALL' if low_side == 'CE' else 'PUT', expiry)
+            if low_key:
+                new_ltp = await self._get_ltp(low_key)
+                if new_ltp: low_ltp = new_ltp
+
+        logger.info(f"[SellV3] Initial Entry: Selling {low_side} {low_strike} first at {low_ltp:.2f}")
+        if not await self._execute_sell(low_side, low_strike, low_key, low_ltp, timestamp): return False
+
+        # Match other side strictly lower
+        match_strike, match_key, match_ltp = await self._find_matching_strike(low_ltp, other_side, expiry)
+        if not match_key:
+            logger.error(f"[SellV3] Initial Entry: No matching {other_side} strictly lower than {low_ltp:.2f}.")
+            leg = self.ce_leg if low_side == 'CE' else self.pe_leg
+            if leg: await self._execute_leg_exit(low_side, leg, timestamp, "Cleanup (No Match)")
+            if low_side == 'CE': self.ce_leg = None
+            else: self.pe_leg = None
+            return False
+
+        if not await self._execute_sell(other_side, match_strike, match_key, match_ltp, timestamp):
+            logger.error(f"[SellV3] Initial Entry: Second leg failure. Cleaning up.")
+            leg = self.ce_leg if low_side == 'CE' else self.pe_leg
+            if leg: await self._execute_leg_exit(low_side, leg, timestamp, "Cleanup (Leg Failure)")
+            if low_side == 'CE': self.ce_leg = None
+            else: self.pe_leg = None
+            return False
+
+        return True
+
+    def _finalize_entry(self, timestamp):
+        self.active = True
+        self.entry_timestamp = timestamp
+        self.total_premium_points = self.ce_leg['entry_ltp'] + self.pe_leg['entry_ltp']
+        self.tsl_wait_high_hit = False
+        self.lowest_combined_vwap = None
+        self.tsl_scalable_lock_points = 0.0
+        self.last_exit_timestamp = None
+        self.last_indicator_check_minute = -1
+        self.save_state()
+        logger.info(f"[SellV3] V3 Position Entered. Total Premium: {self.total_premium_points:.2f}")
+
+    async def _scan_for_best_candidate(self, timestamp):
+        """Scans multi-strike range for the best straddle candidate passing RSI/VWAP filters (Re-entry only)."""
         index_price = self.orchestrator.state_manager.index_price
         interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
         if not index_price: return None
 
         atm = int(round(index_price / interval) * interval)
-        phase_label = "Initial Entry" if is_initial_entry else "Re-entry"
-
         expiry = self.orchestrator.atm_manager.signal_expiry_date
         ltp_threshold = self._cfg('ltp_threshold', 50.0)
         offset = self._cfg('reentry_strike_offset', 2)
@@ -189,69 +255,52 @@ class SellManagerV3:
 
         candidates = [] # list of {ce_leg, pe_leg, total_premium}
 
-        # User Requirement: check ATM +- 2 for all straddle combination,not strangle combination
+        # User Requirement: re-entry strictly evaluates Straddle combinations
         scan_range = range(-offset, offset + 1) if self._cfg('multi_strike_scan_enabled', True) else range(0, 1)
         for i in scan_range:
             base_strike = atm + (i * interval)
-
-            # CE and PE for the SAME strike (Straddle)
             ce_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(base_strike, 'CALL', expiry)
             pe_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(base_strike, 'PUT', expiry)
 
             if not ce_key or not pe_key: continue
-
             ce_ltp = await self._get_ltp(ce_key)
             pe_ltp = await self._get_ltp(pe_key)
 
             if ce_ltp is None or pe_ltp is None: continue
             if ce_ltp < ltp_threshold and pe_ltp < ltp_threshold: continue
 
-            # Balancing vs Straddle Logic
-            # User Requirement: Balance for START, pure Straddle for Re-entry
-            final_ce_strike, final_pe_strike = base_strike, base_strike
-            final_ce_key, final_pe_key = ce_key, pe_key
-            final_ce_ltp, final_pe_ltp = ce_ltp, pe_ltp
-
-            if is_initial_entry and self._cfg('ltp_balance_enabled', True):
-                if ce_ltp < pe_ltp:
-                    match_strike, match_key, match_ltp = await self._find_matching_strike(ce_ltp, 'PUT', expiry)
-                    if match_key: final_pe_strike, final_pe_key, final_pe_ltp = match_strike, match_key, match_ltp
-                else:
-                    match_strike, match_key, match_ltp = await self._find_matching_strike(pe_ltp, 'CALL', expiry)
-                    if match_key: final_ce_strike, final_ce_key, final_ce_ltp = match_strike, match_key, match_ltp
-
             # Entry Criteria (Indicator Check)
             rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
-                final_ce_key, final_pe_key, tf, rsi_cfg.get('period', 14), timestamp, include_current=False
+                ce_key, pe_key, tf, rsi_cfg.get('period', 14), timestamp, include_current=False
             )
             if rsi_val is None and self.orchestrator.is_backtest: rsi_val = 0.0
             if rsi_val is None or rsi_val > rsi_threshold: continue
 
             # VWAP Crossover Check
-            ce_vwap = await self.orchestrator.indicator_manager.calculate_vwap(final_ce_key, timestamp)
-            pe_vwap = await self.orchestrator.indicator_manager.calculate_vwap(final_pe_key, timestamp)
+            ce_vwap = await self.orchestrator.indicator_manager.calculate_vwap(ce_key, timestamp)
+            pe_vwap = await self.orchestrator.indicator_manager.calculate_vwap(pe_key, timestamp)
             if ce_vwap is None or pe_vwap is None:
-                if self.orchestrator.is_backtest: ce_vwap, pe_vwap = final_ce_ltp, final_pe_ltp
+                if self.orchestrator.is_backtest: ce_vwap, pe_vwap = ce_ltp, pe_ltp
                 else: continue
 
             combined_vwap = ce_vwap + pe_vwap
-            ohlc1 = await self.orchestrator.indicator_manager.get_robust_ohlc(final_ce_key, tf, timestamp, include_current=False)
-            ohlc2 = await self.orchestrator.indicator_manager.get_robust_ohlc(final_pe_key, tf, timestamp, include_current=False)
+            ohlc1 = await self.orchestrator.indicator_manager.get_robust_ohlc(ce_key, tf, timestamp, include_current=False)
+            ohlc2 = await self.orchestrator.indicator_manager.get_robust_ohlc(pe_key, tf, timestamp, include_current=False)
             if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty: continue
 
             c1, c2 = ohlc1.iloc[-1], ohlc2.iloc[-1]
             comb_open, comb_high, comb_close = c1['open'] + c2['open'], c1['high'] + c2['high'], c1['close'] + c2['close']
             is_crossover = (comb_open > combined_vwap or comb_high > combined_vwap) and (comb_close <= combined_vwap)
 
-            logger.info(f"[SellV3][Scan {phase_label}] {int(final_ce_strike)}CE+{int(final_pe_strike)}PE (Base: {int(base_strike)}): "
+            logger.info(f"[SellV3][Scan Re-entry] {int(base_strike)}CE+{int(base_strike)}PE (Base: {int(base_strike)}): "
                          f"RSI:{rsi_val:.2f}, O:{comb_open:.2f}, H:{comb_high:.2f}, C:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
                          f"| RSI_OK:{rsi_val <= rsi_threshold}, CROSS_OK:{is_crossover}")
 
             if rsi_val <= rsi_threshold and is_crossover:
                 candidates.append({
-                    'ce': {'strike': final_ce_strike, 'key': final_ce_key, 'ltp': final_ce_ltp},
-                    'pe': {'strike': final_pe_strike, 'key': final_pe_key, 'ltp': final_pe_ltp},
-                    'total_premium': final_ce_ltp + final_pe_ltp
+                    'ce': {'strike': base_strike, 'key': ce_key, 'ltp': ce_ltp},
+                    'pe': {'strike': base_strike, 'key': pe_key, 'ltp': pe_ltp},
+                    'total_premium': ce_ltp + pe_ltp
                 })
 
         if not candidates: return None
@@ -292,96 +341,42 @@ class SellManagerV3:
         trades_today = [t for t in self.closed_trades if t.get('date') == today_str and "Cleanup" not in t.get('reason', '')]
         is_initial_entry = len(trades_today) == 0
 
-        # 3. Multi-Strike Scan
-        best = await self._scan_for_best_candidate(timestamp, is_initial_entry)
+        if is_initial_entry:
+            # Phase 1: Simple Balanced Entry (No scanner/crossover)
+            if await self._perform_initial_entry(timestamp):
+                self._finalize_entry(timestamp)
+            else:
+                # Cleanup in case of partial success or failed search
+                if self.ce_leg or self.pe_leg:
+                    for side, leg in [('CE', self.ce_leg), ('PE', self.pe_leg)]:
+                        if leg: await self._execute_leg_exit(side, leg, timestamp, "Cleanup Initial Entry")
+                    self.ce_leg, self.pe_leg = None, None
+            return
+
+        # Phase 2: Re-entry Multi-Strike Scanner
+        best = await self._scan_for_best_candidate(timestamp)
         if not best: return
 
         final_ce_strike, final_ce_key, final_ce_ltp = best['ce']['strike'], best['ce']['key'], best['ce']['ltp']
         final_pe_strike, final_pe_key, final_pe_ltp = best['pe']['strike'], best['pe']['key'], best['pe']['ltp']
 
-        # 6. Execution Order (Initial: Lowest LTP first, Re-entry: Immediate both)
-        success = False
-        if is_initial_entry:
-            if final_ce_ltp < final_pe_ltp:
-                logger.info(f"[SellV3] Side Selection: CE({final_ce_ltp:.2f}) < PE({final_pe_ltp:.2f}). Selling CE first.")
-                if await self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp):
-                    if await self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp):
-                        success = True
-            else:
-                logger.info(f"[SellV3] Side Selection: PE({final_pe_ltp:.2f}) <= CE({final_ce_ltp:.2f}). Selling PE first.")
-                if await self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp):
-                    if await self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp):
-                        success = True
-        else:
-            # Re-entry: Coordinated simultaneous execution
-            # We use gather to fire both orders as close as possible in live mode
-            results = await asyncio.gather(
-                self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp),
-                self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp),
-                return_exceptions=True
-            )
-            success = all(r is True for r in results)
+        # Re-entry: Coordinated simultaneous execution
+        results = await asyncio.gather(
+            self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp),
+            self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp),
+            return_exceptions=True
+        )
+        success = all(r is True for r in results)
 
         if not success:
-            logger.error("[SellV3] Entry failed: One or more legs could not be executed. Cleaning up orphans.")
-            # Partial cleanup if one leg succeeded but the other failed
+            logger.error("[SellV3] Re-entry failed: One or more legs failed. Cleaning up orphans.")
             if self.ce_leg or self.pe_leg:
-                # Use _execute_leg_exit for a clean removal from PnL trackers and broker states
                 for side, leg in [('CE', self.ce_leg), ('PE', self.pe_leg)]:
                     if leg: await self._execute_leg_exit(side, leg, timestamp, "Cleanup Orphaned Leg")
-                self.ce_leg = None
-                self.pe_leg = None
+                self.ce_leg, self.pe_leg = None, None
             return
 
-        self.active = True
-        self.entry_timestamp = timestamp
-        self.total_premium_points = self.ce_leg['entry_ltp'] + self.pe_leg['entry_ltp']
-        self.tsl_wait_high_hit = False
-        self.lowest_combined_vwap = None
-        self.tsl_scalable_lock_points = 0.0
-        # Reset re-entry scan bypass
-        self.last_exit_timestamp = None
-        # Reset indicator timer to allow immediate exit check if entry happens on boundary
-        self.last_indicator_check_minute = -1
-        self.save_state()
-        logger.info(f"[SellV3] Strangle Entered. Total Premium: {self.total_premium_points:.2f}")
-
-    async def _find_strike_ge(self, start_strike, side, expiry, threshold, direction='ITM'):
-        interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
-        curr_strike = start_strike
-        for i in range(10): # Max 10 strikes away
-            key = self.orchestrator.atm_manager.find_instrument_key_by_strike(curr_strike, side, expiry)
-            if not key:
-                logger.debug(f"[SellV3] {side} {curr_strike}: Key not found in lookup.")
-                break
-
-            ltp = await self._get_ltp(key)
-            if ltp is None:
-                # User fix: DO NOT break. Continue searching other ITM strikes.
-                if (datetime.now().second % 10) == 0:
-                    logger.debug(f"[SellV3] {side} {curr_strike}: LTP is None. Ensuring feed started and continuing search ITM...")
-                # We should trigger a feed subscription just in case
-                await event_bus.publish('ADD_TO_WATCHLIST', {'instrument_key': key})
-
-                # Move ITM and continue
-                if side == 'CALL': curr_strike -= interval
-                else: curr_strike += interval
-                continue
-
-            if ltp >= threshold:
-                logger.info(f"[SellV3] Found {side} strike {curr_strike} with LTP {ltp:.2f} (Threshold: {threshold})")
-                return curr_strike, key, ltp
-
-            logger.debug(f"[SellV3] {side} {curr_strike}: LTP {ltp:.2f} < {threshold}. Moving ITM.")
-
-            # Move ITM
-            if side == 'CALL':
-                curr_strike -= interval
-            else:
-                curr_strike += interval
-
-        logger.warning(f"[SellV3] No {side} strike found >= {threshold} within 10 ITM strikes of ATM {start_strike}. (Checked up to {curr_strike})")
-        return None, None, None
+        self._finalize_entry(timestamp)
 
     async def _find_matching_strike(self, target_ltp, side, expiry):
         """Find strike nearest to target_ltp. If balancing enabled, must be strictly LESS than target_ltp."""
@@ -675,7 +670,7 @@ class SellManagerV3:
 
         # 1. Determine New Target strikes based on multi-strike re-entry logic
         # Smart Roll is by definition a re-entry phase
-        best = await self._scan_for_best_candidate(timestamp, is_initial_entry=False)
+        best = await self._scan_for_best_candidate(timestamp)
 
         if not best:
             logger.warning("[SellV3] Smart Roll failed: No candidates passed filters. Falling back to Full Exit.")
