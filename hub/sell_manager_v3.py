@@ -336,11 +336,27 @@ class SellManagerV3:
         # 2. Strategy Phase (Initial vs Re-entry)
         today_str = timestamp.strftime('%Y-%m-%d')
         trades_today = [t for t in self.closed_trades if t.get('date') == today_str and "Cleanup" not in t.get('reason', '')]
-        is_initial_entry = len(trades_today) == 0
+        is_first_trade_of_day = len(trades_today) == 0
+
+        workflow_phase = self._cfg('workflow_phase', 'BEGINNING')
         reentry_mode = self._cfg('reentry_mode', 'SCANNER')
 
         best = None
-        if is_initial_entry or reentry_mode == "BALANCED":
+
+        # Logic Selection based on Phase Toggle
+        # 1. AT BEGINNING: First trade is always Balanced. Subsequent trades follow reentry_mode.
+        # 2. CONTINUE: Every trade (including first) follows reentry_mode.
+
+        use_balanced_logic = False
+        if workflow_phase == "BEGINNING":
+            if is_first_trade_of_day:
+                use_balanced_logic = True
+            else:
+                use_balanced_logic = (reentry_mode == "BALANCED")
+        else: # CONTINUE
+            use_balanced_logic = (reentry_mode == "BALANCED")
+
+        if use_balanced_logic:
             # Balanced Mode (No filters)
             best = await self._get_balanced_candidate(timestamp)
         else:
@@ -609,6 +625,27 @@ class SellManagerV3:
             await self._check_indicator_exit(timestamp)
 
     async def _check_indicator_exit(self, timestamp):
+        # User Requirement: Balanced Mode should ignore Technical Exits (RSI/VWAP)
+        workflow_phase = self._cfg('workflow_phase', 'BEGINNING')
+        reentry_mode = self._cfg('reentry_mode', 'SCANNER')
+
+        today_str = timestamp.strftime('%Y-%m-%d')
+        trades_today = [t for t in self.closed_trades if t.get('date') == today_str and "Cleanup" not in t.get('reason', '')]
+        is_first_trade_of_day = len(trades_today) == 0 # Note: Active trade is NOT in history yet
+
+        # Determine current mode
+        current_mode_is_balanced = False
+        if workflow_phase == "BEGINNING":
+            # In BEGINNING phase, the CURRENT active trade is balanced if it was the first of the day
+            # Since we haven't closed it yet, trades_today will be empty for the first trade
+            current_mode_is_balanced = is_first_trade_of_day or (reentry_mode == "BALANCED")
+        else:
+            current_mode_is_balanced = (reentry_mode == "BALANCED")
+
+        if current_mode_is_balanced:
+            # Skip Technical Exits for Balanced trades
+            return
+
         # Combined RSI > 50
         # For exit, we use the completed candles (include_current=False) as requested
         tf = self._cfg('rsi.tf', 5)
@@ -661,6 +698,7 @@ class SellManagerV3:
         old_ce, old_pe = self.ce_leg, self.pe_leg
 
         # 1. Determine New Target strikes based on configured re-entry mode
+        # Note: Smart Roll ONLY happens for re-entries, so we just check reentry_mode
         reentry_mode = self._cfg('reentry_mode', 'SCANNER')
         if reentry_mode == "BALANCED":
             best = await self._get_balanced_candidate(timestamp)

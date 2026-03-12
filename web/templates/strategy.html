@@ -185,7 +185,14 @@
           </div>
         </div>
         <div class="flex items-center justify-between">
-          <span class="text-sm">Re-entry Mode</span>
+          <span class="text-sm">Workflow Phase</span>
+          <div class="flex bg-slate-800 rounded-lg p-1">
+            <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.workflow_phase" data-value="BEGINNING" onclick="selectMode(this)">At Beginning</button>
+            <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.workflow_phase" data-value="CONTINUE" onclick="selectMode(this)">Continue</button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Re-entry Style</span>
           <div class="flex bg-slate-800 rounded-lg p-1">
             <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.reentry_mode" data-value="BALANCED" onclick="selectMode(this)">Initial/Balanced</button>
             <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.reentry_mode" data-value="SCANNER" onclick="selectMode(this)">Technical Scanner</button>

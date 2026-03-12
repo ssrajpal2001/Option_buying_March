@@ -41,10 +41,22 @@ A more granular trailing stop-loss based on realized/floating profit.
 *   **Scalability:** These values are automatically multiplied by the number of lots traded.
     *   *Example (10 lots):* Lock ₹2,000 when profit reaches ₹10,000. For every ₹2,500 more profit, increase lock by ₹2,000.
 
-## 5. UI & Configuration
+## 5. Workflow Control (Phase and Style)
+The bot supports flexible daily transitions through two main toggles:
+
+*   **Workflow Phase:**
+    *   **At Beginning:** The first trade of the day (09:16) is always forced to use the **Balanced** logic (unfiltered) to ensure an early position.
+    *   **Continue:** The first trade follows the same style selected for re-entries.
+*   **Re-entry Style:**
+    *   **Initial/Balanced:** All trades (including re-entries) use the balanced premium logic and **ignore** technical RSI/VWAP criteria for entry and exit.
+    *   **Technical Scanner:** Trades follow the 5m RSI/VWAP crossover signals for both entry and exit.
+
+## 6. UI & Configuration
 *   All new logics will have **On/Off switches** in the `strategy_logic.json`.
 *   The **Web Dashboard** will be updated to include toggles and input fields for:
     *   VWAP Slope Exit %
     *   Re-entry Strike Range (Offset)
     *   TSL Profit Thresholds and Lock Values
     *   Enable/Disable the new LTP Balanced Logic
+    *   Workflow Phase (At Beginning vs. Continue)
+    *   Re-entry Style (Balanced vs. Technical Scanner)
