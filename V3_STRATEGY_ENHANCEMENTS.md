@@ -52,6 +52,7 @@ The bot supports flexible daily transitions through two main toggles:
     *   **Technical Scanner:** Trades follow the 5m RSI/VWAP crossover signals for both entry and exit.
 
 ## 6. UI & Configuration
+*   **Persistent Tracking:** Added **Entry Time** tracking across all strategies. This is now visible on active position cards and in the Order Book (Closed Trades) on the dashboard.
 *   All new logics will have **On/Off switches** in the `strategy_logic.json`.
 *   The **Web Dashboard** will be updated to include toggles and input fields for:
     *   VWAP Slope Exit %

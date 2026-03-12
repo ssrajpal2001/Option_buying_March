@@ -154,6 +154,7 @@ class StateManager:
                 reason='Exit',
                 order_id='',
                 timestamp=position_to_close.get('exit_timestamp') or position_to_close.get('entry_timestamp'),
+                entry_time=position_to_close.get('entry_timestamp'),
             ))
 
         await self.save_state()

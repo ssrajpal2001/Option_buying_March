@@ -817,6 +817,7 @@ class SellManagerV3:
                 reason=reason,
                 order_id=str(order_id) if order_id else '',
                 timestamp=timestamp,
+                entry_time=self.entry_timestamp,
             )
 
             # Persistence: Add to persistent list

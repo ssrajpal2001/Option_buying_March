@@ -154,7 +154,8 @@
     <table class="w-full text-xs" id="ob-table">
       <thead>
         <tr style="color:#64748b;border-bottom:1px solid #1e293b">
-          <th class="text-left py-1 pr-3">Time</th>
+          <th class="text-left py-1 pr-3">Entry</th>
+          <th class="text-left py-1 pr-3">Exit</th>
           <th class="text-left py-1 pr-3">Type</th>
           <th class="text-left py-1 pr-3">Dir</th>
           <th class="text-right py-1 pr-3">Strike</th>
@@ -166,7 +167,7 @@
         </tr>
       </thead>
       <tbody id="ob-body">
-        <tr><td colspan="9" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>
+        <tr><td colspan="10" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>
       </tbody>
     </table>
   </div>
@@ -325,7 +326,7 @@ function updateDashboard(d) {
   document.getElementById('ob-count').textContent = `${trades.length} trade${trades.length !== 1 ? 's' : ''}`;
   const tbody = document.getElementById('ob-body');
   if (trades.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>';
   } else {
     tbody.innerHTML = trades.map(t => {
       const profit = t.pnl_pts > 0;
@@ -337,6 +338,7 @@ function updateDashboard(d) {
       const ptsSign = t.pnl_pts > 0 ? '+' : '';
       const rsSign = t.pnl_rs > 0 ? '+' : '';
       return `<tr style="border-bottom:1px solid #1e293b;background:${rowColor}">
+        <td class="py-1 pr-3 font-mono" style="color:#94a3b8">${escapeHtml(t.entry_time || '--')}</td>
         <td class="py-1 pr-3 font-mono" style="color:#94a3b8">${escapeHtml(t.time)}</td>
         <td class="py-1 pr-3 font-bold" style="color:${typeColor}">${escapeHtml(t.type)}</td>
         <td class="py-1 pr-3 font-bold" style="color:${dirColor}">${escapeHtml(t.direction)}</td>

@@ -730,6 +730,7 @@ class SellManager:
                         reason=reason,
                         order_id=str(order_id) if order_id else '',
                         timestamp=timestamp,
+                        entry_time=entry_ts,
                     ))
             except Exception as _tl_ex:
                 logger.debug(f"[SellManager] trade_log append failed: {_tl_ex}")

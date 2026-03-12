@@ -19,10 +19,15 @@ class LiveTradeLog:
 
     @staticmethod
     def make_entry(trade_type, direction, strike, entry_price, exit_price,
-                   pnl_pts, pnl_rs, reason, order_id='', timestamp=None):
+                   pnl_pts, pnl_rs, reason, order_id='', timestamp=None, entry_time=None):
         ts = timestamp or datetime.now()
+        e_time = entry_time
+        if e_time and hasattr(e_time, 'strftime'):
+            e_time = e_time.strftime('%H:%M:%S')
+
         return {
             'time': ts.strftime('%H:%M:%S') if hasattr(ts, 'strftime') else str(ts)[-8:],
+            'entry_time': str(e_time) if e_time else '--',
             'date': ts.strftime('%Y-%m-%d') if hasattr(ts, 'strftime') else str(ts)[:10],
             'type': trade_type,
             'direction': direction,
