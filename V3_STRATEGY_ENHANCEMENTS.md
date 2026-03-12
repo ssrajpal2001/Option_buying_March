@@ -28,7 +28,7 @@ Instead of only monitoring the ATM, the bot will now scan a range of straddles t
 *   **Entry Criteria (on 5-minute timeframe):**
     *   **VWAP Crossover:** The combined 5m candle must have (**Open > VWAP** OR **High > VWAP**) AND (**Close <= VWAP**). This signifies a "rejection" or "pullback" below the VWAP.
     *   **RSI Filter:** Combined RSI must be below 50.
-*   **Selection:** If multiple strike combinations pass the criteria simultaneously, the bot will enter the one with the **lowest total premium** (least risk).
+*   **Selection:** If multiple strike combinations pass the criteria simultaneously, the bot will enter the one with the strike **nearest to the current ATM** (Spot price).
 *   **Execution Behavior:**
     *   **Indicator & Slope Exits:** Result in a **Full Exit** and a mandatory **60-second cooldown** before the scanner resumes.
     *   **Target/Ratio/LTP Exits:** Support **Smart Rolling** (keeping overlapping strikes) to save brokerage if re-entry conditions are met immediately.

@@ -11,9 +11,10 @@ class SellManagerV3:
     """
     V3 Sell Strategy:
     - Initial Entry (09:16:05): Direct ATM selection, Lower LTP side first.
-    - If Lower LTP < 50, move 1 strike ITM.
+    - If Lower LTP < threshold, move 1 strike ITM.
     - Match other side strictly lower premium.
     - Re-entry scanner: After first trade, scan range for Straddles with crossover and RSI filters.
+    - Selection: Strike nearest to ATM among those passing filters.
     - Combined RSI (5m) and Combined VWAP (ATP) exit.
     - Target Profit (12%), LTP < 20, and Dynamic TSL exits.
     - VWAP Slope Exit: 1% rise from lowest point since entry.
@@ -172,7 +173,7 @@ class SellManagerV3:
             self.last_config_check_time = mtime
 
     async def _perform_initial_entry(self, timestamp):
-        """Logic for the very first entry of the day: ATM side-selection with LTP >= 50 rule."""
+        """Logic for the very first entry of the day: ATM side-selection with LTP >= threshold rule."""
         index_price = self.orchestrator.state_manager.index_price
         interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
         if not index_price: return False
@@ -212,7 +213,7 @@ class SellManagerV3:
         if not match_key:
             logger.error(f"[SellV3] Initial Entry: No matching {other_side} strictly lower than {low_ltp:.2f}.")
             leg = self.ce_leg if low_side == 'CE' else self.pe_leg
-            if leg: await self._execute_leg_exit(low_side, leg, timestamp, "Cleanup (No Match)")
+            if leg: await self._execute_leg_exit(low_side, leg, timestamp, "Cleanup Initial Entry (No Match)")
             if low_side == 'CE': self.ce_leg = None
             else: self.pe_leg = None
             return False
@@ -220,7 +221,7 @@ class SellManagerV3:
         if not await self._execute_sell(other_side, match_strike, match_key, match_ltp, timestamp):
             logger.error(f"[SellV3] Initial Entry: Second leg failure. Cleaning up.")
             leg = self.ce_leg if low_side == 'CE' else self.pe_leg
-            if leg: await self._execute_leg_exit(low_side, leg, timestamp, "Cleanup (Leg Failure)")
+            if leg: await self._execute_leg_exit(low_side, leg, timestamp, "Cleanup Initial Entry (Leg Failure)")
             if low_side == 'CE': self.ce_leg = None
             else: self.pe_leg = None
             return False
@@ -300,11 +301,13 @@ class SellManagerV3:
                 candidates.append({
                     'ce': {'strike': base_strike, 'key': ce_key, 'ltp': ce_ltp},
                     'pe': {'strike': base_strike, 'key': pe_key, 'ltp': pe_ltp},
-                    'total_premium': ce_ltp + pe_ltp
+                    'total_premium': ce_ltp + pe_ltp,
+                    'atm_dist': abs(base_strike - index_price)
                 })
 
         if not candidates: return None
-        return min(candidates, key=lambda x: x['total_premium'])
+        # User requirement: trade on that strike which is near to ATM when all entry criteria are fulfilled
+        return min(candidates, key=lambda x: x['atm_dist'])
 
     async def _check_entry(self, timestamp):
         # Time Constraints
@@ -345,12 +348,6 @@ class SellManagerV3:
             # Phase 1: Simple Balanced Entry (No scanner/crossover)
             if await self._perform_initial_entry(timestamp):
                 self._finalize_entry(timestamp)
-            else:
-                # Cleanup in case of partial success or failed search
-                if self.ce_leg or self.pe_leg:
-                    for side, leg in [('CE', self.ce_leg), ('PE', self.pe_leg)]:
-                        if leg: await self._execute_leg_exit(side, leg, timestamp, "Cleanup Initial Entry")
-                    self.ce_leg, self.pe_leg = None, None
             return
 
         # Phase 2: Re-entry Multi-Strike Scanner
