@@ -52,6 +52,7 @@
         <div class="grid grid-cols-2 gap-1 mt-2 text-xs" style="color:#64748b">
           <div>Entry <span id="buy-call-entry" class="text-slate-300">--</span></div>
           <div>LTP <span id="buy-call-ltp" class="text-slate-300">--</span></div>
+          <div>Time <span id="buy-call-time" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="buy-call-pnl">--</div>
       </div>
@@ -64,6 +65,7 @@
         <div class="grid grid-cols-2 gap-1 mt-2 text-xs" style="color:#64748b">
           <div>Entry <span id="buy-put-entry" class="text-slate-300">--</span></div>
           <div>LTP <span id="buy-put-ltp" class="text-slate-300">--</span></div>
+          <div>Time <span id="buy-put-time" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="buy-put-pnl">--</div>
       </div>
@@ -85,6 +87,7 @@
         <div class="grid grid-cols-2 gap-1 mt-2 text-xs" style="color:#64748b">
           <div>Entry <span id="sell-ce-entry" class="text-slate-300">--</span></div>
           <div>LTP <span id="sell-ce-ltp" class="text-slate-300">--</span></div>
+          <div>Time <span id="sell-ce-time" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="sell-ce-pnl">--</div>
       </div>
@@ -97,6 +100,7 @@
         <div class="grid grid-cols-2 gap-1 mt-2 text-xs" style="color:#64748b">
           <div>Entry <span id="sell-pe-entry" class="text-slate-300">--</span></div>
           <div>LTP <span id="sell-pe-ltp" class="text-slate-300">--</span></div>
+          <div>Time <span id="sell-pe-time" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="sell-pe-pnl">--</div>
       </div>
@@ -248,6 +252,7 @@ function updateDashboard(d) {
     document.getElementById(`${pfx}-strike`).textContent = pos.strike || '--';
     document.getElementById(`${pfx}-entry`).textContent = fmt(pos.entry);
     document.getElementById(`${pfx}-ltp`).textContent = fmt(pos.ltp);
+    document.getElementById(`${pfx}-time`).textContent = pos.entry_time || '--';
     const pnlEl2 = document.getElementById(`${pfx}-pnl`);
     if (active) {
       pnlEl2.textContent = `₹ ${fmt(pos.pnl)}`;
@@ -279,6 +284,7 @@ function updateDashboard(d) {
     document.getElementById(`${pfx}-strike`).textContent = pos.strike || '--';
     document.getElementById(`${pfx}-entry`).textContent = fmt(pos.entry);
     document.getElementById(`${pfx}-ltp`).textContent = fmt(pos.ltp);
+    document.getElementById(`${pfx}-time`).textContent = pos.entry_time || '--';
     const pnlEl3 = document.getElementById(`${pfx}-pnl`);
     if (active) {
       pnlEl3.textContent = `₹ ${fmt(pos.pnl)}`;

@@ -314,7 +314,7 @@ class SellManagerV3:
 
         # User Fix: Restrict entry to TF-settled boundaries
         tf = self._cfg('rsi.tf', 5)
-        is_start_of_day = (timestamp.time() >= start_time_obj and timestamp.time() < (datetime.combine(dt.date.today(), start_time_obj) + timedelta(minutes=1)).time())
+        is_start_of_day = (timestamp.time() >= start_time_obj and timestamp.time() < (datetime.combine(timestamp.date(), start_time_obj) + timedelta(minutes=1)).time())
         is_settled_boundary = (timestamp.minute % tf == 0 and timestamp.second >= 10)
         was_recently_closed = self.last_exit_timestamp is not None
 

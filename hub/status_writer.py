@@ -53,6 +53,7 @@ class StatusWriter:
                         pnl = (entry - ltp) * total_qty
                     else:
                         pnl = (ltp - entry) * total_qty
+                    entry_ts = pos.get('entry_timestamp')
                     pos_data = {
                         "status": "ACTIVE",
                         "strike": pos.get('strike_price'),
@@ -60,6 +61,7 @@ class StatusWriter:
                         "ltp": round(float(ltp), 2),
                         "pnl": round(float(pnl), 2),
                         "symbol": pos.get('instrument_symbol', ''),
+                        "entry_time": entry_ts.strftime('%H:%M:%S') if hasattr(entry_ts, 'strftime') else str(entry_ts)
                     }
                     break
             buy_data[side] = pos_data
@@ -84,13 +86,15 @@ class StatusWriter:
                     entry = leg.get('entry_ltp') or 0
                     ltp = sm.option_prices.get(inst_key, 0) if inst_key else 0
                     strike = leg.get('strike')
+                    entry_ts = v3_mgr.entry_timestamp
                     sell_data[side] = {
                         "placed": True,
                         "strike": strike,
                         "entry": round(float(entry), 2),
                         "ltp": round(float(ltp), 2),
                         "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
-                        "strategy": "V3"
+                        "strategy": "V3",
+                        "entry_time": entry_ts.strftime('%H:%M:%S') if hasattr(entry_ts, 'strftime') else str(entry_ts)
                     }
                 else:
                     sell_data[side] = {"placed": False}
@@ -142,13 +146,15 @@ class StatusWriter:
                     entry = getattr(sell_mgr, f'sell_{side.lower()}_entry_ltp', None) or 0
                     ltp = sm.option_prices.get(inst_key, 0) if inst_key else 0
                     strike = getattr(sell_mgr, f'sell_{side.lower()}_strike', None)
+                    entry_ts = getattr(sell_mgr, f"{side.lower()}_entry_timestamp", None)
                     sell_data[side] = {
                         "placed": True,
                         "strike": strike,
                         "entry": round(float(entry), 2),
                         "ltp": round(float(ltp), 2),
                         "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
-                        "strategy": "V2"
+                        "strategy": "V2",
+                        "entry_time": entry_ts.strftime('%H:%M:%S') if hasattr(entry_ts, 'strftime') else str(entry_ts)
                     }
                 else:
                     sell_data[side] = {"placed": False}

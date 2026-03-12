@@ -867,6 +867,7 @@ function selectMode(btn) {
   document.querySelectorAll(`[data-path="${path}"]`).forEach(el => {
     el.classList.remove('bg-indigo-600', 'text-white');
     el.classList.add('text-slate-400');
+    el.dataset.active = "false";
   });
   btn.classList.add('bg-indigo-600', 'text-white');
   btn.classList.remove('text-slate-400');
