@@ -102,18 +102,37 @@ class StatusWriter:
             # Add Synthetic Indicators for V3
             try:
                 rsi_cfg = v3_mgr._cfg('rsi', {})
-                v3_rsi = await orch.indicator_manager.calculate_combined_rsi(
-                    v3_mgr.ce_leg['key'], v3_mgr.pe_leg['key'],
-                    rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
-                    include_current=True, skip_api=True
-                )
+                ce_key = v3_mgr.ce_leg['key'] if v3_mgr.ce_leg else None
+                pe_key = v3_mgr.pe_leg['key'] if v3_mgr.pe_leg else None
 
-                ce_atp = await orch.indicator_manager.calculate_vwap(v3_mgr.ce_leg['key'], timestamp)
-                pe_atp = await orch.indicator_manager.calculate_vwap(v3_mgr.pe_leg['key'], timestamp)
+                v3_rsi = None
+                if ce_key and pe_key:
+                    v3_rsi = await orch.indicator_manager.calculate_combined_rsi(
+                        ce_key, pe_key,
+                        rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
+                        include_current=True, skip_api=True
+                    )
+
+                ce_atp = await orch.indicator_manager.calculate_vwap(ce_key, timestamp) if ce_key else None
+                pe_atp = await orch.indicator_manager.calculate_vwap(pe_key, timestamp) if pe_key else None
+
+                ce_ltp = sm.option_prices.get(ce_key, 0) if ce_key else 0
+                pe_ltp = sm.option_prices.get(pe_key, 0) if pe_key else 0
+                combined_ltp = ce_ltp + pe_ltp
+
+                lowest_vwap = v3_mgr.lowest_combined_vwap
+                current_combined_vwap = (ce_atp + pe_atp) if (ce_atp and pe_atp) else None
+                rise_pct = None
+                if lowest_vwap and current_combined_vwap:
+                    rise_pct = ((current_combined_vwap - lowest_vwap) / lowest_vwap) * 100
 
                 sell_data['v3_indicators'] = {
                     "rsi": round(v3_rsi, 2) if v3_rsi is not None else None,
-                    "vwap": round(ce_atp + pe_atp, 2) if (ce_atp and pe_atp) else None
+                    "vwap": round(current_combined_vwap, 2) if current_combined_vwap else None,
+                    "combined_ltp": round(combined_ltp, 2),
+                    "lowest_vwap": round(lowest_vwap, 2) if lowest_vwap else None,
+                    "rise_pct": round(rise_pct, 2) if rise_pct is not None else None,
+                    "active": True
                 }
             except Exception:
                 pass
@@ -134,7 +153,8 @@ class StatusWriter:
 
                     sell_data['v3_indicators'] = {
                         "rsi": round(v3_rsi, 2) if v3_rsi is not None else None,
-                        "vwap": round(ce_atp + pe_atp, 2) if (ce_atp and pe_atp) else None
+                        "vwap": round(ce_atp + pe_atp, 2) if (ce_atp and pe_atp) else None,
+                        "combined_ltp": round(sm.option_prices.get(ce_key, 0) + sm.option_prices.get(pe_key, 0), 2)
                     }
             except Exception:
                 pass

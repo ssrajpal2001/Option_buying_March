@@ -107,14 +107,27 @@
     </div>
 
     <div id="v3-indicators" class="rounded-lg p-3 hidden" style="background:#0f172a;border:1px solid #334155">
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex-1">
-          <div class="text-[10px] uppercase font-bold mb-1" style="color:#64748b">Synthetic RSI (14p)</div>
-          <div id="v3-rsi" class="text-lg font-bold text-white">--</div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="col-span-2 flex items-center justify-between mb-1 pb-1 border-b" style="border-color:#1e293b">
+            <span class="text-[10px] uppercase font-bold text-slate-400">V3 Live Indicators</span>
+            <span id="v3-status-label" class="text-[9px] px-1.5 rounded font-bold uppercase tracking-wider" style="background:#1e293b;color:#64748b">--</span>
         </div>
-        <div class="flex-1 border-l pl-4" style="border-color:#1e293b">
-          <div class="text-[10px] uppercase font-bold mb-1" style="color:#64748b">Combined VWAP</div>
-          <div id="v3-vwap" class="text-lg font-bold text-white">--</div>
+        <div>
+          <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Combined LTP</div>
+          <div id="v3-ltp" class="text-lg font-bold text-white leading-none">--</div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Combined VWAP</div>
+          <div id="v3-vwap" class="text-lg font-bold text-white leading-none">--</div>
+        </div>
+        <div class="border-t pt-2" style="border-color:#1e293b">
+          <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Synthetic RSI</div>
+          <div id="v3-rsi" class="text-lg font-bold text-white leading-none">--</div>
+        </div>
+        <div class="border-t pt-2" style="border-color:#1e293b">
+          <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Slope Rise (vs Low)</div>
+          <div id="v3-slope" class="text-lg font-bold leading-none" style="color:#fb923c">-- %</div>
+          <div class="text-[9px] mt-1" style="color:#475569">Low: <span id="v3-low-vwap" class="text-slate-400">--</span></div>
         </div>
       </div>
     </div>
@@ -270,6 +283,30 @@ function updateDashboard(d) {
       document.getElementById('v3-indicators').classList.remove('hidden');
       document.getElementById('v3-rsi').textContent = v3Ind.rsi !== null ? v3Ind.rsi.toFixed(2) : '--';
       document.getElementById('v3-vwap').textContent = v3Ind.vwap !== null ? v3Ind.vwap.toFixed(2) : '--';
+      document.getElementById('v3-ltp').textContent = v3Ind.combined_ltp !== null ? v3Ind.combined_ltp.toFixed(2) : '--';
+
+      const statusLabel = document.getElementById('v3-status-label');
+      if (v3Ind.combined_ltp && v3Ind.vwap) {
+          const above = v3Ind.combined_ltp > v3Ind.vwap;
+          statusLabel.textContent = above ? 'ABOVE VWAP' : 'BELOW VWAP';
+          statusLabel.style.color = above ? '#f87171' : '#34d399';
+          statusLabel.style.background = above ? '#450a0a' : '#064e3b';
+      } else {
+          statusLabel.textContent = '--';
+          statusLabel.style.color = '#64748b';
+          statusLabel.style.background = '#1e293b';
+      }
+
+      const slopeEl = document.getElementById('v3-slope');
+      if (v3Ind.rise_pct !== undefined && v3Ind.rise_pct !== null) {
+        slopeEl.textContent = `${v3Ind.rise_pct.toFixed(2)} %`;
+        slopeEl.style.color = v3Ind.rise_pct >= 1.0 ? '#ef4444' : v3Ind.rise_pct >= 0.5 ? '#f59e0b' : '#34d399';
+        document.getElementById('v3-low-vwap').textContent = v3Ind.lowest_vwap !== null ? v3Ind.lowest_vwap.toFixed(2) : '--';
+      } else {
+          slopeEl.textContent = '-- %';
+          slopeEl.style.color = '#64748b';
+          document.getElementById('v3-low-vwap').textContent = '--';
+      }
     } else {
       document.getElementById('v3-indicators').classList.add('hidden');
     }
