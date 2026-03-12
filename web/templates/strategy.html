@@ -185,6 +185,13 @@
           </div>
         </div>
         <div class="flex items-center justify-between">
+          <span class="text-sm">Re-entry Mode</span>
+          <div class="flex bg-slate-800 rounded-lg p-1">
+            <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.reentry_mode" data-value="BALANCED" onclick="selectMode(this)">Initial/Balanced</button>
+            <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.reentry_mode" data-value="SCANNER" onclick="selectMode(this)">Technical Scanner</button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
           <span class="text-sm">Multi-Strike Scan Enabled</span>
           <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.multi_strike_scan_enabled" onclick="toggleSwitch(this)">
             <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
@@ -847,12 +854,30 @@ function toggleSwitch(btn) {
   setToggleState(btn, !current);
 }
 
+function selectMode(btn) {
+  const path = btn.dataset.path;
+  const val = btn.dataset.value;
+  document.querySelectorAll(`[data-path="${path}"]`).forEach(el => {
+    el.classList.remove('bg-indigo-600', 'text-white');
+    el.classList.add('text-slate-400');
+  });
+  btn.classList.add('bg-indigo-600', 'text-white');
+  btn.classList.remove('text-slate-400');
+  btn.dataset.active = "true";
+}
+
 function initAll(data) {
   document.querySelectorAll('.toggle-btn').forEach(btn => {
     const val = getNestedValue(data, btn.dataset.path);
     setToggleState(btn, !!val);
   });
-  document.querySelectorAll('[data-path]:not(.toggle-btn)').forEach(el => {
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    const val = getNestedValue(data, btn.dataset.path);
+    if (val === btn.dataset.value) {
+      selectMode(btn);
+    }
+  });
+  document.querySelectorAll('[data-path]:not(.toggle-btn):not(.mode-btn)').forEach(el => {
     const val = getNestedValue(data, el.dataset.path);
     if (val === null || val === undefined) return;
     if (el.tagName === 'SELECT') {
@@ -879,7 +904,10 @@ async function saveAll() {
   document.querySelectorAll('.toggle-btn').forEach(btn => {
     setNestedValue(strategyData, btn.dataset.path, btn.dataset.value === 'true');
   });
-  document.querySelectorAll('[data-path]:not(.toggle-btn)').forEach(el => {
+  document.querySelectorAll('.mode-btn[data-active="true"]').forEach(btn => {
+    setNestedValue(strategyData, btn.dataset.path, btn.dataset.value);
+  });
+  document.querySelectorAll('[data-path]:not(.toggle-btn):not(.mode-btn)').forEach(el => {
     let val = el.value;
     if (el.type === 'number') {
       const n = parseFloat(val);

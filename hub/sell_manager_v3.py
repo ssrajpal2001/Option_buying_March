@@ -172,11 +172,11 @@ class SellManagerV3:
 
             self.last_config_check_time = mtime
 
-    async def _perform_initial_entry(self, timestamp):
-        """Logic for the very first entry of the day: ATM side-selection with LTP >= threshold rule."""
+    async def _get_balanced_candidate(self, timestamp):
+        """Logic for Balanced selection: ATM side-selection with LTP >= threshold rule, match strictly lower."""
         index_price = self.orchestrator.state_manager.index_price
         interval = self.orchestrator.config_manager.get_int(self.instrument_name, 'strike_interval', 50)
-        if not index_price: return False
+        if not index_price: return None
 
         atm = int(round(index_price / interval) * interval)
         expiry = self.orchestrator.atm_manager.signal_expiry_date
@@ -184,9 +184,9 @@ class SellManagerV3:
         ce_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(atm, 'CALL', expiry)
         pe_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(atm, 'PUT', expiry)
 
-        if not ce_key or not pe_key: return False
+        if not ce_key or not pe_key: return None
         ce_ltp, pe_ltp = await self._get_ltp(ce_key), await self._get_ltp(pe_key)
-        if ce_ltp is None or pe_ltp is None: return False
+        if ce_ltp is None or pe_ltp is None: return None
 
         # side with lower ltp
         if ce_ltp < pe_ltp:
@@ -197,7 +197,7 @@ class SellManagerV3:
         # if lower < threshold, go 1 ITM
         ltp_threshold = self._cfg('ltp_threshold', 50.0)
         if low_ltp < ltp_threshold:
-            logger.info(f"[SellV3] Initial Entry: Lower LTP {low_ltp:.2f} < {ltp_threshold}. Moving 1 strike ITM.")
+            logger.info(f"[SellV3] Balanced Mode: Lower LTP {low_ltp:.2f} < {ltp_threshold}. Moving 1 strike ITM.")
             if low_side == 'CE': low_strike -= interval
             else: low_strike += interval
             low_key = self.orchestrator.atm_manager.find_instrument_key_by_strike(low_strike, 'CALL' if low_side == 'CE' else 'PUT', expiry)
@@ -205,28 +205,22 @@ class SellManagerV3:
                 new_ltp = await self._get_ltp(low_key)
                 if new_ltp: low_ltp = new_ltp
 
-        logger.info(f"[SellV3] Initial Entry: Selling {low_side} {low_strike} first at {low_ltp:.2f}")
-        if not await self._execute_sell(low_side, low_strike, low_key, low_ltp, timestamp): return False
-
         # Match other side strictly lower
         match_strike, match_key, match_ltp = await self._find_matching_strike(low_ltp, other_side, expiry)
         if not match_key:
-            logger.error(f"[SellV3] Initial Entry: No matching {other_side} strictly lower than {low_ltp:.2f}.")
-            leg = self.ce_leg if low_side == 'CE' else self.pe_leg
-            if leg: await self._execute_leg_exit(low_side, leg, timestamp, "Cleanup Initial Entry (No Match)")
-            if low_side == 'CE': self.ce_leg = None
-            else: self.pe_leg = None
-            return False
+            logger.error(f"[SellV3] Balanced Mode: No matching {other_side} strictly lower than {low_ltp:.2f}.")
+            return None
 
-        if not await self._execute_sell(other_side, match_strike, match_key, match_ltp, timestamp):
-            logger.error(f"[SellV3] Initial Entry: Second leg failure. Cleaning up.")
-            leg = self.ce_leg if low_side == 'CE' else self.pe_leg
-            if leg: await self._execute_leg_exit(low_side, leg, timestamp, "Cleanup Initial Entry (Leg Failure)")
-            if low_side == 'CE': self.ce_leg = None
-            else: self.pe_leg = None
-            return False
+        ce_info = {'strike': low_strike, 'key': low_key, 'ltp': low_ltp} if low_side == 'CE' else {'strike': match_strike, 'key': match_key, 'ltp': match_ltp}
+        pe_info = {'strike': low_strike, 'key': low_key, 'ltp': low_ltp} if low_side == 'PE' else {'strike': match_strike, 'key': match_key, 'ltp': match_ltp}
 
-        return True
+        return {
+            'ce': ce_info,
+            'pe': pe_info,
+            'total_premium': ce_info['ltp'] + pe_info['ltp'],
+            'atm_dist': 0,
+            'is_strangle': True
+        }
 
     def _finalize_entry(self, timestamp):
         self.active = True
@@ -343,21 +337,22 @@ class SellManagerV3:
         today_str = timestamp.strftime('%Y-%m-%d')
         trades_today = [t for t in self.closed_trades if t.get('date') == today_str and "Cleanup" not in t.get('reason', '')]
         is_initial_entry = len(trades_today) == 0
+        reentry_mode = self._cfg('reentry_mode', 'SCANNER')
 
-        if is_initial_entry:
-            # Phase 1: Simple Balanced Entry (No scanner/crossover)
-            if await self._perform_initial_entry(timestamp):
-                self._finalize_entry(timestamp)
-            return
+        best = None
+        if is_initial_entry or reentry_mode == "BALANCED":
+            # Balanced Mode (No filters)
+            best = await self._get_balanced_candidate(timestamp)
+        else:
+            # Technical Scanner Mode
+            best = await self._scan_for_best_candidate(timestamp)
 
-        # Phase 2: Re-entry Multi-Strike Scanner
-        best = await self._scan_for_best_candidate(timestamp)
         if not best: return
 
         final_ce_strike, final_ce_key, final_ce_ltp = best['ce']['strike'], best['ce']['key'], best['ce']['ltp']
         final_pe_strike, final_pe_key, final_pe_ltp = best['pe']['strike'], best['pe']['key'], best['pe']['ltp']
 
-        # Re-entry: Coordinated simultaneous execution
+        # Execute legs
         results = await asyncio.gather(
             self._execute_sell('CE', final_ce_strike, final_ce_key, final_ce_ltp, timestamp),
             self._execute_sell('PE', final_pe_strike, final_pe_key, final_pe_ltp, timestamp),
@@ -366,7 +361,7 @@ class SellManagerV3:
         success = all(r is True for r in results)
 
         if not success:
-            logger.error("[SellV3] Re-entry failed: One or more legs failed. Cleaning up orphans.")
+            logger.error("[SellV3] Entry failed: One or more legs failed. Cleaning up orphans.")
             if self.ce_leg or self.pe_leg:
                 for side, leg in [('CE', self.ce_leg), ('PE', self.pe_leg)]:
                     if leg: await self._execute_leg_exit(side, leg, timestamp, "Cleanup Orphaned Leg")
@@ -665,9 +660,12 @@ class SellManagerV3:
         # Save old legs in case of failure
         old_ce, old_pe = self.ce_leg, self.pe_leg
 
-        # 1. Determine New Target strikes based on multi-strike re-entry logic
-        # Smart Roll is by definition a re-entry phase
-        best = await self._scan_for_best_candidate(timestamp)
+        # 1. Determine New Target strikes based on configured re-entry mode
+        reentry_mode = self._cfg('reentry_mode', 'SCANNER')
+        if reentry_mode == "BALANCED":
+            best = await self._get_balanced_candidate(timestamp)
+        else:
+            best = await self._scan_for_best_candidate(timestamp)
 
         if not best:
             logger.warning("[SellV3] Smart Roll failed: No candidates passed filters. Falling back to Full Exit.")
