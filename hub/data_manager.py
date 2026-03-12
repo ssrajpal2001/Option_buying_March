@@ -126,20 +126,26 @@ class DataManager:
             if 'volume' in one_minute_df.columns: resampling_logic['volume'] = 'sum'
 
             if self.config_manager.get_boolean('settings', 'backtest_enabled', fallback=False):
-                resampled_buckets = []
-                today = current_timestamp.date()
-                df_filtered = one_minute_df[(one_minute_df.index.date == today) & (one_minute_df.index.time >= datetime.time(9, 15))].copy()
-                for i in range(0, len(df_filtered), parsed_minutes):
-                    group = df_filtered.iloc[i:i + parsed_minutes]
-                    if len(group) == parsed_minutes:
-                        bucket_start = group.index[0]
-                        if bucket_start + pd.Timedelta(minutes=parsed_minutes) > current_timestamp and not include_current: continue
-                        bucket = {'timestamp': bucket_start, 'open': group.iloc[0]['open'], 'high': group['high'].max(), 'low': group['low'].min(), 'close': group.iloc[-1]['close']}
-                        if 'volume' in group.columns: bucket['volume'] = group['volume'].sum()
-                        resampled_buckets.append(bucket)
-                resampled_df = pd.DataFrame(resampled_buckets).set_index('timestamp') if resampled_buckets else pd.DataFrame()
+                # Proper multi-day resampling for backtest
+                all_resampled = []
+                unique_dates = one_minute_df.index.normalize().unique()
+                for d in unique_dates:
+                    day_df = one_minute_df[one_minute_df.index.normalize() == d].copy()
+                    # Resample day starting from 9:15. Using a consistent offset for all legs.
+                    # We use a 1s shift to ensure 9:15 is the start of the first bucket.
+                    resampled_day = day_df.resample(f"{parsed_minutes}min", origin='start_day', offset='9h15m').agg(resampling_logic).dropna()
+                    all_resampled.append(resampled_day)
+
+                resampled_df = pd.concat(all_resampled).sort_index()
+                # Apply current timestamp filter
+                if not include_current:
+                    resampled_df = resampled_df[resampled_df.index < current_timestamp]
+                else:
+                    resampled_df = resampled_df[resampled_df.index <= current_timestamp]
             else:
-                resampled_df = one_minute_df.resample(f"{parsed_minutes}min").agg(resampling_logic).dropna()
+                # Live mode resample
+                resampled_df = one_minute_df.resample(f"{parsed_minutes}min", origin='start_day', offset='9h15m').agg(resampling_logic).dropna()
+
             return resampled_df
 
         is_backtest = self.config_manager.get_boolean('settings', 'backtest_enabled', fallback=False)
@@ -204,13 +210,25 @@ class DataManager:
 
     async def fetch_and_cache_api_ohlc(self, instrument_key: str, date: datetime.date, interval: str = "1minute"):
         real_key = instrument_key
-        if self.config_manager.get_boolean('settings', 'backtest_enabled'):
+        is_bt = self.config_manager.get_boolean('settings', 'backtest_enabled')
+        if is_bt:
             parts = instrument_key.split()
             if len(parts) >= 6:
                 contract = await self.get_live_contract_details(int(parts[1]), datetime.datetime.strptime(f"{parts[3]} {parts[4]} {parts[5]}", "%d %b %Y").date(), parts[2])
                 if contract: real_key = contract.instrument_key
                 else: return pd.DataFrame()
+
+        # We fetch 4 days of history to be safe for weekend gaps.
         df = await self._fetch_and_prepare_api_data(real_key, date - datetime.timedelta(days=4), date, interval)
+
+        if is_bt:
+            # Store in backtest_ohlc_data to make it available for all lookups in this session
+            if instrument_key not in self.backtest_ohlc_data:
+                self.backtest_ohlc_data[instrument_key] = df
+            else:
+                self.backtest_ohlc_data[instrument_key] = pd.concat([self.backtest_ohlc_data[instrument_key], df]).sort_index()
+                self.backtest_ohlc_data[instrument_key] = self.backtest_ohlc_data[instrument_key][~self.backtest_ohlc_data[instrument_key].index.duplicated(keep='last')]
+
         self.api_ohlc_cache[(instrument_key, date, interval)] = df.copy()
         return df
 

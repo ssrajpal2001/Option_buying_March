@@ -161,14 +161,32 @@ class TickProcessor:
         now_ts = asyncio.get_event_loop().time()
         timestamp = self.orchestrator._get_timestamp()
 
+        # Check if V3 Sell Side is enabled. If so, we bypass standard V2 Signal/Sell logic
+        # to ensure the bot strictly follows the new strategy without interference.
+        v3_enabled = self.orchestrator.json_config.get_value(
+            f"{self.orchestrator.instrument_name}.sell_v3.enabled", False)
+
         # HEARTBEAT (every 5 minutes)
         if not self.orchestrator.is_backtest:
             if now_ts - self.last_heartbeat_time >= 300.0:
                 self.last_heartbeat_time = now_ts
                 session_info = []
-                for uid, session in self.orchestrator.user_sessions.items():
-                    status = "In Trade" if session.is_in_trade() else ("Monitoring" if session.signal_monitor.is_monitoring() else "Idle")
-                    session_info.append(f"{uid or 'Global'}:{status}")
+
+                if v3_enabled:
+                    v3 = getattr(self.orchestrator, 'sell_manager_v3', None)
+                    if v3 and v3.active:
+                        profit = 0
+                        c_ltp = self.state_manager.get_ltp(v3.ce_leg['key'])
+                        p_ltp = self.state_manager.get_ltp(v3.pe_leg['key'])
+                        if c_ltp and p_ltp:
+                            profit = v3.total_premium_points - (c_ltp + p_ltp)
+                        session_info.append(f"V3:Trade({int(v3.ce_leg['strike'])}CE+{int(v3.pe_leg['strike'])}PE, PnL:{profit:.2f})")
+                    else:
+                        session_info.append("V3:Idle")
+                else:
+                    for uid, session in self.orchestrator.user_sessions.items():
+                        status = "In Trade" if session.is_in_trade() else ("Monitoring" if session.signal_monitor.is_monitoring() else "Idle")
+                        session_info.append(f"{uid or 'Global'}:{status}")
 
                 # Diagnostic: Time since last exchange update
                 lag_str = "N/A"
@@ -255,63 +273,67 @@ class TickProcessor:
                     self.orchestrator.data_recorder.record_ticks(timestamp, futures_price, index_price, current_atm, recording_data)
 
         # 1. THROTTLE Target Strike Check to 60 seconds (1 minute)
-        # Strategy logic: We only need to re-evaluate the target strike every minute once one is found.
-        # If no target strike is active, we check every 2 seconds to ensure fast startup/recovery.
-        target_throttle = 60.0 if self.state.v2_target_strike_pair else 2.0
-        if self.orchestrator.is_backtest or (now_ts - self.last_target_strike_check_time >= target_throttle):
-            self.last_target_strike_check_time = now_ts
+        # BYPASS if V3 enabled
+        if not v3_enabled:
+            # Strategy logic: We only need to re-evaluate the target strike every minute once one is found.
+            # If no target strike is active, we check every 2 seconds to ensure fast startup/recovery.
+            target_throttle = 60.0 if self.state.v2_target_strike_pair else 2.0
+            if self.orchestrator.is_backtest or (now_ts - self.last_target_strike_check_time >= target_throttle):
+                self.last_target_strike_check_time = now_ts
 
-            # Use StrikeManager to find the best strike pair (using default signal expiry)
-            # Driven by FUTURES ATM as requested for BUY activation.
-            self.state.v2_target_strike_pair = self.orchestrator.strike_manager.find_and_get_target_strike_pair(
-                expiry=self.atm_manager.signal_expiry_date,
-                reference_atm=futures_atm
-            )
-
-            v2_signal_found = self.state.v2_target_strike_pair is not None
-            if v2_signal_found:
-                target_strike = float(self.state.v2_target_strike_pair['strike'])
-                self.state_manager.target_strike = target_strike
-                # Sync target strike to all active user sessions for display
-                for session in self.orchestrator.user_sessions.values():
-                    session.state_manager.target_strike = target_strike
-            elif self.state_manager.target_strike is not None:
-                # Fallback: if signal lost temporarily, keep last target for display stability
-                for session in self.orchestrator.user_sessions.values():
-                    session.state_manager.target_strike = self.state_manager.target_strike
-            else:
-                # If no pair found this tick, DO NOT clear immediately if we were already monitoring.
-                # This prevents "TARGET: N/A" flickering if one tick is missing premiums.
-                pass
-
-            # Monitoring management is now handled inside each UserSession's SignalMonitor
-            # during the breach check loop below.
-
-        # 2. Crossover Breach Check (Per User) — gated by buy.start_time from JSON
-        _buy_start = self._get_buy_start_time()
-        _buy_active = self.orchestrator.is_backtest or timestamp.time() >= _buy_start
-
-        any_monitoring = False
-        for user_id, session in self.orchestrator.user_sessions.items():
-            if _buy_active and (self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0)):
-                await session.signal_monitor.check_crossover_breach(
-                    timestamp=timestamp,
-                    current_atm=current_atm
+                # Use StrikeManager to find the best strike pair (using default signal expiry)
+                # Driven by FUTURES ATM as requested for BUY activation.
+                self.state.v2_target_strike_pair = self.orchestrator.strike_manager.find_and_get_target_strike_pair(
+                    expiry=self.atm_manager.signal_expiry_date,
+                    reference_atm=futures_atm
                 )
 
-            if session.signal_monitor.is_monitoring():
-                any_monitoring = True
+                v2_signal_found = self.state.v2_target_strike_pair is not None
+                if v2_signal_found:
+                    target_strike = float(self.state.v2_target_strike_pair['strike'])
+                    self.state_manager.target_strike = target_strike
+                    # Sync target strike to all active user sessions for display
+                    for session in self.orchestrator.user_sessions.values():
+                        session.state_manager.target_strike = target_strike
+                elif self.state_manager.target_strike is not None:
+                    # Fallback: if signal lost temporarily, keep last target for display stability
+                    for session in self.orchestrator.user_sessions.values():
+                        session.state_manager.target_strike = self.state_manager.target_strike
+                else:
+                    # If no pair found this tick, DO NOT clear immediately if we were already monitoring.
+                    # This prevents "TARGET: N/A" flickering if one tick is missing premiums.
+                    pass
 
-        if self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0):
-             self.last_crossover_check_time = now_ts
+                # Monitoring management is now handled inside each UserSession's SignalMonitor
+                # during the breach check loop below.
 
-        if not _buy_active:
-            logger.debug(
-                f"V2: Buy side inactive until {_buy_start} (now {timestamp.strftime('%H:%M:%S')})")
-        elif not any_monitoring:
-            # Periodic status log while scanning for a target strike
-            if now_ts - self.last_crossover_check_time >= 60.0:
-                logger.debug(f"V2: Scanning watchlist around ATM {current_atm} for target strike...")
+        # 2. Crossover Breach Check (Per User) — gated by buy.start_time from JSON
+        # BYPASS if V3 enabled
+        if not v3_enabled:
+            _buy_start = self._get_buy_start_time()
+            _buy_active = self.orchestrator.is_backtest or timestamp.time() >= _buy_start
+            any_monitoring = False
+
+            for user_id, session in self.orchestrator.user_sessions.items():
+                if _buy_active and (self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0)):
+                    await session.signal_monitor.check_crossover_breach(
+                        timestamp=timestamp,
+                        current_atm=current_atm
+                    )
+
+                if session.signal_monitor.is_monitoring():
+                    any_monitoring = True
+
+            if self.orchestrator.is_backtest or (now_ts - self.last_crossover_check_time >= 1.0):
+                 self.last_crossover_check_time = now_ts
+
+            if not _buy_active:
+                logger.debug(
+                    f"V2: Buy side inactive until {_buy_start} (now {timestamp.strftime('%H:%M:%S')})")
+            elif not any_monitoring:
+                # Periodic status log while scanning for a target strike
+                if now_ts - self.last_crossover_check_time >= 60.0:
+                    logger.debug(f"V2: Scanning watchlist around ATM {current_atm} for target strike...")
 
         # Condition 3: Manage any active trades for ALL isolated users.
         # Throttled to avoid excessive processing on every tick.
@@ -326,19 +348,25 @@ class TickProcessor:
                     )
 
         # Condition 4: Sell-side per-tick logic (individual slope entry + LTP exit)
-        if hasattr(self.orchestrator, 'sell_manager'):
+        # BYPASS if V3 enabled
+        if hasattr(self.orchestrator, 'sell_manager') and not v3_enabled:
             sm = self.orchestrator.sell_manager
             if not sm.strangle_closed and (sm.ce_candidates or sm.pe_candidates or sm.ce_placed or sm.pe_placed):
                 sell_ticks = self._build_sell_ticks(backtest_current_tick)
                 await sm.on_tick(sell_ticks, timestamp)
 
+        # Condition 4b: Sell-side V3 per-tick logic
+        if hasattr(self.orchestrator, 'sell_manager_v3'):
+            await self.orchestrator.sell_manager_v3.on_tick(timestamp)
+
         # Condition 5: OI-based exit monitor (self-throttled via check_interval_seconds)
-        if hasattr(self.orchestrator, 'oi_exit_monitor') and current_atm:
+        # BYPASS if V3 enabled to avoid confusion with ATM shifts
+        if hasattr(self.orchestrator, 'oi_exit_monitor') and current_atm and not v3_enabled:
             await self.orchestrator.oi_exit_monitor.check(timestamp, current_atm)
 
         # Condition 6: Write live status for web dashboard (self-throttled to every 5s)
         if hasattr(self.orchestrator, 'status_writer') and current_atm:
-            self.orchestrator.status_writer.maybe_write(timestamp, current_atm)
+            await self.orchestrator.status_writer.maybe_write(timestamp, current_atm)
 
         for strike, tick_data in current_ticks_for_watchlist.items():
             # In backtest, we need to manually push ticks to aggregators

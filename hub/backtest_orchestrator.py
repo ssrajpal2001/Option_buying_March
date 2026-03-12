@@ -12,6 +12,10 @@ class BacktestOrchestrator(BaseOrchestrator):
         self.backtest_data_mgr = BacktestDataManager(self)
         from hub.sell_manager import SellManager
         self.sell_manager = SellManager(self)
+
+        from hub.sell_manager_v3 import SellManagerV3
+        self.sell_manager_v3 = SellManagerV3(self)
+
         self._backtest_strangle_triggered = False
         self.profit_target_hit = False
 
@@ -66,41 +70,45 @@ class BacktestOrchestrator(BaseOrchestrator):
         buy_active = self.pnl_tracker and self.pnl_tracker.is_trade_active()
         sell_active = (hasattr(self, 'sell_manager') and
                        (self.sell_manager.ce_placed or self.sell_manager.pe_placed))
-        return buy_active or sell_active
+        sell_v3_active = (hasattr(self, 'sell_manager_v3') and self.sell_manager_v3.active)
+        return buy_active or sell_active or sell_v3_active
 
     async def run_backtest_strategy_for_timestamp(self, timestamp, current_group):
         self.current_timestamp = timestamp
         # 1. Update prices/strikes first to establish baseline ATMs
         await self._populate_state_for_tick(timestamp, current_group)
 
-        # 2. Identify Target Strike pair early so SellManager can use it for trend monitoring
-        strike_interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', fallback=50)
-        futures_atm = float(round(self.state_manager.spot_price / strike_interval) * strike_interval)
+        v3_enabled = self.json_config.get_value(f"{self.instrument_name}.sell_v3.enabled", False)
 
-        self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
-            expiry=self.atm_manager.signal_expiry_date,
-            reference_atm=futures_atm
-        )
-        if self.orchestrator_state.v2_target_strike_pair:
-             target_strike = self.orchestrator_state.v2_target_strike_pair['strike']
-             self.state_manager.target_strike = target_strike
-             for session in self.user_sessions.values():
-                 session.state_manager.target_strike = target_strike
+        if not v3_enabled:
+            # 2. Identify Target Strike pair early so SellManager can use it for trend monitoring
+            strike_interval = self.config_manager.get_int(self.instrument_name, 'strike_interval', fallback=50)
+            futures_atm = float(round(self.state_manager.spot_price / strike_interval) * strike_interval)
 
-        # 3. Handle Short Strangle entry/candidates
-        import datetime as _dt
-        _strangle_start = _dt.datetime.strptime(
-            self.config_manager.get('settings', 'strangle_start_time', fallback='09:16:00'),
-            '%H:%M:%S'
-        ).time()
-        if timestamp.time() >= _strangle_start:
-            if not self._backtest_strangle_triggered:
-                await self.sell_manager.build_candidates_for_all_sides(timestamp)
-                self._backtest_strangle_triggered = True
+            self.orchestrator_state.v2_target_strike_pair = self.strike_manager.find_and_get_target_strike_pair(
+                expiry=self.atm_manager.signal_expiry_date,
+                reference_atm=futures_atm
+            )
+            if self.orchestrator_state.v2_target_strike_pair:
+                 target_strike = self.orchestrator_state.v2_target_strike_pair['strike']
+                 self.state_manager.target_strike = target_strike
+                 for session in self.user_sessions.values():
+                     session.state_manager.target_strike = target_strike
 
-            # Continuously attempt entry until both legs are placed or EOD
-            if not (self.sell_manager.ce_placed and self.sell_manager.pe_placed):
-                await self.sell_manager.execute_short_strangle_backtest(timestamp)
+            # 3. Handle Short Strangle entry/candidates
+            import datetime as _dt
+            _strangle_start = _dt.datetime.strptime(
+                self.config_manager.get('settings', 'strangle_start_time', fallback='09:16:00'),
+                '%H:%M:%S'
+            ).time()
+            if timestamp.time() >= _strangle_start:
+                if not self._backtest_strangle_triggered:
+                    await self.sell_manager.build_candidates_for_all_sides(timestamp)
+                    self._backtest_strangle_triggered = True
+
+                # Continuously attempt entry until both legs are placed or EOD
+                if not (self.sell_manager.ce_placed and self.sell_manager.pe_placed):
+                    await self.sell_manager.execute_short_strangle_backtest(timestamp)
 
         # Re-populate state after target selection to ensure aggregators see the correct watchlist
         await self._populate_state_for_tick(timestamp, current_group)
@@ -136,17 +144,30 @@ class BacktestOrchestrator(BaseOrchestrator):
         current_atm = self.atm_manager.strikes.get('atm')
 
         summary_extra_info = ""
+
+        # Update Floating P&L for all active trades (V1, V2, or V3)
+        if self.pnl_tracker.is_trade_active():
+            await self._update_pnl_for_active_trades(timestamp)
+
+        # Handle Session Logic
         for session in self.user_sessions.values():
-            await session.signal_monitor.check_crossover_breach(timestamp=timestamp, current_atm=current_atm)
+            if not v3_enabled:
+                await session.signal_monitor.check_crossover_breach(timestamp=timestamp, current_atm=current_atm)
+
+            # Trade Management (V1/V2)
             if session.is_in_trade():
                 pos = session.state_manager.call_position or session.state_manager.put_position
-                if self.pnl_tracker.is_trade_active(): await self._update_pnl_for_active_trades(timestamp)
                 await session.manage_active_trades(timestamp=timestamp, current_ticks=current_data_for_logic, current_atm=current_atm)
                 if pos and not summary_extra_info:
                     summary_extra_info = self._get_summary_extra(pos)
 
+        # V3 Summary Info
+        if v3_enabled and self.sell_manager_v3.active:
+            if not summary_extra_info:
+                summary_extra_info = self._get_summary_extra(None)
+
         # Condition 4: Sell-side per-tick logic (evaluation and exits)
-        if hasattr(self, 'sell_manager'):
+        if hasattr(self, 'sell_manager') and not v3_enabled:
             sm = self.sell_manager
             if sm.ce_placed or sm.pe_placed:
                 # Build sell_ticks dictionary from current prices
@@ -154,6 +175,10 @@ class BacktestOrchestrator(BaseOrchestrator):
                 for inst_key, ltp in self.state_manager.option_prices.items():
                     sell_ticks[inst_key] = {'ltp': ltp}
                 await sm.on_tick(sell_ticks, timestamp)
+
+        # Condition 4b: Sell-side V3 per-tick logic
+        if hasattr(self, 'sell_manager_v3'):
+            await self.sell_manager_v3.on_tick(timestamp)
 
         from utils.logger import log_trade_summary
         # Log Total PnL (Realized + Floating) for a complete daily picture
@@ -182,12 +207,19 @@ class BacktestOrchestrator(BaseOrchestrator):
 
     def _get_keys_needing_ticks(self):
         keys = set()
+        # V2 Keys
         if self.orchestrator_state.v2_target_strike_pair:
             ts = self.orchestrator_state.v2_target_strike_pair['strike']
             exp = self.atm_manager.signal_expiry_date
             for s in ['CALL', 'PUT']:
                 k = self.atm_manager.find_instrument_key_by_strike(ts, s, exp)
                 if k: keys.add(k)
+
+        # V3 Keys
+        if hasattr(self, 'sell_manager_v3') and self.sell_manager_v3.active:
+            if self.sell_manager_v3.ce_leg: keys.add(self.sell_manager_v3.ce_leg['key'])
+            if self.sell_manager_v3.pe_leg: keys.add(self.sell_manager_v3.pe_leg['key'])
+
         for session in self.user_sessions.values():
             for p in [session.state_manager.call_position, session.state_manager.put_position]:
                 if p:
@@ -200,6 +232,11 @@ class BacktestOrchestrator(BaseOrchestrator):
         return keys
 
     def _get_summary_extra(self, pos):
+        # Handle V3 Case first
+        if hasattr(self, 'sell_manager_v3') and self.sell_manager_v3.active:
+            sm = self.sell_manager_v3
+            return f" | V3: {sm.ce_leg['strike']}CE + {sm.pe_leg['strike']}PE | Prem: {sm.total_premium_points:.2f}"
+
         info = ""
         mode = 'buy' if pos.get('entry_type') == 'BUY' else 'sell'
         try:
@@ -371,3 +408,6 @@ class BacktestOrchestrator(BaseOrchestrator):
 
         if hasattr(self, 'sell_manager') and self.sell_manager.strangle_placed and not self.sell_manager.strangle_closed:
             await self.sell_manager.close_all(timestamp)
+
+        if hasattr(self, 'sell_manager_v3') and self.sell_manager_v3.active:
+            await self.sell_manager_v3.close_all(timestamp)

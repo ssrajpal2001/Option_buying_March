@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import pandas as pd
 from utils.logger import logger
 from hub.event_bus import event_bus
 from hub.expiry_manager import ExpiryManager
@@ -128,6 +129,26 @@ class AtmManager:
             for side in ['CE', 'PE']:
                 k = strike_info.get(side, {}).get('key')
                 if k: protected.add(k)
+
+        # Protect SellManagerV3 potential entry range (10 ITM strikes)
+        if self.orchestrator and hasattr(self.orchestrator, 'sell_manager_v3'):
+            v3 = self.orchestrator.sell_manager_v3
+            if v3._cfg('enabled', False):
+                if v3.active:
+                    if v3.ce_leg and v3.ce_leg.get('key'): protected.add(v3.ce_leg['key'])
+                    if v3.pe_leg and v3.pe_leg.get('key'): protected.add(v3.pe_leg['key'])
+                else:
+                    atm = self.strikes.get('atm')
+                    if atm:
+                        interval = self.config.get_int(self.instrument_name, 'strike_interval', 50)
+                        for i in range(11):
+                            # CE ITM is lower strikes
+                            c_key = self.find_instrument_key_by_strike(atm - i*interval, 'CALL', self.signal_expiry_date)
+                            if c_key: protected.add(c_key)
+                            # PE ITM is higher strikes
+                            p_key = self.find_instrument_key_by_strike(atm + i*interval, 'PUT', self.signal_expiry_date)
+                            if p_key: protected.add(p_key)
+
         return protected
 
     def find_contracts_for_strike(self, strike_price, expiry_date=None):

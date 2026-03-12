@@ -3,7 +3,8 @@ from utils.support_resistance import SupportResistanceCalculator
 import pandas as pd
 import asyncio
 import pytz
-from datetime import time
+import datetime as dt
+from datetime import datetime, time, timedelta
 
 class IndicatorManager:
     def __init__(self, orchestrator):
@@ -19,7 +20,7 @@ class IndicatorManager:
         self._r1_profit_cache = {}
         self._index_915_range = {} # (index_key, date) -> (high, low)
 
-    async def get_robust_ohlc(self, inst_key, timeframe_minutes, timestamp, include_current=True):
+    async def get_robust_ohlc(self, inst_key, timeframe_minutes, timestamp, include_current=True, for_full_day=True):
         """
         Returns OHLC data for the given instrument and timeframe.
         Attempts to use aggregators and local caches before hitting REST API.
@@ -37,7 +38,7 @@ class IndicatorManager:
                 instrument_key=inst_key,
                 timeframe_minutes=parsed_minutes,
                 current_timestamp=timestamp,
-                for_full_day=True,
+                for_full_day=for_full_day,
                 include_current=include_current
             )
 
@@ -65,10 +66,30 @@ class IndicatorManager:
                         ohlc = ohlc[~ohlc.index.duplicated(keep='last')]
                     ohlc = ohlc.sort_index()
 
-        if ohlc is not None and not ohlc.empty:
-            first_ts = ohlc.index[0]
-            if first_ts.time() > time(9, 15):
-                ohlc = None
+        # [V3 Strategy] "Historical Stitching":
+        # Always attempt to complement aggregator data with API history to ensure
+        # indicators like RSI (14-period) are available immediately for new strikes.
+        if True: # Enabled for both Live and Backtest
+            # Determine how many candles we currently have
+            current_len = len(ohlc) if ohlc is not None else 0
+            # Target: at least 20 candles (for a 14-period RSI buffer)
+            if current_len < 20:
+                logger.debug(f"[IndicatorManager] Stitching history for {inst_key} ({current_len} candles in memory)")
+                hist_api = await self.data_manager.get_historical_ohlc(
+                    instrument_key=inst_key,
+                    timeframe_minutes=parsed_minutes,
+                    current_timestamp=timestamp,
+                    for_full_day=True,
+                    include_current=False # Don't duplicate the 'live' running candle
+                )
+                if hist_api is not None and not hist_api.empty:
+                    if ohlc is None or ohlc.empty:
+                        ohlc = hist_api
+                    else:
+                        # Merge API history (older) with Aggregator data (newer)
+                        ohlc = pd.concat([hist_api, ohlc])
+                        ohlc = ohlc[~ohlc.index.duplicated(keep='last')]
+                        ohlc = ohlc.sort_index()
 
         if (ohlc is None or ohlc.empty) and parsed_minutes > 1:
             one_min_ohlc = self.orchestrator.entry_aggregator.get_historical_ohlc(inst_key)
@@ -83,7 +104,7 @@ class IndicatorManager:
                 instrument_key=inst_key,
                 timeframe_minutes=parsed_minutes,
                 current_timestamp=timestamp,
-                for_full_day=True,
+                for_full_day=for_full_day,
                 include_current=include_current
             )
 
@@ -98,21 +119,29 @@ class IndicatorManager:
     async def calculate_vwap(self, inst_key, timestamp):
         if not inst_key:
             return None
-        if not self.orchestrator.is_backtest:
-            atps = getattr(self.state_manager, 'option_atps', {})
-            live_atp = atps.get(inst_key)
-            if live_atp and live_atp > 0:
-                return float(live_atp)
 
+        # 1. Check ATP history first (allows lookups for previous candles in both live and backtest)
         atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
         if atp_hist:
-            current_minute = timestamp.replace(second=0, microsecond=0)
-            if current_minute.tzinfo is None:
-                current_minute = current_minute.tz_localize('Asia/Kolkata')
-            candidates = {ts: v for ts, v in atp_hist.items()
-                          if isinstance(ts, type(current_minute)) and ts <= current_minute}
+            # We want the VWAP (ATP) from the candle that just finalized.
+            # If timestamp is 10:30:00, we want the state as of 10:29:59 (the 10:25-10:30 candle's final ATP).
+            search_ts = timestamp - timedelta(seconds=1)
+            if search_ts.tzinfo is None:
+                search_ts = pytz.timezone('Asia/Kolkata').localize(search_ts)
+
+            # Filter for timestamp-like keys and find latest available up to search_ts
+            candidates = [ts for ts in atp_hist.keys() if hasattr(ts, 'year') and ts <= search_ts]
             if candidates:
-                return float(atp_hist[max(candidates.keys())])
+                return float(atp_hist[max(candidates)])
+
+        # 2. Fallback to current live ATP if history is missing and we are looking for 'now'
+        if not self.orchestrator.is_backtest:
+            now = self.orchestrator._get_timestamp()
+            if (now - timestamp).total_seconds() < 60:
+                atps = getattr(self.state_manager, 'option_atps', {})
+                live_atp = atps.get(inst_key)
+                if live_atp and live_atp > 0:
+                    return float(live_atp)
 
         current_day = timestamp.date()
         state_key = (inst_key, current_day)
@@ -147,7 +176,15 @@ class IndicatorManager:
                     cum_pv += tp * live_candle['volume']
                     cum_vol += live_candle['volume']
 
-        return cum_pv / cum_vol if cum_vol > 0 else None
+        if cum_vol > 0:
+            return cum_pv / cum_vol
+
+        # Fallback to latest Close price if no volume data is available (common in backtests)
+        ohlc = await self.get_robust_ohlc(inst_key, 1, timestamp, include_current=True)
+        if ohlc is not None and not ohlc.empty:
+            return float(ohlc.iloc[-1]['close'])
+
+        return None
 
     async def get_vwap_slope_status(self, inst_key, timestamp, timeframe_minutes, count=1, live_vwap=None):
         if not inst_key:
@@ -397,3 +434,62 @@ class IndicatorManager:
         atr = atr_series.iloc[-1]
 
         return float(atr) if pd.notna(atr) else None
+
+    async def calculate_combined_rsi(self, key1, key2, timeframe_minutes, period, timestamp, include_current=False, skip_api=False):
+        """
+        Calculates RSI on the sum of close prices of two instruments.
+        Uses Wilder's smoothing (standard RSI).
+        """
+        if not key1 or not key2:
+            return None
+
+        # Ensure we request enough history to cover the RSI period across day boundaries.
+        # We need at least 'period + 1' candles.
+        # Fetch historical data
+        ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
+        ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
+
+        if ohlc1 is None or len(ohlc1) < period + 1 or ohlc2 is None or len(ohlc2) < period + 1:
+            if skip_api:
+                return None
+
+            logger.debug(f"[IndicatorManager] Combined RSI: Missing or insufficient OHLC for {key1} or {key2}. Fetching from API...")
+            # Try to fetch history manually from API
+            for k in [key1, key2]:
+                # This call handles both live and backtest by using the rest client
+                await self.data_manager.fetch_and_cache_api_ohlc(k, timestamp.date())
+
+            ohlc1 = await self.get_robust_ohlc(key1, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
+            ohlc2 = await self.get_robust_ohlc(key2, timeframe_minutes, timestamp, include_current=include_current, for_full_day=True)
+
+            if ohlc1 is None or ohlc2 is None or len(ohlc1) < period + 1 or len(ohlc2) < period + 1:
+                return None
+
+        # Align by index (timestamp) and sum the close prices
+        # Using inner join to ensure we only sum candles that exist in both series
+        combined = pd.merge(
+            ohlc1[['close']].rename(columns={'close': 'close1'}),
+            ohlc2[['close']].rename(columns={'close': 'close2'}),
+            left_index=True, right_index=True, how='inner'
+        )
+
+        if len(combined) < period + 1:
+            logger.debug(f"[IndicatorManager] Combined RSI: Insufficient data points ({len(combined)} < {period+1})")
+            return None
+
+        combined['sum_close'] = combined['close1'] + combined['close2']
+
+        # Standard Wilder's RSI calculation
+        delta = combined['sum_close'].diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+
+        # Wilder's smoothing is equivalent to EWM with alpha = 1/period
+        avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+        val = rsi.iloc[-1]
+        return float(val) if pd.notna(val) else None

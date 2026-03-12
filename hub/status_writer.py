@@ -16,20 +16,21 @@ class StatusWriter:
     def record_error(self, error_msg):
         self.last_error = {"message": str(error_msg), "ts": time.time()}
 
-    def maybe_write(self, timestamp, current_atm):
+    async def maybe_write(self, timestamp, current_atm):
         now = time.monotonic()
         if (now - self.last_write_ts) < self.write_interval:
             return
         self.last_write_ts = now
         try:
-            self._write(timestamp, current_atm)
+            await self._write(timestamp, current_atm)
         except Exception as e:
             logger.warning(f"[StatusWriter] Failed to write status: {e}")
 
-    def _write(self, timestamp, current_atm):
+    async def _write(self, timestamp, current_atm):
         orch = self.orchestrator
         sm = orch.state_manager
         sell_mgr = getattr(orch, 'sell_manager', None)
+        v3_mgr = getattr(orch, 'sell_manager_v3', None)
         oi_mon = getattr(orch, 'oi_exit_monitor', None)
 
         buy_data = {}
@@ -73,22 +74,84 @@ class StatusWriter:
         sell_total_qty = sell_lot_size * sell_broker_qty
 
         sell_data = {}
-        for side in ['CE', 'PE']:
-            placed = getattr(sell_mgr, f"{'ce' if side == 'CE' else 'pe'}_placed", False)
-            if sell_mgr and placed:
-                inst_key = getattr(sell_mgr, f'sell_{side.lower()}_key', None)
-                entry = getattr(sell_mgr, f'sell_{side.lower()}_entry_ltp', None) or 0
-                ltp = sm.option_prices.get(inst_key, 0) if inst_key else 0
-                strike = getattr(sell_mgr, f'sell_{side.lower()}_strike', None)
-                sell_data[side] = {
-                    "placed": True,
-                    "strike": strike,
-                    "entry": round(float(entry), 2),
-                    "ltp": round(float(ltp), 2),
-                    "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
+        v3_active = v3_mgr and v3_mgr.active
+        # Prioritize V3 status for web display if active
+        if v3_active:
+            for side in ['CE', 'PE']:
+                leg = v3_mgr.ce_leg if side == 'CE' else v3_mgr.pe_leg
+                if leg:
+                    inst_key = leg.get('key')
+                    entry = leg.get('entry_ltp') or 0
+                    ltp = sm.option_prices.get(inst_key, 0) if inst_key else 0
+                    strike = leg.get('strike')
+                    sell_data[side] = {
+                        "placed": True,
+                        "strike": strike,
+                        "entry": round(float(entry), 2),
+                        "ltp": round(float(ltp), 2),
+                        "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
+                        "strategy": "V3"
+                    }
+                else:
+                    sell_data[side] = {"placed": False}
+
+            # Add Synthetic Indicators for V3
+            try:
+                rsi_cfg = v3_mgr._cfg('rsi', {})
+                v3_rsi = await orch.indicator_manager.calculate_combined_rsi(
+                    v3_mgr.ce_leg['key'], v3_mgr.pe_leg['key'],
+                    rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
+                    include_current=True, skip_api=True
+                )
+
+                ce_atp = await orch.indicator_manager.calculate_vwap(v3_mgr.ce_leg['key'], timestamp)
+                pe_atp = await orch.indicator_manager.calculate_vwap(v3_mgr.pe_leg['key'], timestamp)
+
+                sell_data['v3_indicators'] = {
+                    "rsi": round(v3_rsi, 2) if v3_rsi is not None else None,
+                    "vwap": round(ce_atp + pe_atp, 2) if (ce_atp and pe_atp) else None
                 }
-            else:
-                sell_data[side] = {"placed": False}
+            except Exception:
+                pass
+        elif v3_mgr and v3_mgr._cfg('enabled', False):
+            # Show indicators for current ATM even if not active
+            try:
+                expiry = orch.atm_manager.signal_expiry_date
+                ce_key = orch.atm_manager.find_instrument_key_by_strike(current_atm, 'CALL', expiry)
+                pe_key = orch.atm_manager.find_instrument_key_by_strike(current_atm, 'PUT', expiry)
+                if ce_key and pe_key:
+                    rsi_cfg = v3_mgr._cfg('rsi', {})
+                    v3_rsi = await orch.indicator_manager.calculate_combined_rsi(
+                        ce_key, pe_key, rsi_cfg.get('tf', 5), rsi_cfg.get('period', 14), timestamp,
+                        include_current=True, skip_api=True
+                    )
+                    ce_atp = await orch.indicator_manager.calculate_vwap(ce_key, timestamp)
+                    pe_atp = await orch.indicator_manager.calculate_vwap(pe_key, timestamp)
+
+                    sell_data['v3_indicators'] = {
+                        "rsi": round(v3_rsi, 2) if v3_rsi is not None else None,
+                        "vwap": round(ce_atp + pe_atp, 2) if (ce_atp and pe_atp) else None
+                    }
+            except Exception:
+                pass
+        else:
+            for side in ['CE', 'PE']:
+                placed = getattr(sell_mgr, f"{'ce' if side == 'CE' else 'pe'}_placed", False)
+                if sell_mgr and placed:
+                    inst_key = getattr(sell_mgr, f'sell_{side.lower()}_key', None)
+                    entry = getattr(sell_mgr, f'sell_{side.lower()}_entry_ltp', None) or 0
+                    ltp = sm.option_prices.get(inst_key, 0) if inst_key else 0
+                    strike = getattr(sell_mgr, f'sell_{side.lower()}_strike', None)
+                    sell_data[side] = {
+                        "placed": True,
+                        "strike": strike,
+                        "entry": round(float(entry), 2),
+                        "ltp": round(float(ltp), 2),
+                        "pnl": round((float(entry) - float(ltp)) * sell_total_qty, 2),
+                        "strategy": "V2"
+                    }
+                else:
+                    sell_data[side] = {"placed": False}
 
         oi_snap = {}
         if oi_mon:
@@ -99,9 +162,23 @@ class StatusWriter:
 
         session_pnl = 0.0
         trade_count = 0
+
+        # Realized P&L and counts from Buy Side (User Sessions)
         for session in orch.user_sessions.values():
             session_pnl += float(getattr(session.state_manager, 'total_pnl', 0) or 0)
             trade_count += int(getattr(session.state_manager, 'trade_count', 0) or 0)
+
+        # Realized P&L and counts from Sell Side V3
+        # V3 trades are logged with date strings. Filter for today to get "Session" P&L.
+        today_str = timestamp.strftime('%Y-%m-%d') if hasattr(timestamp, 'strftime') else ""
+
+        if v3_mgr:
+            v3_today_trades = [t for t in v3_mgr.closed_trades if t.get('date') == today_str]
+            for trade in v3_today_trades:
+                session_pnl += float(trade.get('pnl_rs', 0) or 0)
+
+            # Count each completed pair (Strangle) as one 'trade' for the header count
+            trade_count += len(v3_today_trades) // 2
 
         for side, pos_info in buy_data.items():
             if pos_info.get('status') == 'ACTIVE':

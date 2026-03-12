@@ -1,4 +1,5 @@
 from datetime import datetime
+from utils.logger import logger
 
 
 class LiveTradeLog:
@@ -8,6 +9,7 @@ class LiveTradeLog:
         self.trades = []
 
     def add(self, trade_dict):
+        logger.debug(f"[TradeLog] Adding entry: {trade_dict.get('type')} {trade_dict.get('direction')} strike={trade_dict.get('strike')} PnL={trade_dict.get('pnl_rs')}")
         self.trades.insert(0, trade_dict)
         if len(self.trades) > self.MAX_ENTRIES:
             self.trades = self.trades[:self.MAX_ENTRIES]

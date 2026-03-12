@@ -128,6 +128,9 @@ class BaseOrchestrator(ABC):
         if hasattr(self, 'sell_manager'):
             self.sell_manager.reconnect_positions()
 
+        if hasattr(self, 'sell_manager_v3'):
+            self.sell_manager_v3.reconnect_positions()
+
         logger.debug("Orchestrator initialization finalized.")
 
     @abstractmethod
@@ -231,5 +234,10 @@ class BaseOrchestrator(ABC):
         if hasattr(self, 'sell_manager'):
             from hub.sell_manager import SellManager
             self.sell_manager = SellManager(self)
+
+        if hasattr(self, 'sell_manager_v3'):
+            from hub.sell_manager_v3 import SellManagerV3
+            self.sell_manager_v3 = SellManagerV3(self)
+
         if hasattr(self, '_backtest_strangle_triggered'):
             self._backtest_strangle_triggered = False

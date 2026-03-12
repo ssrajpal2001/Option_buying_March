@@ -83,13 +83,18 @@ class CSVDataFeeder:
 
                     timestamps = pd.date_range(start=start_ts, end=end_ts, freq='1min')
                     self.data = pd.DataFrame({'timestamp': timestamps})
+                    # Ensure it is datetime
+                    self.data['timestamp'] = pd.to_datetime(self.data['timestamp'])
                     # Add dummy columns to satisfy existing logic
                     self.data['strike_price'] = 0
                     self.data['spot_price'] = 0
                     logger.info(f"Generated {len(self.data)} synthetic timestamps for {self.backtest_date}")
                     return
 
-            long_df = pd.read_csv(self.file_path, parse_dates=['timestamp'], on_bad_lines='warn', engine='python')
+            long_df = pd.read_csv(self.file_path, on_bad_lines='warn', engine='python')
+            # Ensure timestamp is parsed as datetime regardless of parse_dates parameter
+            long_df['timestamp'] = pd.to_datetime(long_df['timestamp'], errors='coerce')
+            long_df = long_df.dropna(subset=['timestamp'])
             self.data = long_df
 
             # Robust timezone handling
