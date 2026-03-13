@@ -248,6 +248,8 @@ class SellManagerV3:
         rsi_cfg = self._cfg('rsi', {})
         rsi_threshold = rsi_cfg.get('threshold', 50)
 
+        v_slope_enabled = self._cfg('v_slope_filter_enabled', False)
+
         candidates = [] # list of {ce_leg, pe_leg, total_premium}
 
         # User Requirement: re-entry strictly evaluates Straddle combinations
@@ -271,7 +273,7 @@ class SellManagerV3:
             if rsi_val is None and self.orchestrator.is_backtest: rsi_val = 0.0
             if rsi_val is None or rsi_val > rsi_threshold: continue
 
-            # VWAP Crossover Check
+            # VWAP Logic
             ce_vwap = await self.orchestrator.indicator_manager.calculate_vwap(ce_key, timestamp)
             pe_vwap = await self.orchestrator.indicator_manager.calculate_vwap(pe_key, timestamp)
             if ce_vwap is None or pe_vwap is None:
@@ -279,20 +281,38 @@ class SellManagerV3:
                 else: continue
 
             combined_vwap = ce_vwap + pe_vwap
+
+            # V-Slope Filter Logic (Current Combined VWAP < Previous Combined VWAP)
+            v_slope_ok = True
+            v_slope_reason = ""
+            if v_slope_enabled:
+                prev_ts = timestamp - timedelta(minutes=1)
+                ce_vwap_prev = await self.orchestrator.indicator_manager.calculate_vwap(ce_key, prev_ts)
+                pe_vwap_prev = await self.orchestrator.indicator_manager.calculate_vwap(pe_key, prev_ts)
+                if ce_vwap_prev and pe_vwap_prev:
+                    combined_vwap_prev = ce_vwap_prev + pe_vwap_prev
+                    v_slope_ok = combined_vwap < combined_vwap_prev
+                    if not v_slope_ok:
+                        v_slope_reason = f"Wait: VWAP Rising ({combined_vwap:.2f} > {combined_vwap_prev:.2f})"
+                else:
+                    v_slope_ok = False
+                    v_slope_reason = "Wait: Missing Prev VWAP"
+
             ohlc1 = await self.orchestrator.indicator_manager.get_robust_ohlc(ce_key, tf, timestamp, include_current=False)
             ohlc2 = await self.orchestrator.indicator_manager.get_robust_ohlc(pe_key, tf, timestamp, include_current=False)
             if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty: continue
 
             c1, c2 = ohlc1.iloc[-1], ohlc2.iloc[-1]
             comb_open, comb_high, comb_close = c1['open'] + c2['open'], c1['high'] + c2['high'], c1['close'] + c2['close']
-            is_crossover = (comb_open > combined_vwap or comb_high > combined_vwap) and (comb_close <= combined_vwap)
 
-            cross_reason = "OK" if is_crossover else ""
-            if not is_crossover:
-                if not (comb_open > combined_vwap or comb_high > combined_vwap):
-                    cross_reason = f"Wait: High {comb_high:.2f} < VWAP {combined_vwap:.2f}"
-                elif not (comb_close <= combined_vwap):
-                    cross_reason = f"Wait: Close {comb_close:.2f} > VWAP"
+            # New Simplified Logic: Only check Close <= VWAP
+            is_below_vwap = comb_close <= combined_vwap
+
+            trigger_reason = "OK" if (is_below_vwap and v_slope_ok) else ""
+            if not is_below_vwap:
+                trigger_reason = f"Wait: Close {comb_close:.2f} > VWAP {combined_vwap:.2f}"
+            elif not v_slope_ok:
+                trigger_reason = v_slope_reason
 
             # Log evaluation result (Throttled to once per minute per strike to avoid log spam)
             if not hasattr(self, '_scan_log_cache'): self._scan_log_cache = {}
@@ -302,11 +322,11 @@ class SellManagerV3:
                 if len(self._scan_log_cache) > 50: self._scan_log_cache.clear()
 
                 logger.info(f"[SellV3][Scan Re-entry] {int(base_strike)}CE+{int(base_strike)}PE (Base: {int(base_strike)}): "
-                             f"RSI:{rsi_val:.2f}, O:{comb_open:.2f}, H:{comb_high:.2f}, C:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
-                             f"| RSI_OK:{rsi_val <= rsi_threshold}, CROSS_OK:{is_crossover} ({cross_reason})")
+                             f"RSI:{rsi_val:.2f}, C:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
+                             f"| RSI_OK:{rsi_val <= rsi_threshold}, TRIGGER:{is_below_vwap and v_slope_ok} ({trigger_reason})")
                 self._scan_log_cache[log_key] = True
 
-            if rsi_val <= rsi_threshold and is_crossover:
+            if rsi_val <= rsi_threshold and is_below_vwap and v_slope_ok:
                 candidates.append({
                     'ce': {'strike': base_strike, 'key': ce_key, 'ltp': ce_ltp},
                     'pe': {'strike': base_strike, 'key': pe_key, 'ltp': pe_ltp},
@@ -327,20 +347,18 @@ class SellManagerV3:
 
         if timestamp.time() < start_time_obj or timestamp.time() >= end_time_obj: return
 
-        # User Fix: Restrict entry to TF-settled boundaries
-        tf = self._cfg('rsi.tf', 5)
-        is_start_of_day = (timestamp.time() >= start_time_obj and timestamp.time() < (datetime.combine(timestamp.date(), start_time_obj) + timedelta(minutes=1)).time())
-        is_settled_boundary = (timestamp.minute % tf == 0 and timestamp.second >= 10)
+        # User Requirement: Checked every 1 min close and not tick-by-tick
+        # Exception: First trade of the day (Initial Entry) can still happen at 09:16:05
+        is_initial_entry_time = (timestamp.time() >= start_time_obj and timestamp.time() < (datetime.combine(timestamp.date(), start_time_obj) + timedelta(minutes=1)).time())
 
-        # Immediate scan window: 2 minutes after an exit
-        was_recently_closed = False
-        if self.last_exit_timestamp:
-            elapsed_since_exit = (timestamp - self.last_exit_timestamp).total_seconds()
-            was_recently_closed = elapsed_since_exit < 120
+        # Throttling scan to once per minute (at the start of the minute)
+        is_minute_boundary = timestamp.minute != getattr(self, '_last_scan_minute', -1)
 
-        if not is_start_of_day and not is_settled_boundary and not was_recently_closed:
-            if self.orchestrator.is_backtest and (timestamp.minute % tf == 0): pass
-            else: return
+        if not is_initial_entry_time and not is_minute_boundary:
+            return
+
+        if is_minute_boundary:
+            self._last_scan_minute = timestamp.minute
 
         # Re-entry Cooldown: Wait at least 60 seconds after an exit
         if self.last_exit_timestamp:

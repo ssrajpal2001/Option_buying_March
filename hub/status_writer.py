@@ -126,12 +126,22 @@ class StatusWriter:
                 if lowest_vwap and current_combined_vwap:
                     rise_pct = ((current_combined_vwap - lowest_vwap) / lowest_vwap) * 100
 
+                # V-Slope Status (Falling vs Rising)
+                v_slope_status = "IDLE"
+                if current_combined_vwap:
+                    prev_ts = timestamp - timedelta(minutes=1)
+                    ce_atp_prev = await orch.indicator_manager.calculate_vwap(ce_key, prev_ts)
+                    pe_atp_prev = await orch.indicator_manager.calculate_vwap(pe_key, prev_ts)
+                    if ce_atp_prev and pe_atp_prev:
+                        v_slope_status = "FALLING" if current_combined_vwap < (ce_atp_prev + pe_atp_prev) else "RISING"
+
                 sell_data['v3_indicators'] = {
                     "rsi": round(v3_rsi, 2) if v3_rsi is not None else None,
                     "vwap": round(current_combined_vwap, 2) if current_combined_vwap else None,
                     "combined_ltp": round(combined_ltp, 2),
                     "lowest_vwap": round(lowest_vwap, 2) if lowest_vwap else None,
                     "rise_pct": round(rise_pct, 2) if rise_pct is not None else None,
+                    "v_slope": v_slope_status,
                     "active": True
                 }
             except Exception:
@@ -151,10 +161,20 @@ class StatusWriter:
                     ce_atp = await orch.indicator_manager.calculate_vwap(ce_key, timestamp)
                     pe_atp = await orch.indicator_manager.calculate_vwap(pe_key, timestamp)
 
+                    current_vwap = (ce_atp + pe_atp) if (ce_atp and pe_atp) else None
+                    v_slope_status = "IDLE"
+                    if current_vwap:
+                        prev_ts = timestamp - timedelta(minutes=1)
+                        ce_atp_prev = await orch.indicator_manager.calculate_vwap(ce_key, prev_ts)
+                        pe_atp_prev = await orch.indicator_manager.calculate_vwap(pe_key, prev_ts)
+                        if ce_atp_prev and pe_atp_prev:
+                            v_slope_status = "FALLING" if current_vwap < (ce_atp_prev + pe_atp_prev) else "RISING"
+
                     sell_data['v3_indicators'] = {
                         "rsi": round(v3_rsi, 2) if v3_rsi is not None else None,
-                        "vwap": round(ce_atp + pe_atp, 2) if (ce_atp and pe_atp) else None,
-                        "combined_ltp": round(sm.option_prices.get(ce_key, 0) + sm.option_prices.get(pe_key, 0), 2)
+                        "vwap": round(current_vwap, 2) if current_vwap else None,
+                        "combined_ltp": round(sm.option_prices.get(ce_key, 0) + sm.option_prices.get(pe_key, 0), 2),
+                        "v_slope": v_slope_status
                     }
             except Exception:
                 pass

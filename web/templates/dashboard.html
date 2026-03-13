@@ -110,7 +110,10 @@
       <div class="grid grid-cols-2 gap-4">
         <div class="col-span-2 flex items-center justify-between mb-1 pb-1 border-b" style="border-color:#1e293b">
             <span class="text-[10px] uppercase font-bold text-slate-400">V3 Live Indicators</span>
-            <span id="v3-status-label" class="text-[9px] px-1.5 rounded font-bold uppercase tracking-wider" style="background:#1e293b;color:#64748b">--</span>
+            <div class="flex gap-1">
+                <span id="v3-slope-label" class="text-[9px] px-1.5 rounded font-bold uppercase tracking-wider hidden" style="background:#1e293b;color:#64748b">VWAP --</span>
+                <span id="v3-status-label" class="text-[9px] px-1.5 rounded font-bold uppercase tracking-wider" style="background:#1e293b;color:#64748b">--</span>
+            </div>
         </div>
         <div>
           <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Combined LTP</div>
@@ -295,6 +298,16 @@ function updateDashboard(d) {
           statusLabel.textContent = '--';
           statusLabel.style.color = '#64748b';
           statusLabel.style.background = '#1e293b';
+      }
+
+      const vSlopeLabel = document.getElementById('v3-slope-label');
+      if (v3Ind.v_slope && v3Ind.v_slope !== 'IDLE') {
+          vSlopeLabel.classList.remove('hidden');
+          vSlopeLabel.textContent = `VWAP ${v3Ind.v_slope}`;
+          vSlopeLabel.style.color = v3Ind.v_slope === 'FALLING' ? '#34d399' : '#f87171';
+          vSlopeLabel.style.background = v3Ind.v_slope === 'FALLING' ? '#064e3b' : '#450a0a';
+      } else {
+          vSlopeLabel.classList.add('hidden');
       }
 
       const slopeEl = document.getElementById('v3-slope');
