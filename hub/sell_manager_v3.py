@@ -287,9 +287,24 @@ class SellManagerV3:
             comb_open, comb_high, comb_close = c1['open'] + c2['open'], c1['high'] + c2['high'], c1['close'] + c2['close']
             is_crossover = (comb_open > combined_vwap or comb_high > combined_vwap) and (comb_close <= combined_vwap)
 
-            logger.info(f"[SellV3][Scan Re-entry] {int(base_strike)}CE+{int(base_strike)}PE (Base: {int(base_strike)}): "
-                         f"RSI:{rsi_val:.2f}, O:{comb_open:.2f}, H:{comb_high:.2f}, C:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
-                         f"| RSI_OK:{rsi_val <= rsi_threshold}, CROSS_OK:{is_crossover}")
+            cross_reason = "OK" if is_crossover else ""
+            if not is_crossover:
+                if not (comb_open > combined_vwap or comb_high > combined_vwap):
+                    cross_reason = f"Wait: High {comb_high:.2f} < VWAP {combined_vwap:.2f}"
+                elif not (comb_close <= combined_vwap):
+                    cross_reason = f"Wait: Close {comb_close:.2f} > VWAP"
+
+            # Log evaluation result (Throttled to once per minute per strike to avoid log spam)
+            if not hasattr(self, '_scan_log_cache'): self._scan_log_cache = {}
+            log_key = f"{int(base_strike)}_{timestamp.hour}_{timestamp.minute}"
+            if log_key not in self._scan_log_cache:
+                # Keep cache small
+                if len(self._scan_log_cache) > 50: self._scan_log_cache.clear()
+
+                logger.info(f"[SellV3][Scan Re-entry] {int(base_strike)}CE+{int(base_strike)}PE (Base: {int(base_strike)}): "
+                             f"RSI:{rsi_val:.2f}, O:{comb_open:.2f}, H:{comb_high:.2f}, C:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
+                             f"| RSI_OK:{rsi_val <= rsi_threshold}, CROSS_OK:{is_crossover} ({cross_reason})")
+                self._scan_log_cache[log_key] = True
 
             if rsi_val <= rsi_threshold and is_crossover:
                 candidates.append({
@@ -316,7 +331,12 @@ class SellManagerV3:
         tf = self._cfg('rsi.tf', 5)
         is_start_of_day = (timestamp.time() >= start_time_obj and timestamp.time() < (datetime.combine(timestamp.date(), start_time_obj) + timedelta(minutes=1)).time())
         is_settled_boundary = (timestamp.minute % tf == 0 and timestamp.second >= 10)
-        was_recently_closed = self.last_exit_timestamp is not None
+
+        # Immediate scan window: 2 minutes after an exit
+        was_recently_closed = False
+        if self.last_exit_timestamp:
+            elapsed_since_exit = (timestamp - self.last_exit_timestamp).total_seconds()
+            was_recently_closed = elapsed_since_exit < 120
 
         if not is_start_of_day and not is_settled_boundary and not was_recently_closed:
             if self.orchestrator.is_backtest and (timestamp.minute % tf == 0): pass
