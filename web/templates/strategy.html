@@ -174,9 +174,48 @@
             <input type="text" class="input-field" data-path="NIFTY.sell_v3.entry_end_time"/>
           </div>
         </div>
-        <div>
-          <label class="field-label">LTP Entry Threshold</label>
-          <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_threshold"/>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="field-label">LTP Entry Threshold</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_threshold"/>
+          </div>
+          <div>
+            <label class="field-label">Re-entry Offset (ATM±N)</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.reentry_strike_offset"/>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Workflow Phase</span>
+          <div class="flex bg-slate-800 rounded-lg p-1">
+            <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.workflow_phase" data-value="BEGINNING" onclick="selectMode(this)">At Beginning</button>
+            <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.workflow_phase" data-value="CONTINUE" onclick="selectMode(this)">Continue</button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Re-entry Style</span>
+          <div class="flex bg-slate-800 rounded-lg p-1">
+            <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.reentry_mode" data-value="BALANCED" onclick="selectMode(this)">Initial/Balanced</button>
+            <button class="px-3 py-1 text-xs rounded-md transition-colors mode-btn" data-path="NIFTY.sell_v3.reentry_mode" data-value="SCANNER" onclick="selectMode(this)">Technical Scanner</button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Multi-Strike Scan Enabled</span>
+          <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.multi_strike_scan_enabled" onclick="toggleSwitch(this)">
+            <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+          </button>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Strict LTP Balancing</span>
+          <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.ltp_balance_enabled" onclick="toggleSwitch(this)">
+            <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+          </button>
+        </div>
+        <hr class="opacity-10 my-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm">V-Slope Filter (Decaying VWAP)</span>
+          <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.v_slope_filter_enabled" onclick="toggleSwitch(this)">
+            <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+          </button>
         </div>
       </div>
     </div>
@@ -194,6 +233,17 @@
             <input type="number" class="input-field" data-path="NIFTY.sell_v3.ltp_exit_min"/>
           </div>
         </div>
+        <hr class="opacity-10 my-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm">VWAP Slope Exit Enabled</span>
+          <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.vwap_slope_exit.enabled" onclick="toggleSwitch(this)">
+            <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+          </button>
+        </div>
+        <div>
+          <label class="field-label">VWAP Slope Exit (% from low)</label>
+          <input type="number" class="input-field" step="0.1" data-path="NIFTY.sell_v3.vwap_slope_exit.threshold_pct"/>
+        </div>
         <div class="flex items-center justify-between">
           <span class="text-sm">Ratio Exit Enabled (3:1)</span>
           <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.ratio_exit.enabled" onclick="toggleSwitch(this)">
@@ -208,16 +258,43 @@
     </div>
 
     <div class="card p-5">
-      <div class="section-label">Dynamic TSL (Rupees)</div>
+      <div class="section-label">Scalable Profit Locking (TSL)</div>
       <div class="space-y-3">
         <div class="flex items-center justify-between">
-          <span class="text-sm">TSL Toggle (Lock Profit)</span>
+          <span class="text-sm">Scalable TSL Enabled</span>
+          <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.tsl_scalable.enabled" onclick="toggleSwitch(this)">
+            <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
+          </button>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="field-label">Base Profit (₹)</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.tsl_scalable.base_profit"/>
+          </div>
+          <div>
+            <label class="field-label">Base Lock (₹)</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.tsl_scalable.base_lock"/>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="field-label">Step Profit (₹)</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.tsl_scalable.step_profit"/>
+          </div>
+          <div>
+            <label class="field-label">Step Lock (₹)</label>
+            <input type="number" class="input-field" data-path="NIFTY.sell_v3.tsl_scalable.step_lock"/>
+          </div>
+        </div>
+        <hr class="opacity-10 my-1">
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Legacy TSL (Rupees)</span>
           <button class="toggle-btn w-12 h-6 rounded-full relative transition-colors" data-path="NIFTY.sell_v3.tsl.enabled" onclick="toggleSwitch(this)">
             <span class="toggle-knob absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"></span>
           </button>
         </div>
         <div>
-          <label class="field-label">TSL Value (Rupees to Lock)</label>
+          <label class="field-label">TSL Value (Lock Point)</label>
           <input type="number" class="input-field" data-path="NIFTY.sell_v3.tsl.value"/>
         </div>
       </div>
@@ -791,12 +868,31 @@ function toggleSwitch(btn) {
   setToggleState(btn, !current);
 }
 
+function selectMode(btn) {
+  const path = btn.dataset.path;
+  const val = btn.dataset.value;
+  document.querySelectorAll(`[data-path="${path}"]`).forEach(el => {
+    el.classList.remove('bg-indigo-600', 'text-white');
+    el.classList.add('text-slate-400');
+    el.dataset.active = "false";
+  });
+  btn.classList.add('bg-indigo-600', 'text-white');
+  btn.classList.remove('text-slate-400');
+  btn.dataset.active = "true";
+}
+
 function initAll(data) {
   document.querySelectorAll('.toggle-btn').forEach(btn => {
     const val = getNestedValue(data, btn.dataset.path);
     setToggleState(btn, !!val);
   });
-  document.querySelectorAll('[data-path]:not(.toggle-btn)').forEach(el => {
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    const val = getNestedValue(data, btn.dataset.path);
+    if (val === btn.dataset.value) {
+      selectMode(btn);
+    }
+  });
+  document.querySelectorAll('[data-path]:not(.toggle-btn):not(.mode-btn)').forEach(el => {
     const val = getNestedValue(data, el.dataset.path);
     if (val === null || val === undefined) return;
     if (el.tagName === 'SELECT') {
@@ -823,7 +919,10 @@ async function saveAll() {
   document.querySelectorAll('.toggle-btn').forEach(btn => {
     setNestedValue(strategyData, btn.dataset.path, btn.dataset.value === 'true');
   });
-  document.querySelectorAll('[data-path]:not(.toggle-btn)').forEach(el => {
+  document.querySelectorAll('.mode-btn[data-active="true"]').forEach(btn => {
+    setNestedValue(strategyData, btn.dataset.path, btn.dataset.value);
+  });
+  document.querySelectorAll('[data-path]:not(.toggle-btn):not(.mode-btn)').forEach(el => {
     let val = el.value;
     if (el.type === 'number') {
       const n = parseFloat(val);

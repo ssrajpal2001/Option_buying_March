@@ -123,13 +123,14 @@ class IndicatorManager:
         # 1. Check ATP history first (allows lookups for previous candles in both live and backtest)
         atp_hist = getattr(self.state_manager, 'atp_history', {}).get(inst_key, {})
         if atp_hist:
-            # We want the VWAP (ATP) from the candle that just finalized.
-            # If timestamp is 10:30:00, we want the state as of 10:29:59 (the 10:25-10:30 candle's final ATP).
-            search_ts = timestamp - timedelta(seconds=1)
+            # For technical entry/exit, we want the most recent recorded ATP.
+            # In backtest, the CSV contains one row per minute.
+            search_ts = timestamp
             if search_ts.tzinfo is None:
                 search_ts = pytz.timezone('Asia/Kolkata').localize(search_ts)
 
             # Filter for timestamp-like keys and find latest available up to search_ts
+            # This ensures we pick up the ATP that matches the current execution minute.
             candidates = [ts for ts in atp_hist.keys() if hasattr(ts, 'year') and ts <= search_ts]
             if candidates:
                 return float(atp_hist[max(candidates)])

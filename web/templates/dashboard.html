@@ -52,6 +52,7 @@
         <div class="grid grid-cols-2 gap-1 mt-2 text-xs" style="color:#64748b">
           <div>Entry <span id="buy-call-entry" class="text-slate-300">--</span></div>
           <div>LTP <span id="buy-call-ltp" class="text-slate-300">--</span></div>
+          <div>Time <span id="buy-call-time" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="buy-call-pnl">--</div>
       </div>
@@ -64,6 +65,7 @@
         <div class="grid grid-cols-2 gap-1 mt-2 text-xs" style="color:#64748b">
           <div>Entry <span id="buy-put-entry" class="text-slate-300">--</span></div>
           <div>LTP <span id="buy-put-ltp" class="text-slate-300">--</span></div>
+          <div>Time <span id="buy-put-time" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="buy-put-pnl">--</div>
       </div>
@@ -85,6 +87,7 @@
         <div class="grid grid-cols-2 gap-1 mt-2 text-xs" style="color:#64748b">
           <div>Entry <span id="sell-ce-entry" class="text-slate-300">--</span></div>
           <div>LTP <span id="sell-ce-ltp" class="text-slate-300">--</span></div>
+          <div>Time <span id="sell-ce-time" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="sell-ce-pnl">--</div>
       </div>
@@ -97,20 +100,37 @@
         <div class="grid grid-cols-2 gap-1 mt-2 text-xs" style="color:#64748b">
           <div>Entry <span id="sell-pe-entry" class="text-slate-300">--</span></div>
           <div>LTP <span id="sell-pe-ltp" class="text-slate-300">--</span></div>
+          <div>Time <span id="sell-pe-time" class="text-slate-300">--</span></div>
         </div>
         <div class="text-sm font-bold mt-2" id="sell-pe-pnl">--</div>
       </div>
     </div>
 
     <div id="v3-indicators" class="rounded-lg p-3 hidden" style="background:#0f172a;border:1px solid #334155">
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex-1">
-          <div class="text-[10px] uppercase font-bold mb-1" style="color:#64748b">Synthetic RSI (14p)</div>
-          <div id="v3-rsi" class="text-lg font-bold text-white">--</div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="col-span-2 flex items-center justify-between mb-1 pb-1 border-b" style="border-color:#1e293b">
+            <span class="text-[10px] uppercase font-bold text-slate-400">V3 Live Indicators</span>
+            <div class="flex gap-1">
+                <span id="v3-slope-label" class="text-[9px] px-1.5 rounded font-bold uppercase tracking-wider hidden" style="background:#1e293b;color:#64748b">VWAP --</span>
+                <span id="v3-status-label" class="text-[9px] px-1.5 rounded font-bold uppercase tracking-wider" style="background:#1e293b;color:#64748b">--</span>
+            </div>
         </div>
-        <div class="flex-1 border-l pl-4" style="border-color:#1e293b">
-          <div class="text-[10px] uppercase font-bold mb-1" style="color:#64748b">Combined VWAP</div>
-          <div id="v3-vwap" class="text-lg font-bold text-white">--</div>
+        <div>
+          <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Combined LTP</div>
+          <div id="v3-ltp" class="text-lg font-bold text-white leading-none">--</div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Combined VWAP</div>
+          <div id="v3-vwap" class="text-lg font-bold text-white leading-none">--</div>
+        </div>
+        <div class="border-t pt-2" style="border-color:#1e293b">
+          <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Synthetic RSI</div>
+          <div id="v3-rsi" class="text-lg font-bold text-white leading-none">--</div>
+        </div>
+        <div class="border-t pt-2" style="border-color:#1e293b">
+          <div class="text-[10px] uppercase font-bold mb-0.5 text-slate-500">Slope Rise (vs Low)</div>
+          <div id="v3-slope" class="text-lg font-bold leading-none" style="color:#fb923c">-- %</div>
+          <div class="text-[9px] mt-1" style="color:#475569">Low: <span id="v3-low-vwap" class="text-slate-400">--</span></div>
         </div>
       </div>
     </div>
@@ -150,7 +170,8 @@
     <table class="w-full text-xs" id="ob-table">
       <thead>
         <tr style="color:#64748b;border-bottom:1px solid #1e293b">
-          <th class="text-left py-1 pr-3">Time</th>
+          <th class="text-left py-1 pr-3">Entry</th>
+          <th class="text-left py-1 pr-3">Exit</th>
           <th class="text-left py-1 pr-3">Type</th>
           <th class="text-left py-1 pr-3">Dir</th>
           <th class="text-right py-1 pr-3">Strike</th>
@@ -162,7 +183,7 @@
         </tr>
       </thead>
       <tbody id="ob-body">
-        <tr><td colspan="9" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>
+        <tr><td colspan="10" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>
       </tbody>
     </table>
   </div>
@@ -248,6 +269,7 @@ function updateDashboard(d) {
     document.getElementById(`${pfx}-strike`).textContent = pos.strike || '--';
     document.getElementById(`${pfx}-entry`).textContent = fmt(pos.entry);
     document.getElementById(`${pfx}-ltp`).textContent = fmt(pos.ltp);
+    document.getElementById(`${pfx}-time`).textContent = pos.entry_time || '--';
     const pnlEl2 = document.getElementById(`${pfx}-pnl`);
     if (active) {
       pnlEl2.textContent = `₹ ${fmt(pos.pnl)}`;
@@ -264,6 +286,40 @@ function updateDashboard(d) {
       document.getElementById('v3-indicators').classList.remove('hidden');
       document.getElementById('v3-rsi').textContent = v3Ind.rsi !== null ? v3Ind.rsi.toFixed(2) : '--';
       document.getElementById('v3-vwap').textContent = v3Ind.vwap !== null ? v3Ind.vwap.toFixed(2) : '--';
+      document.getElementById('v3-ltp').textContent = v3Ind.combined_ltp !== null ? v3Ind.combined_ltp.toFixed(2) : '--';
+
+      const statusLabel = document.getElementById('v3-status-label');
+      if (v3Ind.combined_ltp && v3Ind.vwap) {
+          const above = v3Ind.combined_ltp > v3Ind.vwap;
+          statusLabel.textContent = above ? 'ABOVE VWAP' : 'BELOW VWAP';
+          statusLabel.style.color = above ? '#f87171' : '#34d399';
+          statusLabel.style.background = above ? '#450a0a' : '#064e3b';
+      } else {
+          statusLabel.textContent = '--';
+          statusLabel.style.color = '#64748b';
+          statusLabel.style.background = '#1e293b';
+      }
+
+      const vSlopeLabel = document.getElementById('v3-slope-label');
+      if (v3Ind.v_slope && v3Ind.v_slope !== 'IDLE') {
+          vSlopeLabel.classList.remove('hidden');
+          vSlopeLabel.textContent = `VWAP ${v3Ind.v_slope}`;
+          vSlopeLabel.style.color = v3Ind.v_slope === 'FALLING' ? '#34d399' : '#f87171';
+          vSlopeLabel.style.background = v3Ind.v_slope === 'FALLING' ? '#064e3b' : '#450a0a';
+      } else {
+          vSlopeLabel.classList.add('hidden');
+      }
+
+      const slopeEl = document.getElementById('v3-slope');
+      if (v3Ind.rise_pct !== undefined && v3Ind.rise_pct !== null) {
+        slopeEl.textContent = `${v3Ind.rise_pct.toFixed(2)} %`;
+        slopeEl.style.color = v3Ind.rise_pct >= 1.0 ? '#ef4444' : v3Ind.rise_pct >= 0.5 ? '#f59e0b' : '#34d399';
+        document.getElementById('v3-low-vwap').textContent = v3Ind.lowest_vwap !== null ? v3Ind.lowest_vwap.toFixed(2) : '--';
+      } else {
+          slopeEl.textContent = '-- %';
+          slopeEl.style.color = '#64748b';
+          document.getElementById('v3-low-vwap').textContent = '--';
+      }
     } else {
       document.getElementById('v3-indicators').classList.add('hidden');
     }
@@ -279,6 +335,7 @@ function updateDashboard(d) {
     document.getElementById(`${pfx}-strike`).textContent = pos.strike || '--';
     document.getElementById(`${pfx}-entry`).textContent = fmt(pos.entry);
     document.getElementById(`${pfx}-ltp`).textContent = fmt(pos.ltp);
+    document.getElementById(`${pfx}-time`).textContent = pos.entry_time || '--';
     const pnlEl3 = document.getElementById(`${pfx}-pnl`);
     if (active) {
       pnlEl3.textContent = `₹ ${fmt(pos.pnl)}`;
@@ -319,7 +376,7 @@ function updateDashboard(d) {
   document.getElementById('ob-count').textContent = `${trades.length} trade${trades.length !== 1 ? 's' : ''}`;
   const tbody = document.getElementById('ob-body');
   if (trades.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="py-3 text-center" style="color:#475569">No closed trades yet.</td></tr>';
   } else {
     tbody.innerHTML = trades.map(t => {
       const profit = t.pnl_pts > 0;
@@ -331,6 +388,7 @@ function updateDashboard(d) {
       const ptsSign = t.pnl_pts > 0 ? '+' : '';
       const rsSign = t.pnl_rs > 0 ? '+' : '';
       return `<tr style="border-bottom:1px solid #1e293b;background:${rowColor}">
+        <td class="py-1 pr-3 font-mono" style="color:#94a3b8">${escapeHtml(t.entry_time || '--')}</td>
         <td class="py-1 pr-3 font-mono" style="color:#94a3b8">${escapeHtml(t.time)}</td>
         <td class="py-1 pr-3 font-bold" style="color:${typeColor}">${escapeHtml(t.type)}</td>
         <td class="py-1 pr-3 font-bold" style="color:${dirColor}">${escapeHtml(t.direction)}</td>
