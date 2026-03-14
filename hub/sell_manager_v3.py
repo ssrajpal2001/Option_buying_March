@@ -35,6 +35,7 @@ class SellManagerV3:
         self.last_v3_log_time = 0
         self.last_indicator_check_minute = -1
         self.last_exit_timestamp = None
+        self.last_entry_bucket = None # Tracks the 5m candle bucket of the last entry
         self.closed_trades = [] # Persistent history of closed trades
 
         # Strategy State
@@ -57,6 +58,7 @@ class SellManagerV3:
             'total_premium_points': self.total_premium_points,
             'entry_timestamp': self.entry_timestamp.isoformat() if self.entry_timestamp else None,
             'lowest_combined_vwap': self.lowest_combined_vwap,
+            'last_entry_bucket': self.last_entry_bucket.isoformat() if self.last_entry_bucket else None,
             'tsl_wait_high_hit': self.tsl_wait_high_hit,
             'tsl_scalable_lock_points': self.tsl_scalable_lock_points,
             'closed_trades': self.closed_trades
@@ -83,6 +85,8 @@ class SellManagerV3:
             ts = state.get('entry_timestamp')
             self.entry_timestamp = datetime.fromisoformat(ts).replace(tzinfo=pytz.timezone('Asia/Kolkata')) if ts else None
             self.lowest_combined_vwap = state.get('lowest_combined_vwap')
+            bucket_ts = state.get('last_entry_bucket')
+            self.last_entry_bucket = datetime.fromisoformat(bucket_ts).replace(tzinfo=pytz.timezone('Asia/Kolkata')) if bucket_ts else None
             self.tsl_wait_high_hit = state.get('tsl_wait_high_hit', False)
             self.tsl_scalable_lock_points = state.get('tsl_scalable_lock_points', 0.0)
             self.closed_trades = state.get('closed_trades', [])
@@ -226,6 +230,11 @@ class SellManagerV3:
         self.active = True
         self.entry_timestamp = timestamp
         self.total_premium_points = self.ce_leg['entry_ltp'] + self.pe_leg['entry_ltp']
+
+        # Track bucket for one-entry-per-candle rule
+        tf = self._cfg('rsi.tf', 5)
+        self.last_entry_bucket = timestamp.replace(minute=(timestamp.minute // tf) * tf, second=0, microsecond=0)
+
         self.tsl_wait_high_hit = False
         self.lowest_combined_vwap = None
         self.tsl_scalable_lock_points = 0.0
@@ -267,13 +276,14 @@ class SellManagerV3:
             if ce_ltp < ltp_threshold and pe_ltp < ltp_threshold: continue
 
             # Entry Criteria (Indicator Check)
+            # Use include_current=True to align Price/RSI with the current execution minute
             rsi_val = await self.orchestrator.indicator_manager.calculate_combined_rsi(
-                ce_key, pe_key, tf, rsi_cfg.get('period', 14), timestamp, include_current=False
+                ce_key, pe_key, tf, rsi_cfg.get('period', 14), timestamp, include_current=True
             )
             if rsi_val is None and self.orchestrator.is_backtest: rsi_val = 0.0
             if rsi_val is None or rsi_val > rsi_threshold: continue
 
-            # VWAP Logic
+            # VWAP Logic (Uses ATP from recorded CSV in backtest)
             ce_vwap = await self.orchestrator.indicator_manager.calculate_vwap(ce_key, timestamp)
             pe_vwap = await self.orchestrator.indicator_manager.calculate_vwap(pe_key, timestamp)
             if ce_vwap is None or pe_vwap is None:
@@ -298,19 +308,22 @@ class SellManagerV3:
                     v_slope_ok = False
                     v_slope_reason = "Wait: Missing Prev VWAP"
 
-            ohlc1 = await self.orchestrator.indicator_manager.get_robust_ohlc(ce_key, tf, timestamp, include_current=False)
-            ohlc2 = await self.orchestrator.indicator_manager.get_robust_ohlc(pe_key, tf, timestamp, include_current=False)
+            ohlc1 = await self.orchestrator.indicator_manager.get_robust_ohlc(ce_key, tf, timestamp, include_current=True)
+            ohlc2 = await self.orchestrator.indicator_manager.get_robust_ohlc(pe_key, tf, timestamp, include_current=True)
             if ohlc1 is None or ohlc1.empty or ohlc2 is None or ohlc2.empty: continue
 
             c1, c2 = ohlc1.iloc[-1], ohlc2.iloc[-1]
             comb_open, comb_high, comb_close = c1['open'] + c2['open'], c1['high'] + c2['high'], c1['close'] + c2['close']
 
-            # New Simplified Logic: Only check Close <= VWAP
-            is_below_vwap = comb_close <= combined_vwap
+            # User Requirement: open or high above vwap and close below vwap
+            is_rejection = (comb_open > combined_vwap or comb_high > combined_vwap) and (comb_close <= combined_vwap)
 
-            trigger_reason = "OK" if (is_below_vwap and v_slope_ok) else ""
-            if not is_below_vwap:
-                trigger_reason = f"Wait: Close {comb_close:.2f} > VWAP {combined_vwap:.2f}"
+            trigger_reason = "OK" if (is_rejection and v_slope_ok) else ""
+            if not is_rejection:
+                if comb_close > combined_vwap:
+                    trigger_reason = f"Wait: LTP {comb_close:.2f} > VWAP {combined_vwap:.2f}"
+                else:
+                    trigger_reason = f"Wait: No Rejection (Open/High {max(comb_open, comb_high):.2f} <= VWAP {combined_vwap:.2f})"
             elif not v_slope_ok:
                 trigger_reason = v_slope_reason
 
@@ -322,11 +335,12 @@ class SellManagerV3:
                 if len(self._scan_log_cache) > 50: self._scan_log_cache.clear()
 
                 logger.info(f"[SellV3][Scan Re-entry] {int(base_strike)}CE+{int(base_strike)}PE (Base: {int(base_strike)}): "
-                             f"RSI:{rsi_val:.2f}, C:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
-                             f"| RSI_OK:{rsi_val <= rsi_threshold}, TRIGGER:{is_below_vwap and v_slope_ok} ({trigger_reason})")
+                             f"RSI:{rsi_val:.2f}, LTP:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
+                             f"(CE_V:{ce_vwap:.2f}, PE_V:{pe_vwap:.2f}) "
+                             f"| RSI_OK:{rsi_val <= rsi_threshold}, TRIGGER:{is_rejection and v_slope_ok} ({trigger_reason})")
                 self._scan_log_cache[log_key] = True
 
-            if rsi_val <= rsi_threshold and is_below_vwap and v_slope_ok:
+            if rsi_val <= rsi_threshold and is_rejection and v_slope_ok:
                 candidates.append({
                     'ce': {'strike': base_strike, 'key': ce_key, 'ltp': ce_ltp},
                     'pe': {'strike': base_strike, 'key': pe_key, 'ltp': pe_ltp},
@@ -379,21 +393,26 @@ class SellManagerV3:
         workflow_phase = self._cfg('workflow_phase', 'BEGINNING')
         reentry_mode = self._cfg('reentry_mode', 'SCANNER')
 
-        best = None
+        # User Protection: One entry per candle rule (Technical Scanner only)
+        tf = self._cfg('rsi.tf', 5)
+        current_bucket = timestamp.replace(minute=(timestamp.minute // tf) * tf, second=0, microsecond=0)
 
-        # Logic Selection based on Phase Toggle
-        # 1. AT BEGINNING: First trade is always Balanced. Subsequent trades follow reentry_mode.
-        # 2. CONTINUE: Every trade (including first) follows reentry_mode.
-
+        # Determine if we are using technical logic (balanced mode ignores these protections)
         use_balanced_logic = False
         if workflow_phase == "BEGINNING":
-            if is_first_trade_of_day:
-                use_balanced_logic = True
-            else:
-                use_balanced_logic = (reentry_mode == "BALANCED")
+            if is_first_trade_of_day: use_balanced_logic = True
+            else: use_balanced_logic = (reentry_mode == "BALANCED")
         else: # CONTINUE
             use_balanced_logic = (reentry_mode == "BALANCED")
 
+        # User Protection: One entry per candle rule (Technical Scanner only)
+        if not use_balanced_logic:
+            if self.last_entry_bucket == current_bucket:
+                return
+
+        best = None
+
+        # Logic Selection
         if use_balanced_logic:
             # Balanced Mode (No filters)
             best = await self._get_balanced_candidate(timestamp)
