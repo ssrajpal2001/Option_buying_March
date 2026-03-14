@@ -602,7 +602,7 @@ class SellManagerV3:
             step_lock = self._cfg('tsl_scalable.step_lock', 200)
 
             # Points-based calculation for scalability
-            lot_size = self.orchestrator.config_manager.get_int(self.instrument_name, 'lot_size', 50)
+            lot_size = self.ce_leg.get('lot_size') or self.orchestrator.config_manager.get_int(self.instrument_name, 'lot_size', 50)
             base_profit_pts = base_profit / lot_size
             base_lock_pts = base_lock / lot_size
             step_profit_pts = step_profit / lot_size
