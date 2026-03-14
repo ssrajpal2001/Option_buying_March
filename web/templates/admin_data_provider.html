@@ -1,0 +1,84 @@
+{% extends "admin_base.html" %}
+{% set active_page = "data_provider" %}
+{% block title %}Data Provider{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-white">Data Provider</h1>
+  <p class="text-sm mt-1" style="color:#64748b">Configure Upstox credentials for global market data access</p>
+</div>
+
+<div class="card p-6 max-w-lg">
+  <div class="flex items-center gap-3 mb-5">
+    <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:#1a3050">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    </div>
+    <div>
+      <div class="text-white font-bold">Upstox</div>
+      <div id="dp-status-text" class="text-xs" style="color:#64748b">Checking status...</div>
+    </div>
+    <span id="dp-badge" class="badge-idle ml-auto">...</span>
+  </div>
+
+  <div class="mb-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#64748b;border:1px solid #1e293b">
+    This token is used for <strong style="color:#e2e8f0">market data only</strong> (prices, OI, indices).
+    It is shared across all active clients. Update when your Upstox access token expires.
+  </div>
+
+  <form id="dp-form">
+    <div class="mb-4">
+      <label class="block text-xs mb-1" style="color:#94a3b8">Upstox API Key</label>
+      <input id="api-key" type="text" class="input-field" placeholder="Your Upstox API key"/>
+    </div>
+    <div class="mb-6">
+      <label class="block text-xs mb-1" style="color:#94a3b8">Access Token</label>
+      <textarea id="access-token" class="input-field" rows="3" placeholder="Paste your current Upstox access token here" style="resize:none"></textarea>
+    </div>
+    <div id="dp-msg" class="text-xs mb-3 hidden"></div>
+    <button type="submit" class="btn-primary px-6 py-2.5 text-sm">Save & Update Token</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDp() {
+  const r = await fetch('/api/admin/data-provider');
+  const d = await r.json();
+  const badge = document.getElementById('dp-badge');
+  const txt = document.getElementById('dp-status-text');
+  if (d.status === 'configured') {
+    badge.className = 'badge-ok ml-auto';
+    badge.textContent = '✓ Configured';
+    txt.textContent = 'Token active — update when it expires';
+  } else {
+    badge.className = 'badge-warn ml-auto';
+    badge.textContent = '⚠ Not Configured';
+    txt.textContent = 'No token set — clients cannot trade without this';
+  }
+  if (d.api_key) document.getElementById('api-key').value = d.api_key;
+}
+
+document.getElementById('dp-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = document.getElementById('dp-msg');
+  const r = await fetch('/api/admin/data-provider', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      api_key: document.getElementById('api-key').value.trim(),
+      access_token: document.getElementById('access-token').value.trim(),
+    })
+  });
+  const d = await r.json();
+  msg.className = `text-xs mb-3 ${d.success ? '' : 'hidden'}`;
+  msg.style.color = d.success ? '#34d399' : '#f87171';
+  msg.textContent = d.message || (d.success ? 'Saved.' : 'Failed.');
+  msg.classList.remove('hidden');
+  showToast(d.message || 'Updated', d.success ? 'success' : 'error');
+  if (d.success) loadDp();
+});
+
+loadDp();
+</script>
+{% endblock %}

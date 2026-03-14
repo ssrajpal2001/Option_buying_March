@@ -1,0 +1,135 @@
+{% extends "admin_base.html" %}
+{% set active_page = "clients" %}
+{% block title %}Client Detail{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <a href="/admin/clients" class="text-xs mb-2 inline-block" style="color:#64748b">← Back to Clients</a>
+  <h1 class="text-2xl font-bold text-white" id="client-name">Loading...</h1>
+  <p class="text-sm mt-1" id="client-email" style="color:#64748b"></p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+  <div class="stat-card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Status</div>
+    <div id="d-status" class="text-lg font-bold text-white">--</div>
+  </div>
+  <div class="stat-card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Subscription</div>
+    <div id="d-tier" class="text-lg font-bold text-white">--</div>
+  </div>
+  <div class="stat-card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Joined</div>
+    <div id="d-joined" class="text-lg font-bold text-white">--</div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+  <div class="card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#64748b">Bot Instances</div>
+    <div id="instances-list" style="color:#64748b;font-size:13px">Loading...</div>
+    <div class="flex gap-2 mt-3">
+      <button onclick="forceClose()" class="btn-danger px-3 py-1.5 text-xs">Force Close All</button>
+    </div>
+  </div>
+
+  <div class="card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#64748b">Order Failures</div>
+    <div id="failures-list" style="color:#64748b;font-size:13px">Loading...</div>
+  </div>
+</div>
+
+<div class="card p-4">
+  <div class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#64748b">Trade History</div>
+  <table>
+    <thead><tr>
+      <th>Time</th><th>Type</th><th>Dir</th><th>Strike</th>
+      <th>Entry</th><th>Exit</th><th>P&L pts</th><th>P&L ₹</th><th>Reason</th>
+    </tr></thead>
+    <tbody id="trades-body">
+      <tr><td colspan="9" class="text-center" style="color:#475569">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientId = window.location.pathname.split('/').pop();
+
+async function loadDetail() {
+  const r = await fetch(`/api/admin/clients/${clientId}/detail`);
+  const d = await r.json();
+  const c = d.client;
+
+  document.getElementById('client-name').textContent = c.username;
+  document.getElementById('client-email').textContent = c.email;
+  document.getElementById('d-status').innerHTML = c.is_active
+    ? '<span class="badge-ok">Active</span>' : '<span class="badge-warn">Pending</span>';
+  document.getElementById('d-tier').textContent = c.subscription_tier;
+  document.getElementById('d-joined').textContent = (c.created_at||'').substring(0,10);
+
+  const ilist = document.getElementById('instances-list');
+  if (d.instances && d.instances.length) {
+    ilist.innerHTML = d.instances.map(i => `
+      <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #1e293b">
+        <div>
+          <div class="text-white font-bold">${escapeHtml(i.broker)} · ${escapeHtml(i.instrument)} · ${i.quantity} lots</div>
+          <div class="text-xs mt-0.5" style="color:#64748b">${i.strategy_version} · ${i.trading_mode}</div>
+        </div>
+        <span class="${i.status === 'running' ? 'badge-ok' : 'badge-idle'}">${i.status}</span>
+      </div>
+    `).join('');
+  } else {
+    ilist.textContent = 'No broker configured yet.';
+  }
+
+  const flist = document.getElementById('failures-list');
+  if (d.failures && d.failures.length) {
+    flist.innerHTML = d.failures.map(f => `
+      <div class="py-1.5" style="border-bottom:1px solid #1e293b">
+        <div class="flex items-center justify-between">
+          <span style="color:#f87171">Leg ${escapeHtml(f.order_side)} failed</span>
+          <span style="color:#64748b;font-size:11px">${(f.created_at||'').substring(11,19)}</span>
+        </div>
+        <div class="text-xs mt-0.5" style="color:#64748b">${escapeHtml(f.failure_reason||'')} · Retry ${f.retry_attempt} · ${f.paired_leg_closed ? 'Paired leg closed ✓' : 'Paired leg open ⚠'}</div>
+      </div>
+    `).join('');
+  } else {
+    flist.textContent = 'No failures recorded.';
+  }
+
+  const tbody = document.getElementById('trades-body');
+  if (d.trades && d.trades.length) {
+    tbody.innerHTML = d.trades.map(t => {
+      const pnlColor = (t.pnl_pts||0) > 0 ? '#34d399' : (t.pnl_pts||0) < 0 ? '#f87171' : '#64748b';
+      const pSign = (t.pnl_pts||0) > 0 ? '+' : '';
+      const rSign = (t.pnl_rs||0) > 0 ? '+' : '';
+      return `<tr>
+        <td style="color:#64748b;font-size:12px">${(t.closed_at||'').substring(11,19)}</td>
+        <td style="color:${t.trade_type==='BUY'?'#60a5fa':'#fb923c'};font-weight:700">${escapeHtml(t.trade_type||'')}</td>
+        <td style="color:${(t.direction==='CE'||t.direction==='CALL')?'#818cf8':'#f472b6'}">${escapeHtml(t.direction||'')}</td>
+        <td class="text-white">${t.strike||'--'}</td>
+        <td style="color:#94a3b8">${t.entry_price ? parseFloat(t.entry_price).toFixed(2) : '--'}</td>
+        <td style="color:#94a3b8">${t.exit_price ? parseFloat(t.exit_price).toFixed(2) : '--'}</td>
+        <td style="color:${pnlColor};font-weight:700">${pSign}${t.pnl_pts !== null ? parseFloat(t.pnl_pts).toFixed(2) : '--'}</td>
+        <td style="color:${pnlColor};font-weight:700">${rSign}${t.pnl_rs !== null ? parseFloat(t.pnl_rs).toFixed(0) : '--'}</td>
+        <td style="color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.exit_reason||'')}</td>
+      </tr>`;
+    }).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center" style="color:#475569">No trades yet.</td></tr>';
+  }
+}
+
+async function forceClose() {
+  if (!confirm('Stop all bot instances for this client?')) return;
+  const r = await fetch(`/api/admin/clients/${clientId}/force-close`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+  loadDetail();
+}
+
+loadDetail();
+</script>
+{% endblock %}

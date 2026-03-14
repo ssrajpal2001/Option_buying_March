@@ -1,0 +1,119 @@
+{% extends "admin_base.html" %}
+{% set active_page = "clients" %}
+{% block title %}Clients{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Client Management</h1>
+    <p class="text-sm mt-1" style="color:#64748b">Activate, view and manage all registered clients</p>
+  </div>
+</div>
+
+<div class="card p-4">
+  <div class="flex gap-3 mb-4">
+    <button onclick="filterClients('all')" id="f-all" class="tab-btn active">All</button>
+    <button onclick="filterClients('pending')" id="f-pending" class="tab-btn">Pending</button>
+    <button onclick="filterClients('active')" id="f-active" class="tab-btn">Active</button>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Username</th><th>Email</th><th>Status</th><th>Tier</th>
+      <th>Brokers</th><th>Running</th><th>Joined</th><th>Actions</th>
+    </tr></thead>
+    <tbody id="clients-tbody"><tr><td colspan="8" class="text-center" style="color:#475569">Loading...</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allClients = [];
+let currentFilter = 'all';
+
+const tabStyle = 'background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:7px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;';
+const tabActiveStyle = 'background:#00d4aa;color:#0a0f1e;border:1px solid #00d4aa;border-radius:7px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;';
+
+async function loadClients() {
+  const r = await fetch('/api/admin/clients');
+  allClients = await r.json();
+  renderClients();
+}
+
+function filterClients(f) {
+  currentFilter = f;
+  ['all','pending','active'].forEach(x => {
+    document.getElementById(`f-${x}`).className = x === f
+      ? 'tab-btn active' : 'tab-btn';
+  });
+  renderClients();
+}
+
+function renderClients() {
+  const filtered = allClients.filter(c => {
+    if (currentFilter === 'pending') return !c.is_active;
+    if (currentFilter === 'active') return c.is_active;
+    return true;
+  });
+  const tbody = document.getElementById('clients-tbody');
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center" style="color:#475569">No clients in this view.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(c => {
+    const statusBadge = c.is_active ? '<span class="badge-ok">Active</span>' : '<span class="badge-warn">Pending</span>';
+    const toggleBtn = c.is_active
+      ? `<button onclick="deactivate(${c.id})" class="btn-ghost px-2 py-1 text-xs">Deactivate</button>`
+      : `<button onclick="activate(${c.id})" class="btn-primary px-2 py-1 text-xs">Activate</button>`;
+    const date = c.created_at ? c.created_at.substring(0,10) : '--';
+    return `<tr>
+      <td class="text-white font-medium">${escapeHtml(c.username)}</td>
+      <td style="color:#64748b">${escapeHtml(c.email)}</td>
+      <td>${statusBadge}</td>
+      <td><span class="badge-idle">${c.subscription_tier}</span></td>
+      <td style="color:#94a3b8">${c.broker_count || 0}</td>
+      <td style="color:#818cf8">${c.running_count || 0}</td>
+      <td style="color:#64748b;font-size:12px">${date}</td>
+      <td>
+        <div class="flex gap-2">
+          ${toggleBtn}
+          <a href="/admin/clients/${c.id}" class="btn-ghost px-2 py-1 text-xs">View</a>
+          <select onchange="setTier(${c.id}, this.value)" class="input-field text-xs" style="width:auto;padding:2px 6px">
+            <option ${c.subscription_tier==='FREE'?'selected':''} value="FREE">FREE</option>
+            <option ${c.subscription_tier==='PREMIUM'?'selected':''} value="PREMIUM">PREMIUM</option>
+          </select>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function activate(id) {
+  const r = await fetch(`/api/admin/clients/${id}/activate`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+  loadClients();
+}
+
+async function deactivate(id) {
+  if (!confirm('Deactivate and stop all bots for this client?')) return;
+  const r = await fetch(`/api/admin/clients/${id}/deactivate`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+  loadClients();
+}
+
+async function setTier(id, tier) {
+  const r = await fetch(`/api/admin/clients/${id}/set-tier`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({tier})
+  });
+  const d = await r.json();
+  showToast(`Tier updated to ${d.tier}`, 'success');
+  loadClients();
+}
+
+loadClients();
+</script>
+{% endblock %}

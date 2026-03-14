@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Register — AlgoSoft</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0a0f1e; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+    .input-field { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; padding: 10px 14px; width: 100%; font-size: 14px; }
+    .input-field:focus { outline: none; border-color: #00d4aa; }
+    .btn-primary { background: #00d4aa; color: #0a0f1e; font-weight: 700; border-radius: 8px; padding: 10px 0; width: 100%; font-size: 15px; transition: all 0.2s; }
+    .btn-primary:hover { background: #00a882; }
+    .msg { font-size: 13px; margin-top: 8px; display: none; }
+    .msg.err { color: #f87171; }
+    .msg.ok { color: #34d399; }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+<div class="card p-8 w-full max-w-sm">
+  <div class="flex items-center gap-3 mb-8 justify-center">
+    <svg width="32" height="32" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="6" fill="#00d4aa"/><path d="M6 20 L10 14 L14 17 L18 10 L22 14" stroke="#0a0f1e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="text-white font-bold text-xl">Algo<span style="color:#00d4aa">Soft</span></span>
+  </div>
+  <h2 class="text-white font-bold text-xl mb-1">Create account</h2>
+  <p class="text-sm mb-6" style="color:#64748b">Admin will activate your account before you can trade</p>
+
+  <form id="reg-form">
+    <div class="mb-3">
+      <label class="block text-xs mb-1" style="color:#94a3b8">Username</label>
+      <input id="username" type="text" class="input-field" placeholder="trader_john"/>
+    </div>
+    <div class="mb-3">
+      <label class="block text-xs mb-1" style="color:#94a3b8">Email</label>
+      <input id="email" type="email" class="input-field" placeholder="you@email.com"/>
+    </div>
+    <div class="mb-5">
+      <label class="block text-xs mb-1" style="color:#94a3b8">Password</label>
+      <input id="password" type="password" class="input-field" placeholder="Min. 6 characters"/>
+    </div>
+    <p id="msg" class="msg">-</p>
+    <button type="submit" class="btn-primary mt-2">Register</button>
+  </form>
+  <p class="text-center text-xs mt-5" style="color:#64748b">
+    Already have an account? <a href="/login" style="color:#00d4aa">Sign in</a>
+  </p>
+</div>
+
+<script>
+document.getElementById('reg-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = document.getElementById('msg');
+  msg.style.display = 'none';
+  const res = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      username: document.getElementById('username').value.trim(),
+      email: document.getElementById('email').value.trim(),
+      password: document.getElementById('password').value,
+    })
+  });
+  const d = await res.json();
+  msg.style.display = 'block';
+  if (d.success) {
+    msg.className = 'msg ok';
+    msg.textContent = 'Registration successful! Waiting for admin to activate your account.';
+    document.getElementById('reg-form').reset();
+  } else {
+    msg.className = 'msg err';
+    msg.textContent = d.detail || 'Registration failed.';
+  }
+});
+</script>
+</body>
+</html>

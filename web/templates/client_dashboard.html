@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard — AlgoSoft</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0a0f1e; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+    .stat-card { background: linear-gradient(135deg, #1e293b 0%, #162032 100%); border: 1px solid #334155; border-radius: 12px; }
+    .badge-live { background: #064e3b; color: #34d399; border: 1px solid #059669; border-radius: 20px; }
+    .badge-stopped { background: #450a0a; color: #f87171; border: 1px solid #dc2626; border-radius: 20px; }
+    .badge-paper { background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb; border-radius: 20px; }
+    .btn-primary { background: #00d4aa; color: #0a0f1e; font-weight: 700; border-radius: 8px; transition: all 0.2s; }
+    .btn-primary:hover { background: #00a882; }
+    .btn-primary:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+    .btn-danger { background: #dc2626; color: white; font-weight: 700; border-radius: 8px; }
+    .btn-ghost { background: #334155; color: #e2e8f0; font-weight: 600; border-radius: 8px; }
+    .btn-ghost:hover { background: #475569; }
+    .input-field { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; padding: 8px 12px; width: 100%; }
+    .input-field:focus { outline: none; border-color: #00d4aa; }
+    .pnl-pos { color: #34d399; }
+    .pnl-neg { color: #f87171; }
+    .pnl-zero { color: #94a3b8; }
+    .log-box { background: #040810; font-family: 'Courier New', monospace; font-size: 11px; }
+    .nav-link { color: #94a3b8; transition: color 0.2s; }
+    .nav-link:hover, .nav-link.active { color: #00d4aa; }
+    .tab-btn { background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 7px; padding: 6px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .tab-btn.active { background: #00d4aa; color: #0a0f1e; border-color: #00d4aa; }
+    .toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; padding: 12px 20px; border-radius: 8px; font-weight: 600; opacity: 0; transition: opacity 0.3s; }
+    .toast.show { opacity: 1; }
+    .toast-success { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .toast-error { background: #450a0a; color: #f87171; border: 1px solid #dc2626; }
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .pulse-green { background: #34d399; animation: pulse 2s infinite; }
+    .pulse-red { background: #f87171; }
+    .pulse-blue { background: #60a5fa; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  </style>
+</head>
+<body>
+
+<nav style="background:#111827;border-bottom:1px solid #1e293b;" class="px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+  <div class="flex items-center gap-3">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="6" fill="#00d4aa"/><path d="M6 20 L10 14 L14 17 L18 10 L22 14" stroke="#0a0f1e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="text-white font-bold text-lg">Algo<span style="color:#00d4aa">Soft</span></span>
+  </div>
+  <div class="flex items-center gap-6">
+    <button onclick="showTab('trading')" id="tab-trading" class="nav-link active text-sm font-medium">Trading</button>
+    <button onclick="showTab('settings')" id="tab-settings" class="nav-link text-sm font-medium">Settings</button>
+  </div>
+  <div class="flex items-center gap-3">
+    <div id="bot-status-badge" class="flex items-center gap-2 text-sm px-3 py-1 badge-stopped">
+      <span class="pulse-dot pulse-red"></span>
+      <span id="bot-status-label">STOPPED</span>
+    </div>
+    <a href="/logout" class="btn-ghost px-3 py-1.5 text-xs">Sign out</a>
+  </div>
+</nav>
+
+<div class="px-6 py-6 max-w-screen-xl mx-auto">
+
+  <!-- TRADING TAB -->
+  <div id="pane-trading">
+    <!-- Alert banner -->
+    <div id="setup-alert" class="hidden mb-4 p-4 rounded-lg flex items-center gap-3" style="background:#1e293b;border:1px solid #fb923c">
+      <span style="color:#fb923c">⚠</span>
+      <span class="text-sm" style="color:#fb923c">Broker not configured. Go to <button onclick="showTab('settings')" style="color:#00d4aa;text-decoration:underline">Settings</button> to set up your Zerodha credentials first.</span>
+    </div>
+
+    <!-- Controls -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-white">Live Trading</h1>
+        <p id="last-update" class="text-xs mt-1" style="color:#64748b">Connecting...</p>
+      </div>
+      <div class="flex gap-3">
+        <button id="btn-start" onclick="startBot()" class="btn-primary px-5 py-2 text-sm">▶ Start Bot</button>
+        <button id="btn-stop" onclick="stopBot()" class="btn-danger px-5 py-2 text-sm hidden">■ Stop</button>
+        <button id="btn-restart" onclick="restartBot()" class="btn-ghost px-4 py-2 text-sm hidden">↻ Restart</button>
+      </div>
+    </div>
+
+    <!-- Stats from old dashboard (live data from per-client bot_status.json) -->
+    <div id="bot-live-panel" class="hidden">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="stat-card p-4">
+          <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">ATM Strike</div>
+          <div id="d-atm" class="text-2xl font-bold text-white">--</div>
+          <div class="text-xs mt-1" style="color:#64748b">Futures <span id="d-spot" class="text-slate-300">--</span></div>
+        </div>
+        <div class="stat-card p-4">
+          <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Index (Spot)</div>
+          <div id="d-index" class="text-2xl font-bold text-white">--</div>
+        </div>
+        <div class="stat-card p-4">
+          <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Session P&amp;L</div>
+          <div id="d-pnl" class="text-2xl font-bold pnl-zero">₹ --</div>
+          <div class="text-xs mt-1" style="color:#64748b">Trades: <span id="d-trades">0</span></div>
+        </div>
+        <div class="stat-card p-4">
+          <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Mode</div>
+          <div id="d-mode" class="text-2xl font-bold" style="color:#60a5fa">--</div>
+          <div class="text-xs mt-1" style="color:#64748b">Instrument: <span id="d-instrument">--</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Book (always visible after configured) -->
+    <div id="order-book-section" class="card p-4 mb-4 hidden">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">Order Book — Closed Trades</span>
+        <span id="ob-count" class="text-xs px-2 py-0.5 rounded" style="background:#1e293b;color:#64748b">0 trades</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="color:#64748b;border-bottom:1px solid #1e293b">
+              <th class="text-left py-1 pr-3 text-xs font-semibold uppercase">Time</th>
+              <th class="text-left py-1 pr-3 text-xs font-semibold uppercase">Type</th>
+              <th class="text-left py-1 pr-3 text-xs font-semibold uppercase">Dir</th>
+              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">Strike</th>
+              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">Entry</th>
+              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">Exit</th>
+              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">P&L pts</th>
+              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">P&L ₹</th>
+              <th class="text-left py-1 text-xs font-semibold uppercase">Reason</th>
+            </tr>
+          </thead>
+          <tbody id="ob-body">
+            <tr><td colspan="9" class="py-3 text-center text-sm" style="color:#475569">No closed trades yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Idle / Setup state -->
+    <div id="idle-card" class="card p-8 text-center">
+      <div class="text-4xl mb-3">📈</div>
+      <div class="text-white font-bold text-lg mb-1">Ready to Trade</div>
+      <p class="text-sm mb-4" style="color:#64748b">Configure your broker in Settings, then click Start Bot.</p>
+    </div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div id="pane-settings" class="hidden">
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-white">Settings</h1>
+      <p class="text-sm mt-1" style="color:#64748b">Configure your Zerodha broker credentials and trading parameters</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Broker Credentials -->
+      <div class="card p-5">
+        <div class="text-sm font-bold text-white mb-4">Zerodha Broker Connection</div>
+
+        <div class="mb-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#64748b;border:1px solid #1e293b">
+          Enter your Zerodha API key and access token.
+          These are used for <strong style="color:#e2e8f0">order execution only</strong> in your account.
+        </div>
+
+        <form id="broker-form">
+          <div class="mb-3">
+            <label class="block text-xs mb-1" style="color:#94a3b8">API Key</label>
+            <input id="s-api-key" type="text" class="input-field" placeholder="Your Zerodha API key"/>
+          </div>
+          <div class="mb-4">
+            <label class="block text-xs mb-1" style="color:#94a3b8">Access Token</label>
+            <textarea id="s-access-token" class="input-field" rows="3" placeholder="Paste access token" style="resize:none"></textarea>
+          </div>
+          <div class="mb-4">
+            <label class="block text-xs mb-1" style="color:#94a3b8">Trading Mode</label>
+            <div class="flex gap-3 mt-1">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="mode" id="mode-paper" value="paper" checked/>
+                <span class="text-sm" style="color:#60a5fa">Paper Trading</span>
+                <span class="text-xs" style="color:#64748b">(simulated)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="mode" id="mode-live" value="live"/>
+                <span class="text-sm" style="color:#f87171">Live Trading</span>
+                <span class="text-xs" style="color:#64748b">(real funds)</span>
+              </label>
+            </div>
+          </div>
+          <div id="broker-msg" class="text-xs mb-3 hidden"></div>
+          <button type="submit" class="btn-primary px-5 py-2 text-sm">Save Broker Settings</button>
+        </form>
+      </div>
+
+      <!-- Trading Config -->
+      <div class="card p-5">
+        <div class="text-sm font-bold text-white mb-4">Trading Configuration</div>
+        <form id="config-form">
+          <div class="mb-3">
+            <label class="block text-xs mb-1" style="color:#94a3b8">Instrument</label>
+            <select id="s-instrument" class="input-field">
+              <option value="NIFTY">NIFTY</option>
+              <option value="BANKNIFTY">BANKNIFTY</option>
+              <option value="FINNIFTY">FINNIFTY</option>
+              <option value="MIDCAP">MIDCAP</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="block text-xs mb-1" style="color:#94a3b8">Quantity (lots)</label>
+            <input id="s-quantity" type="number" min="1" max="500" class="input-field" value="25"/>
+          </div>
+          <div class="mb-4">
+            <label class="block text-xs mb-1" style="color:#94a3b8">Strategy Version</label>
+            <select id="s-strategy" class="input-field">
+              <option value="V3">V3 (Recommended)</option>
+              <option value="V2">V2</option>
+            </select>
+          </div>
+          <div id="config-msg" class="text-xs mb-3 hidden"></div>
+          <button type="submit" class="btn-primary px-5 py-2 text-sm">Save Configuration</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+function showToast(msg, type='success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast toast-${type} show`;
+  setTimeout(() => el.classList.remove('show'), 4000);
+}
+function escapeHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showTab(tab) {
+  document.getElementById('pane-trading').classList.toggle('hidden', tab !== 'trading');
+  document.getElementById('pane-settings').classList.toggle('hidden', tab !== 'settings');
+  document.getElementById('tab-trading').classList.toggle('active', tab === 'trading');
+  document.getElementById('tab-settings').classList.toggle('active', tab === 'settings');
+}
+
+let botRunning = false;
+let brokerConfigured = false;
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/client/bot/status');
+    const d = await r.json();
+    brokerConfigured = d.configured;
+
+    if (!d.configured) {
+      document.getElementById('setup-alert').classList.remove('hidden');
+      document.getElementById('idle-card').classList.remove('hidden');
+      document.getElementById('order-book-section').classList.add('hidden');
+      document.getElementById('bot-live-panel').classList.add('hidden');
+      setBotStopped();
+      return;
+    }
+
+    document.getElementById('setup-alert').classList.add('hidden');
+    document.getElementById('order-book-section').classList.remove('hidden');
+
+    const running = d.live && d.live.running;
+    botRunning = running;
+
+    if (running) {
+      setBotRunning(d.instance.trading_mode === 'live');
+      document.getElementById('idle-card').classList.add('hidden');
+      document.getElementById('bot-live-panel').classList.remove('hidden');
+      document.getElementById('last-update').textContent = `Running · ${d.instance.broker} · ${d.instance.instrument} · ${d.instance.quantity} lots`;
+    } else {
+      setBotStopped();
+      document.getElementById('idle-card').classList.remove('hidden');
+      document.getElementById('bot-live-panel').classList.add('hidden');
+      document.getElementById('last-update').textContent = 'Bot is not running';
+    }
+
+    renderOrderBook(d.trade_history || []);
+  } catch(e) {}
+}
+
+function setBotRunning(isLive) {
+  const badge = document.getElementById('bot-status-badge');
+  const label = document.getElementById('bot-status-label');
+  const dot = badge.querySelector('.pulse-dot');
+  if (isLive) {
+    badge.className = 'flex items-center gap-2 text-sm px-3 py-1 badge-live';
+    dot.className = 'pulse-dot pulse-green';
+    label.textContent = 'LIVE';
+  } else {
+    badge.className = 'flex items-center gap-2 text-sm px-3 py-1 badge-paper';
+    dot.className = 'pulse-dot pulse-blue';
+    label.textContent = 'PAPER';
+  }
+  document.getElementById('btn-start').classList.add('hidden');
+  document.getElementById('btn-stop').classList.remove('hidden');
+  document.getElementById('btn-restart').classList.remove('hidden');
+}
+
+function setBotStopped() {
+  const badge = document.getElementById('bot-status-badge');
+  const label = document.getElementById('bot-status-label');
+  const dot = badge.querySelector('.pulse-dot');
+  badge.className = 'flex items-center gap-2 text-sm px-3 py-1 badge-stopped';
+  dot.className = 'pulse-dot pulse-red';
+  label.textContent = 'STOPPED';
+  document.getElementById('btn-start').classList.remove('hidden');
+  document.getElementById('btn-stop').classList.add('hidden');
+  document.getElementById('btn-restart').classList.add('hidden');
+}
+
+async function startBot() {
+  const btn = document.getElementById('btn-start');
+  btn.disabled = true;
+  btn.textContent = 'Starting...';
+  const r = await fetch('/api/client/bot/start', {method:'POST'});
+  const d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+  btn.disabled = false;
+  btn.textContent = '▶ Start Bot';
+  if (d.success) loadStatus();
+}
+
+async function stopBot() {
+  if (!confirm('Stop the bot? Active positions will remain open.')) return;
+  const r = await fetch('/api/client/bot/stop', {method:'POST'});
+  const d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+  loadStatus();
+}
+
+async function restartBot() {
+  if (!confirm('Restart the bot? Use this after adding funds.')) return;
+  const r = await fetch('/api/client/bot/restart', {method:'POST'});
+  const d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+  loadStatus();
+}
+
+function renderOrderBook(trades) {
+  const tbody = document.getElementById('ob-body');
+  document.getElementById('ob-count').textContent = `${trades.length} trade${trades.length !== 1 ? 's' : ''}`;
+  if (!trades.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-sm" style="color:#475569">No closed trades yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = trades.map(t => {
+    const profit = (t.pnl_pts || 0) > 0;
+    const loss = (t.pnl_pts || 0) < 0;
+    const rowBg = profit ? '#052e16' : loss ? '#2d1010' : '#0f172a';
+    const pnlColor = profit ? '#34d399' : loss ? '#f87171' : '#64748b';
+    const typeColor = t.trade_type === 'BUY' ? '#60a5fa' : '#fb923c';
+    const dirColor = (t.direction === 'CE' || t.direction === 'CALL') ? '#818cf8' : '#f472b6';
+    const pSign = (t.pnl_pts || 0) > 0 ? '+' : '';
+    const rSign = (t.pnl_rs || 0) > 0 ? '+' : '';
+    const time = (t.closed_at || '').substring(11, 19);
+    return `<tr style="border-bottom:1px solid #1e293b;background:${rowBg}">
+      <td class="py-1 pr-3 font-mono text-xs" style="color:#94a3b8">${escapeHtml(time)}</td>
+      <td class="py-1 pr-3 text-xs font-bold" style="color:${typeColor}">${escapeHtml(t.trade_type||'')}</td>
+      <td class="py-1 pr-3 text-xs font-bold" style="color:${dirColor}">${escapeHtml(t.direction||'')}</td>
+      <td class="py-1 pr-3 text-xs text-right text-white">${t.strike||'--'}</td>
+      <td class="py-1 pr-3 text-xs text-right" style="color:#94a3b8">${t.entry_price ? parseFloat(t.entry_price).toFixed(2) : '--'}</td>
+      <td class="py-1 pr-3 text-xs text-right" style="color:#94a3b8">${t.exit_price ? parseFloat(t.exit_price).toFixed(2) : '--'}</td>
+      <td class="py-1 pr-3 text-xs text-right font-bold" style="color:${pnlColor}">${pSign}${t.pnl_pts !== null ? parseFloat(t.pnl_pts).toFixed(2) : '--'}</td>
+      <td class="py-1 pr-3 text-xs text-right font-bold" style="color:${pnlColor}">${rSign}${t.pnl_rs !== null ? parseFloat(t.pnl_rs).toFixed(0) : '--'}</td>
+      <td class="py-1 text-xs" style="color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.exit_reason||'')}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadBrokerSettings() {
+  const r = await fetch('/api/client/broker');
+  const d = await r.json();
+  if (d.instances && d.instances.length) {
+    const inst = d.instances[0];
+    if (inst.trading_mode === 'live') document.getElementById('mode-live').checked = true;
+    else document.getElementById('mode-paper').checked = true;
+    document.getElementById('s-instrument').value = inst.instrument || 'NIFTY';
+    document.getElementById('s-quantity').value = inst.quantity || 25;
+    document.getElementById('s-strategy').value = inst.strategy_version || 'V3';
+  }
+}
+
+document.getElementById('broker-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = document.getElementById('broker-msg');
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const r = await fetch('/api/client/broker', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      broker: 'zerodha',
+      api_key: document.getElementById('s-api-key').value.trim(),
+      access_token: document.getElementById('s-access-token').value.trim(),
+      trading_mode: mode,
+      instrument: document.getElementById('s-instrument').value,
+      quantity: parseInt(document.getElementById('s-quantity').value),
+      strategy_version: document.getElementById('s-strategy').value,
+    })
+  });
+  const d = await r.json();
+  msg.className = 'text-xs mb-3';
+  msg.style.color = d.success ? '#34d399' : '#f87171';
+  msg.textContent = d.message || (d.success ? 'Saved.' : d.detail || 'Failed.');
+  msg.classList.remove('hidden');
+  showToast(d.message || 'Updated', d.success ? 'success' : 'error');
+  if (d.success) loadStatus();
+});
+
+document.getElementById('config-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const r = await fetch('/api/client/broker', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      broker: 'zerodha',
+      api_key: document.getElementById('s-api-key').value.trim() || 'unchanged',
+      access_token: document.getElementById('s-access-token').value.trim() || 'unchanged',
+      trading_mode: document.querySelector('input[name="mode"]:checked')?.value || 'paper',
+      instrument: document.getElementById('s-instrument').value,
+      quantity: parseInt(document.getElementById('s-quantity').value),
+      strategy_version: document.getElementById('s-strategy').value,
+    })
+  });
+  const d = await r.json();
+  const msg = document.getElementById('config-msg');
+  msg.className = 'text-xs mb-3';
+  msg.style.color = d.success ? '#34d399' : '#f87171';
+  msg.textContent = d.message || (d.success ? 'Saved.' : d.detail || 'Failed.');
+  msg.classList.remove('hidden');
+  showToast(d.message || 'Updated', d.success ? 'success' : 'error');
+});
+
+loadStatus();
+loadBrokerSettings();
+setInterval(loadStatus, 5000);
+</script>
+</body>
+</html>

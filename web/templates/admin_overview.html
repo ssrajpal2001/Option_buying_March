@@ -1,0 +1,144 @@
+{% extends "admin_base.html" %}
+{% set active_page = "overview" %}
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-white">Admin Overview</h1>
+  <p class="text-sm mt-1" style="color:#64748b">Real-time platform status</p>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+  <div class="stat-card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Total Clients</div>
+    <div id="o-total" class="text-2xl font-bold text-white">--</div>
+  </div>
+  <div class="stat-card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Active</div>
+    <div id="o-active" class="text-2xl font-bold" style="color:#34d399">--</div>
+  </div>
+  <div class="stat-card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Pending</div>
+    <div id="o-pending" class="text-2xl font-bold" style="color:#fb923c">--</div>
+  </div>
+  <div class="stat-card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Running Bots</div>
+    <div id="o-running" class="text-2xl font-bold" style="color:#818cf8">--</div>
+  </div>
+  <div class="stat-card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Failures (24h)</div>
+    <div id="o-failures" class="text-2xl font-bold" style="color:#f87171">--</div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+  <div class="card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#64748b">Data Provider</div>
+    <div class="flex items-center gap-3">
+      <div>
+        <div class="text-white font-bold">Upstox</div>
+        <div class="text-xs mt-0.5" style="color:#64748b">Global market data feed</div>
+      </div>
+      <span id="dp-status" class="badge-idle ml-auto">Checking...</span>
+    </div>
+    <a href="/admin/data-provider" class="btn-primary inline-block px-4 py-2 text-xs mt-3">Manage Token</a>
+  </div>
+
+  <div class="card p-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#64748b">Live Bot Instances</div>
+    <div id="live-list" style="color:#64748b;font-size:13px">Loading...</div>
+  </div>
+</div>
+
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-3">
+    <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">All Clients</span>
+    <a href="/admin/clients" class="text-xs" style="color:#00d4aa">View all →</a>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Username</th><th>Email</th><th>Status</th><th>Tier</th><th>Bots Running</th><th>Actions</th>
+    </tr></thead>
+    <tbody id="clients-table"><tr><td colspan="6" class="text-center" style="color:#475569">Loading...</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadOverview() {
+  const r = await fetch('/api/admin/overview');
+  const d = await r.json();
+  document.getElementById('o-total').textContent = d.total_clients;
+  document.getElementById('o-active').textContent = d.active_clients;
+  document.getElementById('o-pending').textContent = d.pending_clients;
+  document.getElementById('o-running').textContent = d.running_instances;
+  document.getElementById('o-failures').textContent = d.failures_today;
+
+  const dpEl = document.getElementById('dp-status');
+  dpEl.textContent = d.data_provider_status === 'configured' ? '✓ Configured' : '⚠ Not Configured';
+  dpEl.className = d.data_provider_status === 'configured' ? 'badge-ok ml-auto' : 'badge-warn ml-auto';
+
+  const liveList = document.getElementById('live-list');
+  if (d.live_instances && d.live_instances.length > 0) {
+    liveList.innerHTML = d.live_instances.map(i =>
+      `<div class="flex items-center justify-between py-1" style="border-bottom:1px solid #1e293b">
+        <span>Instance #${i.instance_id}</span>
+        <span style="color:#34d399">● PID ${i.pid}</span>
+      </div>`
+    ).join('');
+  } else {
+    liveList.textContent = 'No bots running.';
+  }
+
+  await loadClients();
+}
+
+async function loadClients() {
+  const r = await fetch('/api/admin/clients');
+  const clients = await r.json();
+  const tbody = document.getElementById('clients-table');
+  if (!clients.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="color:#475569">No clients yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = clients.slice(0, 10).map(c => {
+    const statusBadge = c.is_active
+      ? '<span class="badge-ok">Active</span>'
+      : '<span class="badge-warn">Pending</span>';
+    const btn = c.is_active
+      ? `<button onclick="deactivate(${c.id})" class="btn-ghost px-2 py-1 text-xs">Deactivate</button>`
+      : `<button onclick="activate(${c.id})" class="btn-primary px-2 py-1 text-xs">Activate</button>`;
+    return `<tr>
+      <td class="text-white font-medium">${escapeHtml(c.username)}</td>
+      <td style="color:#64748b">${escapeHtml(c.email)}</td>
+      <td>${statusBadge}</td>
+      <td><span class="badge-idle">${c.subscription_tier}</span></td>
+      <td style="color:#818cf8">${c.running_count || 0}</td>
+      <td class="flex gap-2">
+        ${btn}
+        <a href="/admin/clients/${c.id}" class="btn-ghost px-2 py-1 text-xs">View</a>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function activate(id) {
+  const r = await fetch(`/api/admin/clients/${id}/activate`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message || 'Done', d.success ? 'success' : 'error');
+  loadOverview();
+}
+
+async function deactivate(id) {
+  if (!confirm('Deactivate this client?')) return;
+  const r = await fetch(`/api/admin/clients/${id}/deactivate`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message || 'Done', d.success ? 'success' : 'error');
+  loadOverview();
+}
+
+loadOverview();
+setInterval(loadOverview, 10000);
+</script>
+{% endblock %}
