@@ -336,7 +336,7 @@ class SellManagerV3:
 
                 logger.info(f"[SellV3][Scan Re-entry] {int(base_strike)}CE+{int(base_strike)}PE (Base: {int(base_strike)}): "
                              f"RSI:{rsi_val:.2f}, LTP:{comb_close:.2f}, VWAP:{combined_vwap:.2f} "
-                             f"(CE_V:{ce_vwap:.2f}, PE_V:{pe_vwap:.2f}) "
+                             f"(H:{comb_high:.2f}, CE_V:{ce_vwap:.2f}, PE_V:{pe_vwap:.2f}) "
                              f"| RSI_OK:{rsi_val <= rsi_threshold}, TRIGGER:{is_rejection and v_slope_ok} ({trigger_reason})")
                 self._scan_log_cache[log_key] = True
 
