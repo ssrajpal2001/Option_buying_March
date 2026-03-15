@@ -215,6 +215,66 @@ async def zerodha_login_url(user=Depends(get_current_user)):
     return {"success": True, "login_url": login_url}
 
 
+# ── Zerodha Manual Token Exchange ─────────────────────────────────────────────
+
+class ZerodhaManualToken(BaseModel):
+    request_token: str
+
+@router.post("/zerodha/exchange-token")
+async def zerodha_exchange_token(body: ZerodhaManualToken, user=Depends(get_current_user)):
+    request_token = body.request_token.strip()
+    if not request_token:
+        raise HTTPException(400, "request_token is required.")
+
+    instance = db_fetchone(
+        "SELECT * FROM client_broker_instances WHERE client_id=? AND broker='zerodha' AND status != 'removed'",
+        (user["id"],)
+    )
+    if not instance or not instance.get("api_key_encrypted"):
+        raise HTTPException(400, "Save your API Key and API Secret in Settings first.")
+
+    api_key = decrypt_secret(instance["api_key_encrypted"])
+    api_secret = decrypt_secret(instance.get("api_secret_encrypted", ""))
+    if not api_key or not api_secret:
+        raise HTTPException(400, "Could not decrypt credentials. Please re-enter your API Key and Secret.")
+
+    try:
+        checksum = hashlib.sha256(
+            (api_key + request_token + api_secret).encode()
+        ).hexdigest()
+
+        import requests as http_requests
+        resp = http_requests.post(
+            "https://api.kite.trade/session/token",
+            data={
+                "api_key": api_key,
+                "request_token": request_token,
+                "checksum": checksum,
+            },
+        )
+        resp_data = resp.json()
+
+        if resp.status_code != 200 or resp_data.get("status") == "error":
+            error_msg = resp_data.get("message", "Token exchange failed")
+            raise HTTPException(400, f"Zerodha error: {error_msg}")
+
+        access_token = resp_data.get("data", {}).get("access_token", "")
+        if not access_token:
+            raise HTTPException(400, "No access token in Zerodha response.")
+
+        enc_token = encrypt_secret(access_token)
+        now_ist = datetime.now(IST).isoformat()
+        db_execute(
+            "UPDATE client_broker_instances SET access_token_encrypted=?, token_updated_at=? WHERE client_id=? AND broker='zerodha'",
+            (enc_token, now_ist, user["id"])
+        )
+        return {"success": True, "message": "Zerodha access token generated successfully!", "token_updated_at": now_ist}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Token exchange failed: {str(e)[:200]}")
+
+
 # ── Bot Control ───────────────────────────────────────────────────────────────
 
 class BotStartRequest(BaseModel):
