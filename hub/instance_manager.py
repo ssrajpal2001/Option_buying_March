@@ -28,8 +28,6 @@ class InstanceManager:
         trading_mode: str,
         api_key: str,
         access_token: str,
-        upstox_api_key: str,
-        upstox_token: str,
     ) -> tuple[bool, str]:
         if instance_id in self._processes:
             proc = self._processes[instance_id]
@@ -48,8 +46,6 @@ class InstanceManager:
             "CLIENT_TRADING_MODE": trading_mode,
             "CLIENT_API_KEY": api_key,
             "CLIENT_ACCESS_TOKEN": access_token,
-            "UPSTOX_API_KEY": upstox_api_key,
-            "UPSTOX_ACCESS_TOKEN": upstox_token,
             "CLIENT_INSTANCE_ID": str(instance_id),
         })
 
