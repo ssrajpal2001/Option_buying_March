@@ -76,8 +76,22 @@ async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
     if body.trading_mode not in ("paper", "live"):
         raise HTTPException(400, "trading_mode must be 'paper' or 'live'")
 
-    enc_key = encrypt_secret(body.api_key)
-    enc_secret = encrypt_secret(body.api_secret)
+    existing_row = db_fetchone(
+        "SELECT api_key_encrypted, api_secret_encrypted FROM client_broker_instances WHERE client_id=? AND broker=?",
+        (user["id"], body.broker)
+    )
+
+    is_new_key = body.api_key and body.api_key != "unchanged"
+    is_new_secret = body.api_secret and body.api_secret != "unchanged"
+
+    if existing_row:
+        enc_key = encrypt_secret(body.api_key) if is_new_key else existing_row["api_key_encrypted"]
+        enc_secret = encrypt_secret(body.api_secret) if is_new_secret else existing_row["api_secret_encrypted"]
+    else:
+        if not is_new_key or not is_new_secret:
+            raise HTTPException(400, "API Key and API Secret are required for first-time setup.")
+        enc_key = encrypt_secret(body.api_key)
+        enc_secret = encrypt_secret(body.api_secret)
 
     db_execute("""
         INSERT INTO client_broker_instances
@@ -94,7 +108,10 @@ async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
     """, (user["id"], body.broker, enc_key, enc_secret,
           body.trading_mode, body.instrument, body.quantity, body.strategy_version))
 
-    return {"success": True, "message": "Broker credentials saved. Click 'Login with Zerodha' to generate your access token."}
+    msg = "Broker credentials saved. Click 'Login with Zerodha' to generate your access token."
+    if not is_new_key and not is_new_secret:
+        msg = "Trading configuration updated."
+    return {"success": True, "message": msg}
 
 
 # ── Zerodha OAuth ────────────────────────────────────────────────────────────
@@ -133,6 +150,10 @@ async def start_bot(user=Depends(get_current_user)):
         raise HTTPException(400, "No broker configured. Please set up your broker first.")
     if not instance.get("api_key_encrypted"):
         raise HTTPException(400, "Broker credentials missing. Please re-enter your API key.")
+    if not instance.get("access_token_encrypted"):
+        raise HTTPException(400, "Access token missing. Click 'Login with Zerodha' in Settings to generate your token.")
+    if not _is_token_fresh(instance.get("token_updated_at")):
+        raise HTTPException(400, "Zerodha token expired (resets daily at 6:00 AM IST). Go to Settings and click 'Login with Zerodha' to reconnect.")
 
     dp = db_fetchone("SELECT * FROM data_providers WHERE provider='upstox'")
     if not dp or dp["status"] != "configured":
