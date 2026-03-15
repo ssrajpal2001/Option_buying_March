@@ -273,7 +273,8 @@
         <div id="broker-zerodha-pane">
           <div class="mb-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#64748b;border:1px solid #1e293b">
             <strong style="color:#e2e8f0">Step 1:</strong> Enter your API Key and API Secret (one-time setup).<br/>
-            <strong style="color:#e2e8f0">Step 2:</strong> Click "Login with Zerodha" to auto-generate your access token.<br/>
+            <strong style="color:#e2e8f0">Step 2:</strong> Click "Login with Zerodha" — after login, copy the <code style="color:#00d4aa">request_token</code> from the URL.<br/>
+            <strong style="color:#e2e8f0">Step 3:</strong> Paste it below and click "Generate Token".<br/>
             <span style="color:#fb923c">Zerodha tokens expire at 6:00 AM IST daily. Re-login each morning before trading.</span>
           </div>
 
@@ -308,13 +309,23 @@
             </div>
           </form>
 
-          <div id="zerodha-token-info" class="mt-4 p-3 rounded-lg text-xs hidden" style="background:#064e3b;border:1px solid #059669;color:#34d399">
-            <span id="zerodha-token-msg"></span>
+          <div id="zerodha-manual-token" class="mt-4 p-4 rounded-lg" style="background:#0f172a;border:1px solid #1e293b">
+            <div class="flex items-center gap-2 mb-2">
+              <span style="color:#fb923c;font-size:14px">&#9888;</span>
+              <strong class="text-xs" style="color:#e2e8f0">Paste request_token (for HTTP servers)</strong>
+            </div>
+            <p class="text-xs mb-3" style="color:#64748b">
+              After clicking "Login with Zerodha", Kite will redirect to a URL containing <code style="color:#00d4aa">request_token=XXXXXXX</code>. Copy that value and paste it below.
+            </p>
+            <div class="flex gap-2">
+              <input id="manual-request-token" type="text" class="input-field flex-1" placeholder="Paste request_token here" style="font-family:monospace;font-size:13px"/>
+              <button type="button" id="btn-exchange-token" onclick="exchangeZerodhaToken()" class="px-4 py-2 text-xs font-bold rounded-lg" style="background:#059669;color:white;border:none;cursor:pointer;white-space:nowrap">Generate Token</button>
+            </div>
+            <div id="exchange-msg" class="text-xs mt-2 hidden"></div>
           </div>
 
-          <div class="mt-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#475569;border:1px solid #1e293b">
-            <strong style="color:#64748b">Redirect URL for Zerodha Developer Console:</strong><br/>
-            <code id="callback-url" style="color:#94a3b8;word-break:break-all"></code>
+          <div id="zerodha-token-info" class="mt-4 p-3 rounded-lg text-xs hidden" style="background:#064e3b;border:1px solid #059669;color:#34d399">
+            <span id="zerodha-token-msg"></span>
           </div>
         </div>
 
@@ -390,7 +401,7 @@
       </div>
     </div>
 
-    <div class="card p-5 mt-6" id="broker-change-section">
+    <div class="card p-5 mt-6 hidden" id="broker-change-section">
       <div class="text-sm font-bold text-white mb-3">Request Broker Change</div>
       <p class="text-xs mb-3" style="color:#64748b">FREE plan allows 1 broker. To switch from your current broker, submit a change request for admin approval.</p>
       <div id="bcr-pending-alert" class="hidden mb-3 p-3 rounded-lg text-xs" style="background:#3b1f00;border:1px solid #d97706;color:#fbbf24"></div>
@@ -847,8 +858,6 @@ function updateBrokerStatus(broker, tokenFresh, tokenUpdatedAt) {
 }
 
 async function loadBrokerSettings() {
-  document.getElementById('callback-url').textContent = window.location.origin + '/auth/zerodha/callback';
-
   var r = await fetch('/api/client/broker');
   var d = await r.json();
   if (d.instances && d.instances.length) {
@@ -882,6 +891,10 @@ async function loadBrokerSettings() {
     var hasDhan = d.instances.some(function(i) { return i.broker === 'dhan'; });
     var hasZerodha = d.instances.some(function(i) { return i.broker === 'zerodha'; });
     if (hasDhan && !hasZerodha) selectBroker('dhan');
+
+    if (d.instances.length > 0) {
+      document.getElementById('broker-change-section').classList.remove('hidden');
+    }
   } else {
     updateBrokerStatus('zerodha', false, null);
   }
@@ -896,7 +909,8 @@ async function loginWithZerodha() {
     var d = await r.json();
     if (d.success && d.login_url) {
       window.open(d.login_url, '_blank');
-      showToast('Zerodha login page opened. Complete login there, then return here.', 'success');
+      showToast('Zerodha login opened. After login, copy the request_token from the URL and paste it below.', 'success');
+      document.getElementById('manual-request-token').focus();
     } else {
       showToast(d.detail || 'Failed to get login URL', 'error');
     }
@@ -905,6 +919,50 @@ async function loginWithZerodha() {
   }
   btn.disabled = false;
   btn.textContent = 'Login with Zerodha';
+}
+
+async function exchangeZerodhaToken() {
+  var tokenInput = document.getElementById('manual-request-token');
+  var rawValue = tokenInput.value.trim();
+  if (!rawValue) { showToast('Paste the request_token first', 'error'); return; }
+  var requestToken = rawValue;
+  var match = rawValue.match(/request_token=([^&]+)/);
+  if (match) requestToken = match[1];
+
+  var btn = document.getElementById('btn-exchange-token');
+  var msg = document.getElementById('exchange-msg');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  msg.classList.add('hidden');
+
+  try {
+    var r = await fetch('/api/client/zerodha/exchange-token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({request_token: requestToken})
+    });
+    var d = await r.json();
+    if (d.success) {
+      showToast(d.message || 'Access token generated!', 'success');
+      tokenInput.value = '';
+      msg.style.color = '#34d399';
+      msg.textContent = 'Connected! Access token saved.';
+      msg.classList.remove('hidden');
+      loadBrokerConfig();
+    } else {
+      msg.style.color = '#f87171';
+      msg.textContent = d.detail || d.message || 'Token exchange failed';
+      msg.classList.remove('hidden');
+      showToast(d.detail || 'Token exchange failed', 'error');
+    }
+  } catch (e) {
+    msg.style.color = '#f87171';
+    msg.textContent = 'Network error. Please try again.';
+    msg.classList.remove('hidden');
+    showToast('Error exchanging token', 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Generate Token';
 }
 
 document.getElementById('broker-form-zerodha').addEventListener('submit', async function(e) {
