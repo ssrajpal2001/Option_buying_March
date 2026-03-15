@@ -32,7 +32,16 @@ async def main():
     parser.add_argument('--entry_tf', type=int, help='Override entry timeframe (minutes)')
     parser.add_argument('--exit_tf', type=int, help='Override exit timeframe (minutes)')
     parser.add_argument('--provider', type=str, help='Specific data provider credential section to use')
+    parser.add_argument('--client_mode', action='store_true', help='Run in multi-tenant client mode (reads config from env vars)')
     args = parser.parse_args()
+
+    if args.client_mode:
+        from hub.client_config import load_client_config
+        from hub.status_writer import StatusWriter
+        client_cfg = load_client_config()
+        logger.info(f"[CLIENT MODE] Starting bot for {client_cfg}")
+        status_writer = StatusWriter(client_cfg.client_id)
+        status_writer.write({"bot_running": True, "mode": client_cfg.trading_mode, "instrument": client_cfg.instrument, "broker": client_cfg.broker})
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, args.config)

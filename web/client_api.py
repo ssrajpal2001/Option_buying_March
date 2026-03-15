@@ -123,7 +123,17 @@ async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
             enc_key = encrypt_secret(body.api_key)
             enc_token = encrypt_secret(body.access_token)
 
-        now_iso = datetime.now(IST).isoformat()
+        if is_new_token:
+            token_ts = datetime.now(IST).isoformat()
+        elif existing_row:
+            token_ts_row = db_fetchone(
+                "SELECT token_updated_at FROM client_broker_instances WHERE client_id=? AND broker='dhan'",
+                (user["id"],)
+            )
+            token_ts = token_ts_row["token_updated_at"] if token_ts_row and token_ts_row["token_updated_at"] else datetime.now(IST).isoformat()
+        else:
+            token_ts = datetime.now(IST).isoformat()
+
         db_execute("""
             INSERT INTO client_broker_instances
               (client_id, broker, api_key_encrypted, access_token_encrypted,
@@ -137,7 +147,7 @@ async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
               instrument=excluded.instrument,
               quantity=excluded.quantity,
               strategy_version=excluded.strategy_version
-        """, (user["id"], "dhan", enc_key, enc_token, now_iso,
+        """, (user["id"], "dhan", enc_key, enc_token, token_ts,
               body.trading_mode, body.instrument, body.quantity, body.strategy_version))
 
         msg = "Dhan credentials saved. Your access token is valid for 30 days."
