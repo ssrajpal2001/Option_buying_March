@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS client_broker_instances (
     broker TEXT NOT NULL,
     instance_label TEXT,
     api_key_encrypted TEXT,
+    api_secret_encrypted TEXT,
     access_token_encrypted TEXT,
+    token_updated_at TEXT,
     trading_mode TEXT DEFAULT 'paper',
     instrument TEXT DEFAULT 'NIFTY',
     quantity INTEGER DEFAULT 25,
@@ -112,6 +114,11 @@ def get_db() -> sqlite3.Connection:
 
 def _migrate(conn: sqlite3.Connection):
     conn.executescript(SCHEMA)
+    existing = [row[1] for row in conn.execute("PRAGMA table_info(client_broker_instances)").fetchall()]
+    if "api_secret_encrypted" not in existing:
+        conn.execute("ALTER TABLE client_broker_instances ADD COLUMN api_secret_encrypted TEXT")
+    if "token_updated_at" not in existing:
+        conn.execute("ALTER TABLE client_broker_instances ADD COLUMN token_updated_at TEXT")
     conn.commit()
 
 

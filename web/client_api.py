@@ -1,12 +1,36 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+import json
+import time
+import hashlib
+import urllib.parse
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
 from web.deps import get_current_user
 from web.db import db_fetchone, db_fetchall, db_execute
-from web.auth import encrypt_secret, decrypt_secret
+from web.auth import encrypt_secret, decrypt_secret, _fernet
 from hub.instance_manager import instance_manager
 
 router = APIRouter(prefix="/client", tags=["client"])
+
+IST = timezone(timedelta(hours=5, minutes=30))
+KITE_LOGIN_URL = "https://kite.trade/connect/login?v=3&api_key={api_key}"
+
+
+def _is_token_fresh(token_updated_at: str) -> bool:
+    if not token_updated_at:
+        return False
+    try:
+        updated = datetime.fromisoformat(token_updated_at).replace(tzinfo=IST)
+        now_ist = datetime.now(IST)
+        today_6am = now_ist.replace(hour=6, minute=0, second=0, microsecond=0)
+        if now_ist < today_6am:
+            today_6am -= timedelta(days=1)
+        return updated > today_6am
+    except Exception:
+        return False
 
 
 # ── Broker Setup ─────────────────────────────────────────────────────────────
@@ -14,8 +38,8 @@ router = APIRouter(prefix="/client", tags=["client"])
 class BrokerSetup(BaseModel):
     broker: str = "zerodha"
     api_key: str
-    access_token: str
-    trading_mode: str = "paper"    # paper or live
+    api_secret: str
+    trading_mode: str = "paper"
     instrument: str = "NIFTY"
     quantity: int = 25
     strategy_version: str = "V3"
@@ -24,10 +48,15 @@ class BrokerSetup(BaseModel):
 @router.get("/broker")
 async def get_broker_config(user=Depends(get_current_user)):
     rows = db_fetchall(
-        "SELECT id, broker, trading_mode, instrument, quantity, strategy_version, status, last_heartbeat FROM client_broker_instances WHERE client_id=?",
+        "SELECT id, broker, trading_mode, instrument, quantity, strategy_version, status, last_heartbeat, token_updated_at FROM client_broker_instances WHERE client_id=?",
         (user["id"],)
     )
-    return {"instances": rows, "max_brokers": user["max_brokers"]}
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["token_fresh"] = _is_token_fresh(d.get("token_updated_at"))
+        result.append(d)
+    return {"instances": result, "max_brokers": user["max_brokers"]}
 
 
 @router.post("/broker")
@@ -48,24 +77,48 @@ async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
         raise HTTPException(400, "trading_mode must be 'paper' or 'live'")
 
     enc_key = encrypt_secret(body.api_key)
-    enc_token = encrypt_secret(body.access_token)
+    enc_secret = encrypt_secret(body.api_secret)
 
     db_execute("""
         INSERT INTO client_broker_instances
-          (client_id, broker, api_key_encrypted, access_token_encrypted,
+          (client_id, broker, api_key_encrypted, api_secret_encrypted,
            trading_mode, instrument, quantity, strategy_version)
         VALUES (?,?,?,?,?,?,?,?)
         ON CONFLICT(client_id, broker) DO UPDATE SET
           api_key_encrypted=excluded.api_key_encrypted,
-          access_token_encrypted=excluded.access_token_encrypted,
+          api_secret_encrypted=excluded.api_secret_encrypted,
           trading_mode=excluded.trading_mode,
           instrument=excluded.instrument,
           quantity=excluded.quantity,
           strategy_version=excluded.strategy_version
-    """, (user["id"], body.broker, enc_key, enc_token,
+    """, (user["id"], body.broker, enc_key, enc_secret,
           body.trading_mode, body.instrument, body.quantity, body.strategy_version))
 
-    return {"success": True, "message": "Broker configuration saved."}
+    return {"success": True, "message": "Broker credentials saved. Click 'Login with Zerodha' to generate your access token."}
+
+
+# ── Zerodha OAuth ────────────────────────────────────────────────────────────
+
+@router.get("/zerodha/login-url")
+async def zerodha_login_url(user=Depends(get_current_user)):
+    instance = db_fetchone(
+        "SELECT * FROM client_broker_instances WHERE client_id=? AND broker='zerodha'",
+        (user["id"],)
+    )
+    if not instance or not instance.get("api_key_encrypted"):
+        raise HTTPException(400, "Save your API Key and API Secret in Settings first.")
+
+    api_key = decrypt_secret(instance["api_key_encrypted"])
+    if not api_key:
+        raise HTTPException(400, "Could not decrypt API key. Please re-enter your credentials.")
+
+    state_payload = f'{user["id"]}:{int(time.time())}'
+    state_encrypted = _fernet.encrypt(state_payload.encode()).decode()
+
+    login_url = KITE_LOGIN_URL.format(api_key=api_key)
+    login_url += "&redirect_params=state=" + urllib.parse.quote(state_encrypted)
+
+    return {"success": True, "login_url": login_url}
 
 
 # ── Bot Control ───────────────────────────────────────────────────────────────
@@ -144,11 +197,25 @@ async def bot_status(user=Depends(get_current_user)):
         FROM trade_history WHERE instance_id=? ORDER BY closed_at DESC LIMIT 50
     """, (instance["id"],))
 
+    bot_data = {}
+    status_file = Path(f'config/bot_status_client_{user["id"]}.json')
+    if status_file.exists():
+        try:
+            with open(status_file, 'r') as f:
+                bot_data = json.load(f)
+            heartbeat = bot_data.get('heartbeat', 0)
+            age = time.time() - heartbeat
+            bot_data['stale'] = age > 30
+            bot_data['stale_seconds'] = round(age)
+        except (json.JSONDecodeError, OSError):
+            bot_data = {}
+
     return {
         "configured": True,
         "instance": dict(instance),
         "live": live_status,
         "trade_history": trades,
+        "bot_data": bot_data,
     }
 
 

@@ -1,4 +1,9 @@
-from fastapi import FastAPI, Request
+import time
+import hashlib
+import urllib.parse
+from datetime import datetime, timezone, timedelta
+
+from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -11,8 +16,8 @@ from web.bot_control import router as bot_router
 from web.auth_api import router as auth_router
 from web.admin_api import router as admin_router
 from web.client_api import router as client_router
-from web.auth import decode_token
-from web.db import get_db
+from web.auth import decode_token, encrypt_secret, decrypt_secret, _fernet
+from web.db import get_db, db_fetchone, db_execute
 
 BASE_DIR = Path(__file__).parent
 
@@ -114,6 +119,81 @@ async def client_dashboard(request: Request):
     if user["role"] == "admin":
         return RedirectResponse("/admin")
     return templates.TemplateResponse("client_dashboard.html", {"request": request})
+
+
+# ─── Zerodha OAuth Callback ──────────────────────────────────────────────
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+@app.get("/auth/zerodha/callback")
+async def zerodha_oauth_callback(
+    request: Request,
+    request_token: str = Query(default=None),
+    action: str = Query(default=None),
+    status: str = Query(default=None),
+    state: str = Query(default=None),
+):
+    if action == "login" and status != "success":
+        return RedirectResponse("/dashboard?zerodha=denied")
+
+    if not request_token or not state:
+        return RedirectResponse("/dashboard?zerodha=error&msg=missing_params")
+
+    try:
+        state_payload = _fernet.decrypt(state.encode()).decode()
+        client_id_str, ts_str = state_payload.split(":")
+        client_id = int(client_id_str)
+        state_age = time.time() - int(ts_str)
+        if state_age > 600:
+            return RedirectResponse("/dashboard?zerodha=error&msg=state_expired")
+    except Exception:
+        return RedirectResponse("/dashboard?zerodha=error&msg=invalid_state")
+
+    instance = db_fetchone(
+        "SELECT * FROM client_broker_instances WHERE client_id=? AND broker='zerodha'",
+        (client_id,)
+    )
+    if not instance:
+        return RedirectResponse("/dashboard?zerodha=error&msg=no_broker")
+
+    api_key = decrypt_secret(instance["api_key_encrypted"])
+    api_secret = decrypt_secret(instance.get("api_secret_encrypted", ""))
+    if not api_key or not api_secret:
+        return RedirectResponse("/dashboard?zerodha=error&msg=missing_credentials")
+
+    try:
+        checksum = hashlib.sha256(
+            (api_key + request_token + api_secret).encode()
+        ).hexdigest()
+
+        import requests as http_requests
+        resp = http_requests.post(
+            "https://api.kite.trade/session/token",
+            data={
+                "api_key": api_key,
+                "request_token": request_token,
+                "checksum": checksum,
+            },
+        )
+        resp_data = resp.json()
+
+        if resp.status_code != 200 or resp_data.get("status") == "error":
+            error_msg = resp_data.get("message", "token_exchange_failed")
+            return RedirectResponse(f"/dashboard?zerodha=error&msg={urllib.parse.quote(error_msg)}")
+
+        access_token = resp_data.get("data", {}).get("access_token", "")
+        if not access_token:
+            return RedirectResponse("/dashboard?zerodha=error&msg=no_token_in_response")
+
+        enc_token = encrypt_secret(access_token)
+        now_ist = datetime.now(IST).isoformat()
+        db_execute(
+            "UPDATE client_broker_instances SET access_token_encrypted=?, token_updated_at=? WHERE client_id=? AND broker='zerodha'",
+            (enc_token, now_ist, client_id)
+        )
+        return RedirectResponse("/dashboard?zerodha=success")
+    except Exception as e:
+        return RedirectResponse(f"/dashboard?zerodha=error&msg={urllib.parse.quote(str(e)[:100])}")
 
 
 # ─── Root redirect ────────────────────────────────────────────────────────────
