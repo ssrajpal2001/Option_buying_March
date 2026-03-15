@@ -242,6 +242,13 @@ async def start_bot(body: BotStartRequest = BotStartRequest(), user=Depends(get_
         if not _is_dhan_token_fresh(instance.get("token_updated_at")):
             raise HTTPException(400, "Dhan access token expired (30-day validity). Go to Settings and enter a new access token from Dhan's developer portal.")
 
+    pending_change = db_fetchone(
+        "SELECT id FROM broker_change_requests WHERE client_id=? AND status='pending'",
+        (user["id"],)
+    )
+    if pending_change:
+        raise HTTPException(400, "You have a pending broker change request. Please wait for admin approval before starting the bot.")
+
     dp = db_fetchone("SELECT * FROM data_providers WHERE provider='upstox'")
     if not dp or dp["status"] != "configured":
         raise HTTPException(503, "Data provider not configured by admin. Please contact admin.")

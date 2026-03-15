@@ -71,7 +71,14 @@ function renderClients() {
       <td style="color:#64748b">${escapeHtml(c.email)}</td>
       <td>${statusBadge}</td>
       <td><span class="badge-idle">${c.subscription_tier}</span></td>
-      <td style="color:#94a3b8">${c.brokers ? escapeHtml(c.brokers.toUpperCase()) : '<span style="color:#475569">None</span>'}</td>
+      <td style="color:#94a3b8">${(function(){
+        if (!c.brokers) return '<span style="color:#475569">Not Set</span>';
+        return c.brokers.split(',').map(function(b) {
+          var name = b.trim();
+          var label = name.charAt(0).toUpperCase() + name.slice(1);
+          return '<span style="color:#34d399">' + escapeHtml(label) + ' &#10003;</span>';
+        }).join(', ');
+      })()}</td>
       <td style="color:#818cf8">${c.running_count || 0}</td>
       <td style="color:#64748b;font-size:12px">${date}</td>
       <td>
