@@ -327,8 +327,6 @@ async def start_bot(body: BotStartRequest = BotStartRequest(), user=Depends(get_
         trading_mode=instance["trading_mode"],
         api_key=decrypt_secret(instance["api_key_encrypted"]),
         access_token=decrypt_secret(instance["access_token_encrypted"]),
-        upstox_api_key=decrypt_secret(dp["api_key_encrypted"]) if dp.get("api_key_encrypted") else "",
-        upstox_token=decrypt_secret(dp["access_token_encrypted"]) if dp.get("access_token_encrypted") else "",
     )
     if ok:
         db_execute("UPDATE client_broker_instances SET status='running' WHERE id=?", (instance["id"],))
