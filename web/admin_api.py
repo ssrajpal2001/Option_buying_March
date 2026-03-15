@@ -61,7 +61,8 @@ async def list_clients(admin=Depends(require_admin)):
         SELECT u.id, u.username, u.email, u.is_active, u.subscription_tier,
                u.max_brokers, u.created_at, u.activated_at,
                COUNT(cbi.id) as broker_count,
-               SUM(CASE WHEN cbi.status='running' THEN 1 ELSE 0 END) as running_count
+               SUM(CASE WHEN cbi.status='running' THEN 1 ELSE 0 END) as running_count,
+               GROUP_CONCAT(DISTINCT cbi.broker) as brokers
         FROM users u
         LEFT JOIN client_broker_instances cbi ON cbi.client_id=u.id
         WHERE u.role='client'
@@ -113,7 +114,7 @@ async def client_detail(client_id: int, admin=Depends(require_admin)):
         raise HTTPException(404, "Client not found")
     instances = db_fetchall("""
         SELECT id, broker, trading_mode, instrument, quantity, strategy_version,
-               status, bot_pid, last_heartbeat, created_at
+               status, bot_pid, last_heartbeat, token_updated_at, created_at
         FROM client_broker_instances WHERE client_id=?
     """, (client_id,))
     failures = db_fetchall("""
@@ -125,7 +126,11 @@ async def client_detail(client_id: int, admin=Depends(require_admin)):
                pnl_pts, pnl_rs, exit_reason, closed_at
         FROM trade_history WHERE client_id=? ORDER BY closed_at DESC LIMIT 50
     """, (client_id,))
-    return {"client": user, "instances": instances, "failures": failures, "trades": trades}
+    broker_requests = db_fetchall("""
+        SELECT id, current_broker, requested_broker, reason, status, created_at, resolved_at
+        FROM broker_change_requests WHERE client_id=? ORDER BY created_at DESC LIMIT 10
+    """, (client_id,))
+    return {"client": user, "instances": instances, "failures": failures, "trades": trades, "broker_requests": broker_requests}
 
 
 @router.post("/clients/{client_id}/force-close")
@@ -175,6 +180,15 @@ async def overview(admin=Depends(require_admin)):
             entry["stale"] = True
         live_details.append(entry)
 
+    pending_broker_requests = db_fetchall("""
+        SELECT bcr.id, bcr.client_id, bcr.current_broker, bcr.requested_broker,
+               bcr.reason, bcr.created_at, u.username
+        FROM broker_change_requests bcr
+        JOIN users u ON u.id = bcr.client_id
+        WHERE bcr.status='pending'
+        ORDER BY bcr.created_at DESC
+    """)
+
     return {
         "total_clients": total_clients,
         "active_clients": active_clients,
@@ -183,6 +197,7 @@ async def overview(admin=Depends(require_admin)):
         "failures_today": failures_today,
         "data_provider_status": dp["status"] if dp else "not_configured",
         "live_instances": live_details,
+        "pending_broker_requests": pending_broker_requests,
     }
 
 
@@ -225,3 +240,51 @@ async def client_bot_status(client_id: int, admin=Depends(require_admin)):
         "bot_data": bot_data,
         "username": user["username"],
     }
+
+
+# ── Broker Change Requests ─────────────────────────────────────────────────
+
+@router.get("/broker-requests")
+async def list_broker_requests(admin=Depends(require_admin)):
+    rows = db_fetchall("""
+        SELECT bcr.*, u.username, u.email
+        FROM broker_change_requests bcr
+        JOIN users u ON u.id = bcr.client_id
+        ORDER BY CASE WHEN bcr.status='pending' THEN 0 ELSE 1 END, bcr.created_at DESC
+        LIMIT 50
+    """)
+    return rows
+
+
+@router.post("/broker-requests/{request_id}/approve")
+async def approve_broker_request(request_id: int, admin=Depends(require_admin)):
+    req = db_fetchone("SELECT * FROM broker_change_requests WHERE id=?", (request_id,))
+    if not req:
+        raise HTTPException(404, "Request not found")
+    if req["status"] != "pending":
+        raise HTTPException(400, "Request already resolved")
+    now = datetime.now(timezone.utc).isoformat()
+    db_execute(
+        "UPDATE broker_change_requests SET status='approved', resolved_at=?, resolved_by_id=? WHERE id=?",
+        (now, admin["id"], request_id)
+    )
+    db_execute(
+        "DELETE FROM client_broker_instances WHERE client_id=? AND broker=?",
+        (req["client_id"], req["current_broker"])
+    )
+    return {"success": True, "message": f"Broker change approved. Old {req['current_broker']} instance removed. Client can now set up {req['requested_broker']}."}
+
+
+@router.post("/broker-requests/{request_id}/deny")
+async def deny_broker_request(request_id: int, admin=Depends(require_admin)):
+    req = db_fetchone("SELECT * FROM broker_change_requests WHERE id=?", (request_id,))
+    if not req:
+        raise HTTPException(404, "Request not found")
+    if req["status"] != "pending":
+        raise HTTPException(400, "Request already resolved")
+    now = datetime.now(timezone.utc).isoformat()
+    db_execute(
+        "UPDATE broker_change_requests SET status='denied', resolved_at=?, resolved_by_id=? WHERE id=?",
+        (now, admin["id"], request_id)
+    )
+    return {"success": True, "message": "Broker change request denied."}

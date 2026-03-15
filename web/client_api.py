@@ -325,6 +325,55 @@ async def bot_status(user=Depends(get_current_user)):
     }
 
 
+# ── Broker Change Requests ────────────────────────────────────────────────
+
+class BrokerChangeRequest(BaseModel):
+    current_broker: str
+    requested_broker: str
+    reason: Optional[str] = ""
+
+
+@router.post("/broker-change-request")
+async def submit_broker_change_request(body: BrokerChangeRequest, user=Depends(get_current_user)):
+    if body.current_broker not in ("zerodha", "dhan") or body.requested_broker not in ("zerodha", "dhan"):
+        raise HTTPException(400, "Invalid broker name.")
+    if body.current_broker == body.requested_broker:
+        raise HTTPException(400, "Current and requested broker cannot be the same.")
+
+    existing = db_fetchone(
+        "SELECT id FROM broker_change_requests WHERE client_id=? AND status='pending'",
+        (user["id"],)
+    )
+    if existing:
+        raise HTTPException(400, "You already have a pending broker change request. Please wait for admin approval.")
+
+    running = db_fetchone(
+        "SELECT id FROM client_broker_instances WHERE client_id=? AND status='running'",
+        (user["id"],)
+    )
+    if running:
+        raise HTTPException(400, "Please stop your bot before requesting a broker change.")
+
+    db_execute(
+        "INSERT INTO broker_change_requests (client_id, current_broker, requested_broker, reason) VALUES (?,?,?,?)",
+        (user["id"], body.current_broker, body.requested_broker, body.reason or "")
+    )
+    return {"success": True, "message": "Broker change request submitted. Admin will review it shortly."}
+
+
+@router.get("/broker-change-request")
+async def get_broker_change_request(user=Depends(get_current_user)):
+    pending = db_fetchone(
+        "SELECT id, current_broker, requested_broker, reason, status, created_at FROM broker_change_requests WHERE client_id=? AND status='pending' LIMIT 1",
+        (user["id"],)
+    )
+    recent = db_fetchall(
+        "SELECT id, current_broker, requested_broker, reason, status, created_at, resolved_at FROM broker_change_requests WHERE client_id=? ORDER BY created_at DESC LIMIT 5",
+        (user["id"],)
+    )
+    return {"pending": pending, "recent": recent}
+
+
 # ── Trade History ─────────────────────────────────────────────────────────────
 
 @router.get("/trades")

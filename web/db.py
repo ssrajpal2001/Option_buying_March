@@ -93,6 +93,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     ip_address TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS broker_change_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id INTEGER NOT NULL REFERENCES users(id),
+    current_broker TEXT NOT NULL,
+    requested_broker TEXT NOT NULL,
+    reason TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now')),
+    resolved_at TEXT,
+    resolved_by_id INTEGER
+);
 """
 
 _conn = None

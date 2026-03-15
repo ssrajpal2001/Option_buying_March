@@ -62,6 +62,14 @@
   </div>
 </div>
 
+<div id="broker-requests-panel" class="card p-4 mb-6" style="display:none">
+  <div class="flex items-center justify-between mb-3">
+    <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">Pending Broker Change Requests</span>
+    <span id="bcr-count" class="text-xs px-2 py-0.5 rounded" style="background:#3b1f00;color:#fb923c">0</span>
+  </div>
+  <div id="bcr-list" style="color:#64748b;font-size:13px">No pending requests.</div>
+</div>
+
 <div class="card p-4">
   <div class="flex items-center justify-between mb-3">
     <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">All Clients</span>
@@ -129,6 +137,33 @@ async function loadOverview() {
     detailPanel.style.display = 'none';
   }
 
+  const bcrPanel = document.getElementById('broker-requests-panel');
+  const bcrList = document.getElementById('bcr-list');
+  const bcrCount = document.getElementById('bcr-count');
+  const reqs = d.pending_broker_requests || [];
+  if (reqs.length > 0) {
+    bcrPanel.style.display = 'block';
+    bcrCount.textContent = reqs.length;
+    bcrList.innerHTML = reqs.map(r => `
+      <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #1e293b">
+        <div>
+          <a href="/admin/clients/${r.client_id}" style="color:#93c5fd;font-weight:600">${escapeHtml(r.username)}</a>
+          <span class="text-xs" style="color:#64748b">wants to switch from</span>
+          <span class="text-white font-bold">${escapeHtml((r.current_broker||'').toUpperCase())}</span>
+          <span class="text-xs" style="color:#64748b">to</span>
+          <span class="text-white font-bold">${escapeHtml((r.requested_broker||'').toUpperCase())}</span>
+          ${r.reason ? '<span class="text-xs ml-2" style="color:#94a3b8">"' + escapeHtml(r.reason) + '"</span>' : ''}
+        </div>
+        <div class="flex gap-2">
+          <button onclick="approveBCR(${r.id})" class="btn-primary px-3 py-1 text-xs">Approve</button>
+          <button onclick="denyBCR(${r.id})" class="btn-ghost px-3 py-1 text-xs">Deny</button>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    bcrPanel.style.display = 'none';
+  }
+
   await loadClients();
 }
 
@@ -171,6 +206,22 @@ async function activate(id) {
 async function deactivate(id) {
   if (!confirm('Deactivate this client?')) return;
   const r = await fetch(`/api/admin/clients/${id}/deactivate`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message || 'Done', d.success ? 'success' : 'error');
+  loadOverview();
+}
+
+async function approveBCR(id) {
+  if (!confirm('Approve this broker change? The old broker instance will be removed.')) return;
+  const r = await fetch(`/api/admin/broker-requests/${id}/approve`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message || 'Done', d.success ? 'success' : 'error');
+  loadOverview();
+}
+
+async function denyBCR(id) {
+  if (!confirm('Deny this broker change request?')) return;
+  const r = await fetch(`/api/admin/broker-requests/${id}/deny`, {method:'POST'});
   const d = await r.json();
   showToast(d.message || 'Done', d.success ? 'success' : 'error');
   loadOverview();

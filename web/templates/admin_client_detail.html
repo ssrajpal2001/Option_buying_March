@@ -46,6 +46,11 @@
     </div>
   </div>
 
+  <div class="card p-4 mb-4">
+    <div class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#64748b">Broker Change Requests</div>
+    <div id="bcr-detail-list" style="color:#64748b;font-size:13px">Loading...</div>
+  </div>
+
   <div class="card p-4">
     <div class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#64748b">Trade History</div>
     <table>
@@ -229,17 +234,45 @@ async function loadDetail() {
 
   const ilist = document.getElementById('instances-list');
   if (d.instances && d.instances.length) {
-    ilist.innerHTML = d.instances.map(i => `
-      <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #1e293b">
+    ilist.innerHTML = d.instances.map(i => {
+      const tokenInfo = i.token_updated_at
+        ? `<span class="text-xs" style="color:#64748b">Token: ${(i.token_updated_at||'').substring(0,10)}</span>`
+        : '<span class="text-xs" style="color:#f87171">No token</span>';
+      return `<div class="flex items-center justify-between py-2" style="border-bottom:1px solid #1e293b">
         <div>
-          <div class="text-white font-bold">${escapeHtml(i.broker)} · ${escapeHtml(i.instrument)} · ${i.quantity} lots</div>
-          <div class="text-xs mt-0.5" style="color:#64748b">${i.strategy_version} · ${i.trading_mode}</div>
+          <div class="text-white font-bold">${escapeHtml((i.broker||'').toUpperCase())} · ${escapeHtml(i.instrument)} · ${i.quantity} lots</div>
+          <div class="text-xs mt-0.5" style="color:#64748b">${i.strategy_version} · ${i.trading_mode} · ${tokenInfo}</div>
         </div>
         <span class="${i.status === 'running' ? 'badge-ok' : 'badge-idle'}">${i.status}</span>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } else {
     ilist.textContent = 'No broker configured yet.';
+  }
+
+  const bcrList = document.getElementById('bcr-detail-list');
+  if (d.broker_requests && d.broker_requests.length) {
+    bcrList.innerHTML = d.broker_requests.map(r => {
+      const statusColor = r.status === 'approved' ? '#34d399' : r.status === 'denied' ? '#f87171' : '#fb923c';
+      const statusLabel = r.status.toUpperCase();
+      const actionBtns = r.status === 'pending'
+        ? `<div class="flex gap-2 ml-auto">
+            <button onclick="approveBCR(${r.id})" class="btn-primary px-3 py-1 text-xs">Approve</button>
+            <button onclick="denyBCR(${r.id})" class="btn-ghost px-3 py-1 text-xs">Deny</button>
+          </div>`
+        : '';
+      return `<div class="flex items-center justify-between py-2" style="border-bottom:1px solid #1e293b">
+        <div>
+          <span style="color:${statusColor};font-weight:700;font-size:11px">${statusLabel}</span>
+          <span class="text-white ml-2">${escapeHtml((r.current_broker||'').toUpperCase())} → ${escapeHtml((r.requested_broker||'').toUpperCase())}</span>
+          ${r.reason ? '<span class="text-xs ml-2" style="color:#94a3b8">"' + escapeHtml(r.reason) + '"</span>' : ''}
+          <span class="text-xs ml-2" style="color:#64748b">${(r.created_at||'').substring(0,10)}</span>
+        </div>
+        ${actionBtns}
+      </div>`;
+    }).join('');
+  } else {
+    bcrList.textContent = 'No broker change requests.';
   }
 
   const flist = document.getElementById('failures-list');
@@ -427,6 +460,22 @@ async function forceClose() {
   showToast(d.message, d.success ? 'success' : 'error');
   loadDetail();
   loadBotStatus();
+}
+
+async function approveBCR(id) {
+  if (!confirm('Approve this broker change? The old broker instance will be removed.')) return;
+  const r = await fetch(`/api/admin/broker-requests/${id}/approve`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message || 'Done', d.success ? 'success' : 'error');
+  loadDetail();
+}
+
+async function denyBCR(id) {
+  if (!confirm('Deny this broker change request?')) return;
+  const r = await fetch(`/api/admin/broker-requests/${id}/deny`, {method:'POST'});
+  const d = await r.json();
+  showToast(d.message || 'Done', d.success ? 'success' : 'error');
+  loadDetail();
 }
 
 loadDetail();

@@ -19,7 +19,7 @@
   <table>
     <thead><tr>
       <th>Username</th><th>Email</th><th>Status</th><th>Tier</th>
-      <th>Brokers</th><th>Running</th><th>Joined</th><th>Actions</th>
+      <th>Broker(s)</th><th>Running</th><th>Joined</th><th>Actions</th>
     </tr></thead>
     <tbody id="clients-tbody"><tr><td colspan="8" class="text-center" style="color:#475569">Loading...</td></tr></tbody>
   </table>
@@ -71,7 +71,7 @@ function renderClients() {
       <td style="color:#64748b">${escapeHtml(c.email)}</td>
       <td>${statusBadge}</td>
       <td><span class="badge-idle">${c.subscription_tier}</span></td>
-      <td style="color:#94a3b8">${c.broker_count || 0}</td>
+      <td style="color:#94a3b8">${c.brokers ? escapeHtml(c.brokers.toUpperCase()) : '<span style="color:#475569">None</span>'}</td>
       <td style="color:#818cf8">${c.running_count || 0}</td>
       <td style="color:#64748b;font-size:12px">${date}</td>
       <td>

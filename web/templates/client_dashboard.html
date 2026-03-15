@@ -389,6 +389,37 @@
         </form>
       </div>
     </div>
+
+    <div class="card p-5 mt-6" id="broker-change-section">
+      <div class="text-sm font-bold text-white mb-3">Request Broker Change</div>
+      <p class="text-xs mb-3" style="color:#64748b">FREE plan allows 1 broker. To switch from your current broker, submit a change request for admin approval.</p>
+      <div id="bcr-pending-alert" class="hidden mb-3 p-3 rounded-lg text-xs" style="background:#3b1f00;border:1px solid #d97706;color:#fbbf24"></div>
+      <div id="bcr-form-wrapper">
+        <div class="mb-3">
+          <label class="block text-xs mb-1" style="color:#94a3b8">Switch from</label>
+          <select id="bcr-current" class="input-field text-sm">
+            <option value="zerodha">Zerodha</option>
+            <option value="dhan">Dhan</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs mb-1" style="color:#94a3b8">Switch to</label>
+          <select id="bcr-requested" class="input-field text-sm">
+            <option value="dhan">Dhan</option>
+            <option value="zerodha">Zerodha</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs mb-1" style="color:#94a3b8">Reason (optional)</label>
+          <input id="bcr-reason" type="text" class="input-field" placeholder="Why do you want to switch?"/>
+        </div>
+        <button onclick="submitBrokerChange()" class="btn-ghost px-5 py-2 text-sm">Submit Request</button>
+      </div>
+      <div id="bcr-history" class="mt-4 hidden">
+        <div class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:#64748b">Recent Requests</div>
+        <div id="bcr-history-list"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -999,8 +1030,61 @@ document.getElementById('config-form').addEventListener('submit', async function
   }
 })();
 
+async function submitBrokerChange() {
+  var cur = document.getElementById('bcr-current').value;
+  var req = document.getElementById('bcr-requested').value;
+  var reason = document.getElementById('bcr-reason').value.trim();
+  if (cur === req) { showToast('Current and requested broker must be different.', 'error'); return; }
+  var r = await fetch('/api/client/broker-change-request', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({current_broker: cur, requested_broker: req, reason: reason})
+  });
+  var d = await r.json();
+  showToast(d.message || d.detail || 'Error', d.success ? 'success' : 'error');
+  if (d.success) {
+    document.getElementById('bcr-reason').value = '';
+    loadBrokerChangeStatus();
+  }
+}
+
+async function loadBrokerChangeStatus() {
+  try {
+    var r = await fetch('/api/client/broker-change-request');
+    var d = await r.json();
+    var alertEl = document.getElementById('bcr-pending-alert');
+    var formWrapper = document.getElementById('bcr-form-wrapper');
+    if (d.pending) {
+      alertEl.classList.remove('hidden');
+      alertEl.innerHTML = 'You have a pending request to switch from <strong>' + escapeHtml(d.pending.current_broker.toUpperCase()) + '</strong> to <strong>' + escapeHtml(d.pending.requested_broker.toUpperCase()) + '</strong>. Waiting for admin approval.';
+      formWrapper.style.display = 'none';
+    } else {
+      alertEl.classList.add('hidden');
+      formWrapper.style.display = 'block';
+    }
+    var historyEl = document.getElementById('bcr-history');
+    var listEl = document.getElementById('bcr-history-list');
+    if (d.recent && d.recent.length) {
+      historyEl.classList.remove('hidden');
+      listEl.innerHTML = d.recent.map(function(r) {
+        var statusColor = r.status === 'approved' ? '#34d399' : r.status === 'denied' ? '#f87171' : '#fb923c';
+        return '<div class="flex items-center justify-between py-1.5" style="border-bottom:1px solid #1e293b">' +
+          '<div>' +
+            '<span style="color:' + statusColor + ';font-weight:700;font-size:11px">' + escapeHtml(r.status.toUpperCase()) + '</span>' +
+            '<span class="text-white ml-2">' + escapeHtml(r.current_broker.toUpperCase()) + ' → ' + escapeHtml(r.requested_broker.toUpperCase()) + '</span>' +
+            '<span class="text-xs ml-2" style="color:#64748b">' + (r.created_at || '').substring(0,10) + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    } else {
+      historyEl.classList.add('hidden');
+    }
+  } catch(e) {}
+}
+
 loadStatus();
 loadBrokerSettings();
+loadBrokerChangeStatus();
 setInterval(loadStatus, 5000);
 </script>
 </body>
