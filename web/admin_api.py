@@ -1,4 +1,7 @@
+import configparser
 import json
+import logging
+import os
 import time
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -11,7 +14,27 @@ from web.db import db_fetchone, db_fetchall, db_execute
 from web.auth import encrypt_secret, decrypt_secret
 from hub.instance_manager import instance_manager
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+_CREDENTIALS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'credentials.ini')
+
+
+def _sync_upstox_to_credentials(api_key: str, access_token: str):
+    creds = configparser.ConfigParser()
+    creds.read(_CREDENTIALS_PATH)
+    updated_sections = []
+    for section in creds.sections():
+        if section.lower().startswith('upstox'):
+            if api_key:
+                creds.set(section, 'api_key', api_key)
+            creds.set(section, 'access_token', access_token)
+            updated_sections.append(section)
+    if updated_sections:
+        with open(_CREDENTIALS_PATH, 'w') as f:
+            creds.write(f)
+        logger.info(f"Synced Upstox credentials to credentials.ini sections: {updated_sections}")
 
 
 # ── Data Provider ───────────────────────────────────────────────────────────
@@ -50,6 +73,10 @@ async def update_data_provider(body: DataProviderUpdate, request: Request, admin
              updated_by=excluded.updated_by""",
         (enc_key, enc_token, now, admin["id"])
     )
+    try:
+        _sync_upstox_to_credentials(body.api_key, body.access_token)
+    except Exception as e:
+        logger.error(f"Failed to sync Upstox credentials to credentials.ini: {e}")
     return {"success": True, "message": "Upstox data provider configured."}
 
 
