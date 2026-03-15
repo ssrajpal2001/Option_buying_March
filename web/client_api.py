@@ -33,12 +33,32 @@ def _is_token_fresh(token_updated_at: str) -> bool:
         return False
 
 
+def _is_dhan_token_fresh(token_updated_at: str) -> bool:
+    if not token_updated_at:
+        return False
+    try:
+        updated = datetime.fromisoformat(token_updated_at).replace(tzinfo=IST)
+        now_ist = datetime.now(IST)
+        return (now_ist - updated).days < 30
+    except Exception:
+        return False
+
+
+def _get_active_instance(user_id: int):
+    instance = db_fetchone(
+        "SELECT * FROM client_broker_instances WHERE client_id=? ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
+        (user_id,)
+    )
+    return instance
+
+
 # ── Broker Setup ─────────────────────────────────────────────────────────────
 
 class BrokerSetup(BaseModel):
     broker: str = "zerodha"
     api_key: str
-    api_secret: str
+    api_secret: Optional[str] = ""
+    access_token: Optional[str] = ""
     trading_mode: str = "paper"
     instrument: str = "NIFTY"
     quantity: int = 25
@@ -54,13 +74,19 @@ async def get_broker_config(user=Depends(get_current_user)):
     result = []
     for r in rows:
         d = dict(r)
-        d["token_fresh"] = _is_token_fresh(d.get("token_updated_at"))
+        if d["broker"] == "dhan":
+            d["token_fresh"] = _is_dhan_token_fresh(d.get("token_updated_at"))
+        else:
+            d["token_fresh"] = _is_token_fresh(d.get("token_updated_at"))
         result.append(d)
     return {"instances": result, "max_brokers": user["max_brokers"]}
 
 
 @router.post("/broker")
 async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
+    if body.broker not in ("zerodha", "dhan"):
+        raise HTTPException(400, "Broker must be 'zerodha' or 'dhan'.")
+
     existing = db_fetchall(
         "SELECT id FROM client_broker_instances WHERE client_id=?", (user["id"],)
     )
@@ -77,12 +103,47 @@ async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
         raise HTTPException(400, "trading_mode must be 'paper' or 'live'")
 
     existing_row = db_fetchone(
-        "SELECT api_key_encrypted, api_secret_encrypted FROM client_broker_instances WHERE client_id=? AND broker=?",
+        "SELECT api_key_encrypted, api_secret_encrypted, access_token_encrypted FROM client_broker_instances WHERE client_id=? AND broker=?",
         (user["id"], body.broker)
     )
 
     is_new_key = body.api_key and body.api_key != "unchanged"
     is_new_secret = body.api_secret and body.api_secret != "unchanged"
+    is_new_token = body.access_token and body.access_token != "unchanged"
+
+    if body.broker == "dhan":
+        if existing_row:
+            enc_key = encrypt_secret(body.api_key) if is_new_key else existing_row["api_key_encrypted"]
+            enc_token = encrypt_secret(body.access_token) if is_new_token else existing_row["access_token_encrypted"]
+        else:
+            if not is_new_key:
+                raise HTTPException(400, "Client ID is required for first-time Dhan setup.")
+            if not is_new_token:
+                raise HTTPException(400, "Access Token is required for first-time Dhan setup.")
+            enc_key = encrypt_secret(body.api_key)
+            enc_token = encrypt_secret(body.access_token)
+
+        now_iso = datetime.now(IST).isoformat()
+        db_execute("""
+            INSERT INTO client_broker_instances
+              (client_id, broker, api_key_encrypted, access_token_encrypted,
+               token_updated_at, trading_mode, instrument, quantity, strategy_version)
+            VALUES (?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(client_id, broker) DO UPDATE SET
+              api_key_encrypted=excluded.api_key_encrypted,
+              access_token_encrypted=excluded.access_token_encrypted,
+              token_updated_at=excluded.token_updated_at,
+              trading_mode=excluded.trading_mode,
+              instrument=excluded.instrument,
+              quantity=excluded.quantity,
+              strategy_version=excluded.strategy_version
+        """, (user["id"], "dhan", enc_key, enc_token, now_iso,
+              body.trading_mode, body.instrument, body.quantity, body.strategy_version))
+
+        msg = "Dhan credentials saved. Your access token is valid for 30 days."
+        if not is_new_key and not is_new_token:
+            msg = "Trading configuration updated."
+        return {"success": True, "message": msg}
 
     if existing_row:
         enc_key = encrypt_secret(body.api_key) if is_new_key else existing_row["api_key_encrypted"]
@@ -105,7 +166,7 @@ async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
           instrument=excluded.instrument,
           quantity=excluded.quantity,
           strategy_version=excluded.strategy_version
-    """, (user["id"], body.broker, enc_key, enc_secret,
+    """, (user["id"], "zerodha", enc_key, enc_secret,
           body.trading_mode, body.instrument, body.quantity, body.strategy_version))
 
     msg = "Broker credentials saved. Click 'Login with Zerodha' to generate your access token."
@@ -142,18 +203,23 @@ async def zerodha_login_url(user=Depends(get_current_user)):
 
 @router.post("/bot/start")
 async def start_bot(user=Depends(get_current_user)):
-    instance = db_fetchone(
-        "SELECT * FROM client_broker_instances WHERE client_id=? AND broker='zerodha'",
-        (user["id"],)
-    )
+    instance = _get_active_instance(user["id"])
     if not instance:
         raise HTTPException(400, "No broker configured. Please set up your broker first.")
     if not instance.get("api_key_encrypted"):
-        raise HTTPException(400, "Broker credentials missing. Please re-enter your API key.")
+        raise HTTPException(400, "Broker credentials missing. Please re-enter your credentials.")
     if not instance.get("access_token_encrypted"):
-        raise HTTPException(400, "Access token missing. Click 'Login with Zerodha' in Settings to generate your token.")
-    if not _is_token_fresh(instance.get("token_updated_at")):
-        raise HTTPException(400, "Zerodha token expired (resets daily at 6:00 AM IST). Go to Settings and click 'Login with Zerodha' to reconnect.")
+        if instance["broker"] == "zerodha":
+            raise HTTPException(400, "Access token missing. Click 'Login with Zerodha' in Settings to generate your token.")
+        else:
+            raise HTTPException(400, "Access token missing. Please enter your Dhan access token in Settings.")
+
+    if instance["broker"] == "zerodha":
+        if not _is_token_fresh(instance.get("token_updated_at")):
+            raise HTTPException(400, "Zerodha token expired (resets daily at 6:00 AM IST). Go to Settings and click 'Login with Zerodha' to reconnect.")
+    elif instance["broker"] == "dhan":
+        if not _is_dhan_token_fresh(instance.get("token_updated_at")):
+            raise HTTPException(400, "Dhan access token expired (30-day validity). Go to Settings and enter a new access token from Dhan's developer portal.")
 
     dp = db_fetchone("SELECT * FROM data_providers WHERE provider='upstox'")
     if not dp or dp["status"] != "configured":
@@ -183,10 +249,7 @@ async def start_bot(user=Depends(get_current_user)):
 
 @router.post("/bot/stop")
 async def stop_bot(user=Depends(get_current_user)):
-    instance = db_fetchone(
-        "SELECT * FROM client_broker_instances WHERE client_id=? AND broker='zerodha'",
-        (user["id"],)
-    )
+    instance = _get_active_instance(user["id"])
     if not instance:
         raise HTTPException(400, "No broker configured.")
 
@@ -204,10 +267,7 @@ async def restart_bot(user=Depends(get_current_user)):
 
 @router.get("/bot/status")
 async def bot_status(user=Depends(get_current_user)):
-    instance = db_fetchone(
-        "SELECT id, broker, status, trading_mode, instrument, quantity, strategy_version, last_heartbeat FROM client_broker_instances WHERE client_id=? AND broker='zerodha'",
-        (user["id"],)
-    )
+    instance = _get_active_instance(user["id"])
     if not instance:
         return {"configured": False}
 
@@ -231,9 +291,13 @@ async def bot_status(user=Depends(get_current_user)):
         except (json.JSONDecodeError, OSError):
             bot_data = {}
 
+    inst_dict = dict(instance)
+    safe_keys = ["id", "broker", "status", "trading_mode", "instrument", "quantity", "strategy_version", "last_heartbeat", "token_updated_at"]
+    inst_safe = {k: inst_dict.get(k) for k in safe_keys}
+
     return {
         "configured": True,
-        "instance": dict(instance),
+        "instance": inst_safe,
         "live": live_status,
         "trade_history": trades,
         "bot_data": bot_data,

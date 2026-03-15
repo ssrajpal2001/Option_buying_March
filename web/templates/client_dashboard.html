@@ -37,6 +37,10 @@
     .pulse-red { background: #f87171; }
     .pulse-blue { background: #60a5fa; animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .broker-tab { padding: 8px 20px; font-size: 13px; font-weight: 700; border-radius: 8px 8px 0 0; border: 1px solid #334155; border-bottom: none; cursor: pointer; transition: all 0.2s; }
+    .broker-tab.inactive { background: #0f172a; color: #64748b; }
+    .broker-tab.active-zerodha { background: #e54b00; color: white; border-color: #e54b00; }
+    .broker-tab.active-dhan { background: #2563eb; color: white; border-color: #2563eb; }
   </style>
 </head>
 <body>
@@ -63,22 +67,20 @@
 
   <!-- TRADING TAB -->
   <div id="pane-trading">
-    <!-- Alert banner -->
     <div id="setup-alert" class="hidden mb-4 p-4 rounded-lg flex items-center gap-3" style="background:#1e293b;border:1px solid #fb923c">
-      <span style="color:#fb923c">⚠</span>
-      <span id="setup-alert-text" class="text-sm" style="color:#fb923c">Broker not configured. Go to <button onclick="showTab('settings')" style="color:#00d4aa;text-decoration:underline">Settings</button> to set up your Zerodha credentials and login first.</span>
+      <span style="color:#fb923c">&#9888;</span>
+      <span id="setup-alert-text" class="text-sm" style="color:#fb923c">Broker not configured. Go to <button onclick="showTab('settings')" style="color:#00d4aa;text-decoration:underline">Settings</button> to set up your broker credentials.</span>
     </div>
 
-    <!-- Controls -->
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold text-white">Live Trading</h1>
         <p id="last-update" class="text-xs mt-1" style="color:#64748b">Connecting...</p>
       </div>
       <div class="flex gap-3">
-        <button id="btn-start" onclick="startBot()" class="btn-primary px-5 py-2 text-sm">▶ Start Bot</button>
-        <button id="btn-stop" onclick="stopBot()" class="btn-danger px-5 py-2 text-sm hidden">■ Stop</button>
-        <button id="btn-restart" onclick="restartBot()" class="btn-ghost px-4 py-2 text-sm hidden">↻ Restart</button>
+        <button id="btn-start" onclick="startBot()" class="btn-primary px-5 py-2 text-sm">&#9654; Start Bot</button>
+        <button id="btn-stop" onclick="stopBot()" class="btn-danger px-5 py-2 text-sm hidden">&#9632; Stop</button>
+        <button id="btn-restart" onclick="restartBot()" class="btn-ghost px-4 py-2 text-sm hidden">&#8635; Restart</button>
       </div>
     </div>
 
@@ -95,7 +97,7 @@
         </div>
         <div class="stat-card p-4">
           <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:#64748b">Session P&amp;L</div>
-          <div id="d-pnl" class="text-2xl font-bold pnl-zero">₹ --</div>
+          <div id="d-pnl" class="text-2xl font-bold pnl-zero">&#8377; --</div>
           <div class="text-xs mt-1" style="color:#64748b">Trades: <span id="d-trades">0</span></div>
         </div>
         <div class="stat-card p-4">
@@ -109,7 +111,7 @@
         <div class="card p-5">
           <div class="flex items-center gap-2 mb-4">
             <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded" style="background:#1e3a5f;color:#60a5fa">BUY SIDE</span>
-            <span class="text-xs" style="color:#64748b">MIS · ATM</span>
+            <span class="text-xs" style="color:#64748b">MIS &middot; ATM</span>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div class="rounded-lg p-3" style="background:#0f172a;border:1px solid #1e293b">
@@ -142,7 +144,7 @@
         <div class="card p-5">
           <div class="flex items-center gap-2 mb-4">
             <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded" style="background:#3b1f00;color:#fb923c">SELL SIDE</span>
-            <span class="text-xs" style="color:#64748b">NRML · Strangle</span>
+            <span class="text-xs" style="color:#64748b">NRML &middot; Strangle</span>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div class="rounded-lg p-3" style="background:#0f172a;border:1px solid #1e293b">
@@ -202,15 +204,14 @@
       <div class="card p-4 mb-4">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">Bot Log (last 50 lines)</span>
-          <button onclick="document.getElementById('log-box').scrollTop = document.getElementById('log-box').scrollHeight" class="text-xs" style="color:#00d4aa">↓ Bottom</button>
+          <button onclick="document.getElementById('log-box').scrollTop = document.getElementById('log-box').scrollHeight" class="text-xs" style="color:#00d4aa">&#8595; Bottom</button>
         </div>
         <div id="log-box" class="log-box rounded-lg p-3 h-48 overflow-y-auto" style="color:#94a3b8">
-          <p style="color:#475569">Waiting for bot logs…</p>
+          <p style="color:#475569">Waiting for bot logs&#8230;</p>
         </div>
       </div>
     </div>
 
-    <!-- Order Book (always visible after configured) -->
     <div id="order-book-section" class="card p-4 mb-4 hidden">
       <div class="flex items-center justify-between mb-3">
         <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">Order Book — Closed Trades</span>
@@ -226,8 +227,8 @@
               <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">Strike</th>
               <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">Entry</th>
               <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">Exit</th>
-              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">P&L pts</th>
-              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">P&L ₹</th>
+              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">P&amp;L pts</th>
+              <th class="text-right py-1 pr-3 text-xs font-semibold uppercase">P&amp;L &#8377;</th>
               <th class="text-left py-1 text-xs font-semibold uppercase">Reason</th>
             </tr>
           </thead>
@@ -238,9 +239,8 @@
       </div>
     </div>
 
-    <!-- Idle / Setup state -->
     <div id="idle-card" class="card p-8 text-center">
-      <div class="text-4xl mb-3">📈</div>
+      <div class="text-4xl mb-3">&#128200;</div>
       <div class="text-white font-bold text-lg mb-1">Ready to Trade</div>
       <p class="text-sm mb-4" style="color:#64748b">Configure your broker in Settings, then click Start Bot.</p>
     </div>
@@ -250,64 +250,113 @@
   <div id="pane-settings" class="hidden">
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-white">Settings</h1>
-      <p class="text-sm mt-1" style="color:#64748b">Configure your Zerodha broker credentials and trading parameters</p>
+      <p class="text-sm mt-1" style="color:#64748b">Configure your broker credentials and trading parameters</p>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <!-- Broker Credentials -->
       <div class="card p-5">
         <div class="flex items-center justify-between mb-4">
-          <div class="text-sm font-bold text-white">Zerodha Broker Connection</div>
-          <div id="zerodha-status-badge" class="flex items-center gap-2 text-xs px-3 py-1 rounded-full" style="background:#450a0a;border:1px solid #dc2626;color:#f87171">
+          <div class="text-sm font-bold text-white">Broker Connection</div>
+          <div id="broker-status-badge" class="flex items-center gap-2 text-xs px-3 py-1 rounded-full" style="background:#450a0a;border:1px solid #dc2626;color:#f87171">
             <span class="pulse-dot pulse-red"></span>
-            <span id="zerodha-status-text">Not Connected</span>
+            <span id="broker-status-text">Not Connected</span>
           </div>
         </div>
 
-        <div class="mb-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#64748b;border:1px solid #1e293b">
-          <strong style="color:#e2e8f0">Step 1:</strong> Enter your API Key and API Secret (one-time setup).<br/>
-          <strong style="color:#e2e8f0">Step 2:</strong> Click "Login with Zerodha" to auto-generate your access token.<br/>
-          <span style="color:#fb923c">Zerodha tokens expire at 6:00 AM IST daily. Re-login each morning before trading.</span>
+        <div class="flex mb-4" style="border-bottom:1px solid #334155">
+          <button id="broker-tab-zerodha" onclick="selectBroker('zerodha')" class="broker-tab active-zerodha">Zerodha</button>
+          <button id="broker-tab-dhan" onclick="selectBroker('dhan')" class="broker-tab inactive">Dhan</button>
         </div>
 
-        <form id="broker-form">
-          <div class="mb-3">
-            <label class="block text-xs mb-1" style="color:#94a3b8">API Key</label>
-            <input id="s-api-key" type="text" class="input-field" placeholder="Your Zerodha API key"/>
+        <!-- Zerodha Form -->
+        <div id="broker-zerodha-pane">
+          <div class="mb-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#64748b;border:1px solid #1e293b">
+            <strong style="color:#e2e8f0">Step 1:</strong> Enter your API Key and API Secret (one-time setup).<br/>
+            <strong style="color:#e2e8f0">Step 2:</strong> Click "Login with Zerodha" to auto-generate your access token.<br/>
+            <span style="color:#fb923c">Zerodha tokens expire at 6:00 AM IST daily. Re-login each morning before trading.</span>
           </div>
-          <div class="mb-3">
-            <label class="block text-xs mb-1" style="color:#94a3b8">API Secret</label>
-            <input id="s-api-secret" type="password" class="input-field" placeholder="Your Zerodha API secret"/>
-          </div>
-          <div class="mb-4">
-            <label class="block text-xs mb-1" style="color:#94a3b8">Trading Mode</label>
-            <div class="flex gap-3 mt-1">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name="mode" id="mode-paper" value="paper" checked/>
-                <span class="text-sm" style="color:#60a5fa">Paper Trading</span>
-                <span class="text-xs" style="color:#64748b">(simulated)</span>
-              </label>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name="mode" id="mode-live" value="live"/>
-                <span class="text-sm" style="color:#f87171">Live Trading</span>
-                <span class="text-xs" style="color:#64748b">(real funds)</span>
-              </label>
+
+          <form id="broker-form-zerodha">
+            <div class="mb-3">
+              <label class="block text-xs mb-1" style="color:#94a3b8">API Key</label>
+              <input id="s-api-key" type="text" class="input-field" placeholder="Your Zerodha API key"/>
             </div>
-          </div>
-          <div id="broker-msg" class="text-xs mb-3 hidden"></div>
-          <div class="flex gap-3">
-            <button type="submit" class="btn-primary px-5 py-2 text-sm">Save Credentials</button>
-            <button type="button" id="btn-zerodha-login" onclick="loginWithZerodha()" class="px-5 py-2 text-sm font-bold rounded-lg" style="background:#e54b00;color:white;border:none;cursor:pointer" disabled>Login with Zerodha</button>
-          </div>
-        </form>
+            <div class="mb-3">
+              <label class="block text-xs mb-1" style="color:#94a3b8">API Secret</label>
+              <input id="s-api-secret" type="password" class="input-field" placeholder="Your Zerodha API secret"/>
+            </div>
+            <div class="mb-4">
+              <label class="block text-xs mb-1" style="color:#94a3b8">Trading Mode</label>
+              <div class="flex gap-3 mt-1">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="zmode" id="zmode-paper" value="paper" checked/>
+                  <span class="text-sm" style="color:#60a5fa">Paper Trading</span>
+                  <span class="text-xs" style="color:#64748b">(simulated)</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="zmode" id="zmode-live" value="live"/>
+                  <span class="text-sm" style="color:#f87171">Live Trading</span>
+                  <span class="text-xs" style="color:#64748b">(real funds)</span>
+                </label>
+              </div>
+            </div>
+            <div id="broker-msg-z" class="text-xs mb-3 hidden"></div>
+            <div class="flex gap-3">
+              <button type="submit" class="btn-primary px-5 py-2 text-sm">Save Credentials</button>
+              <button type="button" id="btn-zerodha-login" onclick="loginWithZerodha()" class="px-5 py-2 text-sm font-bold rounded-lg" style="background:#e54b00;color:white;border:none;cursor:pointer" disabled>Login with Zerodha</button>
+            </div>
+          </form>
 
-        <div id="zerodha-token-info" class="mt-4 p-3 rounded-lg text-xs hidden" style="background:#064e3b;border:1px solid #059669;color:#34d399">
-          <span id="zerodha-token-msg"></span>
+          <div id="zerodha-token-info" class="mt-4 p-3 rounded-lg text-xs hidden" style="background:#064e3b;border:1px solid #059669;color:#34d399">
+            <span id="zerodha-token-msg"></span>
+          </div>
+
+          <div class="mt-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#475569;border:1px solid #1e293b">
+            <strong style="color:#64748b">Redirect URL for Zerodha Developer Console:</strong><br/>
+            <code id="callback-url" style="color:#94a3b8;word-break:break-all"></code>
+          </div>
         </div>
 
-        <div class="mt-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#475569;border:1px solid #1e293b">
-          <strong style="color:#64748b">Redirect URL for Zerodha Developer Console:</strong><br/>
-          <code id="callback-url" style="color:#94a3b8;word-break:break-all"></code>
+        <!-- Dhan Form -->
+        <div id="broker-dhan-pane" class="hidden">
+          <div class="mb-4 p-3 rounded-lg text-xs" style="background:#0f172a;color:#64748b;border:1px solid #1e293b">
+            <strong style="color:#e2e8f0">Step 1:</strong> Enter your Dhan Client ID (numeric) and Access Token.<br/>
+            <strong style="color:#e2e8f0">Step 2:</strong> Click "Save &amp; Connect" — no daily re-login needed.<br/>
+            <span style="color:#60a5fa">Dhan access tokens are valid for 30 days. Renew from Dhan's developer portal when expired.</span>
+          </div>
+
+          <form id="broker-form-dhan">
+            <div class="mb-3">
+              <label class="block text-xs mb-1" style="color:#94a3b8">Client ID</label>
+              <input id="d-client-id" type="text" class="input-field" placeholder="Your Dhan Client ID (e.g. 1000557682)"/>
+            </div>
+            <div class="mb-3">
+              <label class="block text-xs mb-1" style="color:#94a3b8">Access Token</label>
+              <input id="d-access-token" type="password" class="input-field" placeholder="Your Dhan access token (JWT)"/>
+            </div>
+            <div class="mb-4">
+              <label class="block text-xs mb-1" style="color:#94a3b8">Trading Mode</label>
+              <div class="flex gap-3 mt-1">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="dmode" id="dmode-paper" value="paper" checked/>
+                  <span class="text-sm" style="color:#60a5fa">Paper Trading</span>
+                  <span class="text-xs" style="color:#64748b">(simulated)</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="dmode" id="dmode-live" value="live"/>
+                  <span class="text-sm" style="color:#f87171">Live Trading</span>
+                  <span class="text-xs" style="color:#64748b">(real funds)</span>
+                </label>
+              </div>
+            </div>
+            <div id="broker-msg-d" class="text-xs mb-3 hidden"></div>
+            <button type="submit" class="btn-primary px-5 py-2 text-sm">Save &amp; Connect</button>
+          </form>
+
+          <div id="dhan-token-info" class="mt-4 p-3 rounded-lg text-xs hidden" style="background:#064e3b;border:1px solid #059669;color:#34d399">
+            <span id="dhan-token-msg"></span>
+          </div>
         </div>
       </div>
 
@@ -346,11 +395,12 @@
 <div id="toast" class="toast"></div>
 
 <script>
-function showToast(msg, type='success') {
-  const el = document.getElementById('toast');
+function showToast(msg, type) {
+  type = type || 'success';
+  var el = document.getElementById('toast');
   el.textContent = msg;
-  el.className = `toast toast-${type} show`;
-  setTimeout(() => el.classList.remove('show'), 4000);
+  el.className = 'toast toast-' + type + ' show';
+  setTimeout(function() { el.classList.remove('show'); }, 4000);
 }
 function escapeHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -363,8 +413,26 @@ function showTab(tab) {
   document.getElementById('tab-settings').classList.toggle('active', tab === 'settings');
 }
 
-let botRunning = false;
-let brokerConfigured = false;
+var botRunning = false;
+var brokerConfigured = false;
+var selectedBroker = 'zerodha';
+var zerodhaSaved = false;
+var dhanSaved = false;
+
+function selectBroker(broker) {
+  selectedBroker = broker;
+  var zt = document.getElementById('broker-tab-zerodha');
+  var dt = document.getElementById('broker-tab-dhan');
+  document.getElementById('broker-zerodha-pane').classList.toggle('hidden', broker !== 'zerodha');
+  document.getElementById('broker-dhan-pane').classList.toggle('hidden', broker !== 'dhan');
+  if (broker === 'zerodha') {
+    zt.className = 'broker-tab active-zerodha';
+    dt.className = 'broker-tab inactive';
+  } else {
+    zt.className = 'broker-tab inactive';
+    dt.className = 'broker-tab active-dhan';
+  }
+}
 
 function fmt(v) { return v !== null && v !== undefined ? parseFloat(v).toFixed(2) : '--'; }
 function fmtOI(v) { return v ? (v/100000).toFixed(1) + 'L' : '--'; }
@@ -381,25 +449,25 @@ function updateLivePanel(bd) {
   document.getElementById('d-instrument').textContent = bd.instrument || '--';
   document.getElementById('d-trades').textContent = bd.trade_count || 0;
 
-  const pnl = bd.session_pnl || 0;
-  const pnlEl = document.getElementById('d-pnl');
+  var pnl = bd.session_pnl || 0;
+  var pnlEl = document.getElementById('d-pnl');
   pnlEl.textContent = '\u20B9 ' + parseFloat(pnl).toFixed(2);
   pnlEl.className = 'text-2xl font-bold ' + pnlClass(pnl);
 
-  const buy = bd.buy || {};
-  ['CALL', 'PUT'].forEach(side => {
-    const s = side.toLowerCase();
-    const pos = buy[side] || {};
-    const active = pos.status === 'ACTIVE';
-    const pfx = 'buy-' + s;
-    const statusEl = document.getElementById(pfx + '-status');
+  var buy = bd.buy || {};
+  ['CALL', 'PUT'].forEach(function(side) {
+    var s = side.toLowerCase();
+    var pos = buy[side] || {};
+    var active = pos.status === 'ACTIVE';
+    var pfx = 'buy-' + s;
+    var statusEl = document.getElementById(pfx + '-status');
     statusEl.textContent = active ? 'ACTIVE' : 'IDLE';
     statusEl.style.background = active ? '#064e3b' : '#1e293b';
     statusEl.style.color = active ? '#34d399' : '#64748b';
     document.getElementById(pfx + '-strike').textContent = pos.strike || '--';
     document.getElementById(pfx + '-entry').textContent = fmt(pos.entry);
     document.getElementById(pfx + '-ltp').textContent = fmt(pos.ltp);
-    const pEl = document.getElementById(pfx + '-pnl');
+    var pEl = document.getElementById(pfx + '-pnl');
     if (active) {
       pEl.textContent = '\u20B9 ' + fmt(pos.pnl);
       pEl.className = 'text-sm font-bold ' + pnlClass(pos.pnl);
@@ -409,20 +477,20 @@ function updateLivePanel(bd) {
     }
   });
 
-  const sell = bd.sell || {};
-  ['CE', 'PE'].forEach(side => {
-    const s = side.toLowerCase();
-    const pos = sell[side] || {};
-    const active = pos.placed;
-    const pfx = 'sell-' + s;
-    const statusEl = document.getElementById(pfx + '-status');
+  var sell = bd.sell || {};
+  ['CE', 'PE'].forEach(function(side) {
+    var s = side.toLowerCase();
+    var pos = sell[side] || {};
+    var active = pos.placed;
+    var pfx = 'sell-' + s;
+    var statusEl = document.getElementById(pfx + '-status');
     statusEl.textContent = active ? 'PLACED' : 'IDLE';
     statusEl.style.background = active ? '#3b1f00' : '#1e293b';
     statusEl.style.color = active ? '#fb923c' : '#64748b';
     document.getElementById(pfx + '-strike').textContent = pos.strike || '--';
     document.getElementById(pfx + '-entry').textContent = fmt(pos.entry);
     document.getElementById(pfx + '-ltp').textContent = fmt(pos.ltp);
-    const pEl = document.getElementById(pfx + '-pnl');
+    var pEl = document.getElementById(pfx + '-pnl');
     if (active) {
       pEl.textContent = '\u20B9 ' + fmt(pos.pnl);
       pEl.className = 'text-sm font-bold ' + pnlClass(pos.pnl);
@@ -432,20 +500,19 @@ function updateLivePanel(bd) {
     }
   });
 
-  const oi = bd.oi_snapshot || {};
+  var oi = bd.oi_snapshot || {};
   document.getElementById('oi-call').textContent = fmtOI(oi.call_oi);
   document.getElementById('oi-put').textContent = fmtOI(oi.put_oi);
-  const total = (oi.call_oi || 0) + (oi.put_oi || 0);
+  var total = (oi.call_oi || 0) + (oi.put_oi || 0);
   if (total > 0) {
     document.getElementById('oi-bar').style.width = Math.round((oi.call_oi / total) * 100) + '%';
   }
 
   if (bd.heartbeat) {
-    const hbEl = document.getElementById('heartbeat-box');
-    hbEl.textContent = 'Last update: ' + new Date(bd.heartbeat * 1000).toLocaleTimeString();
-    hbEl.style.color = bd.stale ? '#fb923c' : '#34d399';
+    document.getElementById('heartbeat-box').textContent = 'Last heartbeat: ' + new Date(bd.heartbeat * 1000).toLocaleTimeString();
+    document.getElementById('heartbeat-box').style.color = bd.stale ? '#fb923c' : '#34d399';
   }
-  const staleEl = document.getElementById('stale-warning');
+  var staleEl = document.getElementById('stale-warning');
   if (bd.stale) {
     staleEl.textContent = '\u26A0 Bot may be frozen (last seen ' + bd.stale_seconds + 's ago)';
     staleEl.classList.remove('hidden');
@@ -454,14 +521,14 @@ function updateLivePanel(bd) {
   }
 
   if (bd.log_tail && bd.log_tail.length) {
-    const box = document.getElementById('log-box');
-    const atBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 20;
+    var box = document.getElementById('log-box');
+    var atBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 20;
     box.innerHTML = bd.log_tail.map(function(l) {
-      let color = '#94a3b8';
-      if (l.includes('ERROR')) color = '#f87171';
-      else if (l.includes('WARNING') || l.includes('WARN')) color = '#fb923c';
-      else if (l.includes('[BUY]') || l.includes('[SELL]')) color = '#34d399';
-      else if (l.includes('INFO')) color = '#93c5fd';
+      var color = '#94a3b8';
+      if (l.indexOf('ERROR') !== -1) color = '#f87171';
+      else if (l.indexOf('WARNING') !== -1 || l.indexOf('WARN') !== -1) color = '#fb923c';
+      else if (l.indexOf('[BUY]') !== -1 || l.indexOf('[SELL]') !== -1) color = '#34d399';
+      else if (l.indexOf('INFO') !== -1) color = '#93c5fd';
       return '<div style="color:' + color + '">' + escapeHtml(l) + '</div>';
     }).join('');
     if (atBottom) box.scrollTop = box.scrollHeight;
@@ -469,33 +536,33 @@ function updateLivePanel(bd) {
 }
 
 function resetLivePanel() {
-  ['d-atm', 'd-index'].forEach(function(id) { document.getElementById(id).textContent = '--'; });
+  document.getElementById('d-atm').textContent = '--';
   document.getElementById('d-spot').textContent = '--';
+  document.getElementById('d-index').textContent = '--';
+  document.getElementById('d-pnl').textContent = '\u20B9 --';
+  document.getElementById('d-pnl').className = 'text-2xl font-bold pnl-zero';
   document.getElementById('d-mode').textContent = '--';
   document.getElementById('d-instrument').textContent = '--';
   document.getElementById('d-trades').textContent = '0';
-  const pnlEl = document.getElementById('d-pnl');
-  pnlEl.textContent = '\u20B9 --';
-  pnlEl.className = 'text-2xl font-bold pnl-zero';
-  ['buy-call', 'buy-put'].forEach(function(pfx) {
-    document.getElementById(pfx + '-status').textContent = 'IDLE';
-    document.getElementById(pfx + '-status').style.background = '#1e293b';
-    document.getElementById(pfx + '-status').style.color = '#64748b';
-    document.getElementById(pfx + '-strike').textContent = '--';
-    document.getElementById(pfx + '-entry').textContent = '--';
-    document.getElementById(pfx + '-ltp').textContent = '--';
-    var p = document.getElementById(pfx + '-pnl');
+  ['call', 'put'].forEach(function(s) {
+    document.getElementById('buy-' + s + '-status').textContent = 'IDLE';
+    document.getElementById('buy-' + s + '-status').style.background = '#1e293b';
+    document.getElementById('buy-' + s + '-status').style.color = '#64748b';
+    document.getElementById('buy-' + s + '-strike').textContent = '--';
+    document.getElementById('buy-' + s + '-entry').textContent = '--';
+    document.getElementById('buy-' + s + '-ltp').textContent = '--';
+    var p = document.getElementById('buy-' + s + '-pnl');
     p.textContent = '--';
     p.className = 'text-sm font-bold pnl-zero';
   });
-  ['sell-ce', 'sell-pe'].forEach(function(pfx) {
-    document.getElementById(pfx + '-status').textContent = 'IDLE';
-    document.getElementById(pfx + '-status').style.background = '#1e293b';
-    document.getElementById(pfx + '-status').style.color = '#64748b';
-    document.getElementById(pfx + '-strike').textContent = '--';
-    document.getElementById(pfx + '-entry').textContent = '--';
-    document.getElementById(pfx + '-ltp').textContent = '--';
-    var p = document.getElementById(pfx + '-pnl');
+  ['ce', 'pe'].forEach(function(s) {
+    document.getElementById('sell-' + s + '-status').textContent = 'IDLE';
+    document.getElementById('sell-' + s + '-status').style.background = '#1e293b';
+    document.getElementById('sell-' + s + '-status').style.color = '#64748b';
+    document.getElementById('sell-' + s + '-strike').textContent = '--';
+    document.getElementById('sell-' + s + '-entry').textContent = '--';
+    document.getElementById('sell-' + s + '-ltp').textContent = '--';
+    var p = document.getElementById('sell-' + s + '-pnl');
     p.textContent = '--';
     p.className = 'text-sm font-bold pnl-zero';
   });
@@ -509,12 +576,13 @@ function resetLivePanel() {
 
 async function loadStatus() {
   try {
-    const r = await fetch('/api/client/bot/status');
-    const d = await r.json();
+    var r = await fetch('/api/client/bot/status');
+    var d = await r.json();
     brokerConfigured = d.configured;
 
     if (!d.configured) {
       document.getElementById('setup-alert').classList.remove('hidden');
+      document.getElementById('setup-alert-text').innerHTML = 'Broker not configured. Go to <button onclick="showTab(\'settings\')" style="color:#00d4aa;text-decoration:underline">Settings</button> to set up your broker credentials.';
       document.getElementById('idle-card').classList.remove('hidden');
       document.getElementById('order-book-section').classList.add('hidden');
       document.getElementById('bot-live-panel').classList.add('hidden');
@@ -522,24 +590,38 @@ async function loadStatus() {
       return;
     }
 
-    document.getElementById('setup-alert').classList.add('hidden');
+    var inst = d.instance || {};
+    var brkr = inst.broker || 'zerodha';
+
+    if (brkr === 'zerodha' && !d.live.running) {
+      var tokenFresh = inst.token_updated_at ? true : false;
+      if (!tokenFresh) {
+        document.getElementById('setup-alert').classList.remove('hidden');
+        document.getElementById('setup-alert-text').innerHTML = 'Zerodha token needed. Go to <button onclick="showTab(\'settings\')" style="color:#00d4aa;text-decoration:underline">Settings</button> and click "Login with Zerodha" to connect.';
+      } else {
+        document.getElementById('setup-alert').classList.add('hidden');
+      }
+    } else {
+      document.getElementById('setup-alert').classList.add('hidden');
+    }
+
     document.getElementById('order-book-section').classList.remove('hidden');
 
-    const running = d.live && d.live.running;
+    var running = d.live && d.live.running;
     botRunning = running;
 
     if (running) {
-      setBotRunning(d.instance.trading_mode === 'live');
+      setBotRunning(inst.trading_mode === 'live', brkr);
       document.getElementById('idle-card').classList.add('hidden');
       document.getElementById('bot-live-panel').classList.remove('hidden');
 
-      const bd = d.bot_data || {};
+      var bd = d.bot_data || {};
       if (bd.bot_running) {
         updateLivePanel(bd);
         if (bd.heartbeat) {
-          document.getElementById('last-update').textContent = 'Running \u00B7 Last update: ' + new Date(bd.heartbeat * 1000).toLocaleTimeString();
+          document.getElementById('last-update').textContent = 'Running \u00B7 ' + brkr.toUpperCase() + ' \u00B7 Last update: ' + new Date(bd.heartbeat * 1000).toLocaleTimeString();
         } else {
-          document.getElementById('last-update').textContent = 'Running \u00B7 ' + d.instance.broker + ' \u00B7 ' + d.instance.instrument + ' \u00B7 ' + d.instance.quantity + ' lots';
+          document.getElementById('last-update').textContent = 'Running \u00B7 ' + brkr.toUpperCase() + ' \u00B7 ' + inst.instrument + ' \u00B7 ' + inst.quantity + ' lots';
         }
       } else {
         resetLivePanel();
@@ -556,18 +638,19 @@ async function loadStatus() {
   } catch(e) {}
 }
 
-function setBotRunning(isLive) {
-  const badge = document.getElementById('bot-status-badge');
-  const label = document.getElementById('bot-status-label');
-  const dot = badge.querySelector('.pulse-dot');
+function setBotRunning(isLive, broker) {
+  var badge = document.getElementById('bot-status-badge');
+  var label = document.getElementById('bot-status-label');
+  var dot = badge.querySelector('.pulse-dot');
+  var brokerLabel = (broker || 'zerodha').toUpperCase();
   if (isLive) {
     badge.className = 'flex items-center gap-2 text-sm px-3 py-1 badge-live';
     dot.className = 'pulse-dot pulse-green';
-    label.textContent = 'LIVE';
+    label.textContent = 'LIVE \u00B7 ' + brokerLabel;
   } else {
     badge.className = 'flex items-center gap-2 text-sm px-3 py-1 badge-paper';
     dot.className = 'pulse-dot pulse-blue';
-    label.textContent = 'PAPER';
+    label.textContent = 'PAPER \u00B7 ' + brokerLabel;
   }
   document.getElementById('btn-start').classList.add('hidden');
   document.getElementById('btn-stop').classList.remove('hidden');
@@ -575,9 +658,9 @@ function setBotRunning(isLive) {
 }
 
 function setBotStopped() {
-  const badge = document.getElementById('bot-status-badge');
-  const label = document.getElementById('bot-status-label');
-  const dot = badge.querySelector('.pulse-dot');
+  var badge = document.getElementById('bot-status-badge');
+  var label = document.getElementById('bot-status-label');
+  var dot = badge.querySelector('.pulse-dot');
   badge.className = 'flex items-center gap-2 text-sm px-3 py-1 badge-stopped';
   dot.className = 'pulse-dot pulse-red';
   label.textContent = 'STOPPED';
@@ -587,142 +670,176 @@ function setBotStopped() {
 }
 
 async function startBot() {
-  const btn = document.getElementById('btn-start');
+  var btn = document.getElementById('btn-start');
   btn.disabled = true;
   btn.textContent = 'Starting...';
-  const r = await fetch('/api/client/bot/start', {method:'POST'});
-  const d = await r.json();
-  showToast(d.message, d.success ? 'success' : 'error');
+  var r = await fetch('/api/client/bot/start', {method:'POST'});
+  var d = await r.json();
+  showToast(d.message || d.detail || 'Error', d.success ? 'success' : 'error');
   btn.disabled = false;
-  btn.textContent = '▶ Start Bot';
+  btn.textContent = '\u25B6 Start Bot';
   if (d.success) loadStatus();
 }
 
 async function stopBot() {
   if (!confirm('Stop the bot? Active positions will remain open.')) return;
-  const r = await fetch('/api/client/bot/stop', {method:'POST'});
-  const d = await r.json();
-  showToast(d.message, d.success ? 'success' : 'error');
+  var r = await fetch('/api/client/bot/stop', {method:'POST'});
+  var d = await r.json();
+  showToast(d.message || d.detail || 'Error', d.success ? 'success' : 'error');
   loadStatus();
 }
 
 async function restartBot() {
   if (!confirm('Restart the bot? Use this after adding funds.')) return;
-  const r = await fetch('/api/client/bot/restart', {method:'POST'});
-  const d = await r.json();
-  showToast(d.message, d.success ? 'success' : 'error');
+  var r = await fetch('/api/client/bot/restart', {method:'POST'});
+  var d = await r.json();
+  showToast(d.message || d.detail || 'Error', d.success ? 'success' : 'error');
   loadStatus();
 }
 
 function renderOrderBook(trades) {
-  const tbody = document.getElementById('ob-body');
-  document.getElementById('ob-count').textContent = `${trades.length} trade${trades.length !== 1 ? 's' : ''}`;
+  var tbody = document.getElementById('ob-body');
+  document.getElementById('ob-count').textContent = trades.length + ' trade' + (trades.length !== 1 ? 's' : '');
   if (!trades.length) {
     tbody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-sm" style="color:#475569">No closed trades yet.</td></tr>';
     return;
   }
-  tbody.innerHTML = trades.map(t => {
-    const profit = (t.pnl_pts || 0) > 0;
-    const loss = (t.pnl_pts || 0) < 0;
-    const rowBg = profit ? '#052e16' : loss ? '#2d1010' : '#0f172a';
-    const pnlColor = profit ? '#34d399' : loss ? '#f87171' : '#64748b';
-    const typeColor = t.trade_type === 'BUY' ? '#60a5fa' : '#fb923c';
-    const dirColor = (t.direction === 'CE' || t.direction === 'CALL') ? '#818cf8' : '#f472b6';
-    const pSign = (t.pnl_pts || 0) > 0 ? '+' : '';
-    const rSign = (t.pnl_rs || 0) > 0 ? '+' : '';
-    const time = (t.closed_at || '').substring(11, 19);
-    return `<tr style="border-bottom:1px solid #1e293b;background:${rowBg}">
-      <td class="py-1 pr-3 font-mono text-xs" style="color:#94a3b8">${escapeHtml(time)}</td>
-      <td class="py-1 pr-3 text-xs font-bold" style="color:${typeColor}">${escapeHtml(t.trade_type||'')}</td>
-      <td class="py-1 pr-3 text-xs font-bold" style="color:${dirColor}">${escapeHtml(t.direction||'')}</td>
-      <td class="py-1 pr-3 text-xs text-right text-white">${t.strike||'--'}</td>
-      <td class="py-1 pr-3 text-xs text-right" style="color:#94a3b8">${t.entry_price ? parseFloat(t.entry_price).toFixed(2) : '--'}</td>
-      <td class="py-1 pr-3 text-xs text-right" style="color:#94a3b8">${t.exit_price ? parseFloat(t.exit_price).toFixed(2) : '--'}</td>
-      <td class="py-1 pr-3 text-xs text-right font-bold" style="color:${pnlColor}">${pSign}${t.pnl_pts !== null ? parseFloat(t.pnl_pts).toFixed(2) : '--'}</td>
-      <td class="py-1 pr-3 text-xs text-right font-bold" style="color:${pnlColor}">${rSign}${t.pnl_rs !== null ? parseFloat(t.pnl_rs).toFixed(0) : '--'}</td>
-      <td class="py-1 text-xs" style="color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.exit_reason||'')}</td>
-    </tr>`;
+  tbody.innerHTML = trades.map(function(t) {
+    var profit = (t.pnl_pts || 0) > 0;
+    var loss = (t.pnl_pts || 0) < 0;
+    var rowBg = profit ? '#052e16' : loss ? '#2d1010' : '#0f172a';
+    var pnlColor = profit ? '#34d399' : loss ? '#f87171' : '#64748b';
+    var typeColor = t.trade_type === 'BUY' ? '#60a5fa' : '#fb923c';
+    var dirColor = (t.direction === 'CE' || t.direction === 'CALL') ? '#818cf8' : '#f472b6';
+    var pSign = (t.pnl_pts || 0) > 0 ? '+' : '';
+    var rSign = (t.pnl_rs || 0) > 0 ? '+' : '';
+    var tm = (t.closed_at || '').substring(11, 19);
+    return '<tr style="border-bottom:1px solid #1e293b;background:' + rowBg + '">' +
+      '<td class="py-1 pr-3 font-mono text-xs" style="color:#94a3b8">' + escapeHtml(tm) + '</td>' +
+      '<td class="py-1 pr-3 text-xs font-bold" style="color:' + typeColor + '">' + escapeHtml(t.trade_type||'') + '</td>' +
+      '<td class="py-1 pr-3 text-xs font-bold" style="color:' + dirColor + '">' + escapeHtml(t.direction||'') + '</td>' +
+      '<td class="py-1 pr-3 text-xs text-right text-white">' + (t.strike||'--') + '</td>' +
+      '<td class="py-1 pr-3 text-xs text-right" style="color:#94a3b8">' + (t.entry_price ? parseFloat(t.entry_price).toFixed(2) : '--') + '</td>' +
+      '<td class="py-1 pr-3 text-xs text-right" style="color:#94a3b8">' + (t.exit_price ? parseFloat(t.exit_price).toFixed(2) : '--') + '</td>' +
+      '<td class="py-1 pr-3 text-xs text-right font-bold" style="color:' + pnlColor + '">' + pSign + (t.pnl_pts !== null ? parseFloat(t.pnl_pts).toFixed(2) : '--') + '</td>' +
+      '<td class="py-1 pr-3 text-xs text-right font-bold" style="color:' + pnlColor + '">' + rSign + (t.pnl_rs !== null ? parseFloat(t.pnl_rs).toFixed(0) : '--') + '</td>' +
+      '<td class="py-1 text-xs" style="color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(t.exit_reason||'') + '</td>' +
+    '</tr>';
   }).join('');
 }
 
-let brokerSaved = false;
+function updateBrokerStatus(broker, tokenFresh, tokenUpdatedAt) {
+  var badge = document.getElementById('broker-status-badge');
+  var text = document.getElementById('broker-status-text');
+  var loginBtn = document.getElementById('btn-zerodha-login');
 
-function updateZerodhaStatus(tokenFresh, tokenUpdatedAt) {
-  const badge = document.getElementById('zerodha-status-badge');
-  const text = document.getElementById('zerodha-status-text');
-  const info = document.getElementById('zerodha-token-info');
-  const infoMsg = document.getElementById('zerodha-token-msg');
-  const loginBtn = document.getElementById('btn-zerodha-login');
-
-  if (tokenFresh) {
-    badge.style.background = '#064e3b';
-    badge.style.borderColor = '#059669';
-    badge.style.color = '#34d399';
-    badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-green';
-    text.textContent = 'Connected';
-    info.classList.remove('hidden');
-    info.style.background = '#064e3b';
-    info.style.borderColor = '#059669';
-    info.style.color = '#34d399';
-    const updated = tokenUpdatedAt ? new Date(tokenUpdatedAt).toLocaleTimeString() : '';
-    infoMsg.textContent = 'Access token is active. Last login: ' + updated + '. Ready to trade!';
-  } else if (tokenUpdatedAt) {
-    badge.style.background = '#3b1f00';
-    badge.style.borderColor = '#d97706';
-    badge.style.color = '#fbbf24';
-    badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-red';
-    text.textContent = 'Token Expired';
-    info.classList.remove('hidden');
-    info.style.background = '#3b1f00';
-    info.style.borderColor = '#d97706';
-    info.style.color = '#fbbf24';
-    infoMsg.textContent = 'Token expired (Zerodha resets at 6:00 AM IST). Click "Login with Zerodha" to reconnect.';
-  } else {
-    badge.style.background = '#450a0a';
-    badge.style.borderColor = '#dc2626';
-    badge.style.color = '#f87171';
-    badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-red';
-    text.textContent = 'Not Connected';
-    info.classList.add('hidden');
+  if (broker === 'dhan') {
+    var dhanInfo = document.getElementById('dhan-token-info');
+    var dhanMsg = document.getElementById('dhan-token-msg');
+    if (tokenFresh) {
+      badge.style.background = '#064e3b'; badge.style.borderColor = '#059669'; badge.style.color = '#34d399';
+      badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-green';
+      text.textContent = 'Dhan Connected';
+      dhanInfo.classList.remove('hidden');
+      dhanInfo.style.background = '#064e3b'; dhanInfo.style.borderColor = '#059669'; dhanInfo.style.color = '#34d399';
+      var upd = tokenUpdatedAt ? new Date(tokenUpdatedAt).toLocaleDateString() : '';
+      dhanMsg.textContent = 'Access token is active (30-day validity). Saved: ' + upd + '. Ready to trade!';
+    } else if (tokenUpdatedAt) {
+      badge.style.background = '#3b1f00'; badge.style.borderColor = '#d97706'; badge.style.color = '#fbbf24';
+      badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-red';
+      text.textContent = 'Token Expired';
+      dhanInfo.classList.remove('hidden');
+      dhanInfo.style.background = '#3b1f00'; dhanInfo.style.borderColor = '#d97706'; dhanInfo.style.color = '#fbbf24';
+      dhanMsg.textContent = 'Dhan token expired (30-day validity). Enter a new token from Dhan developer portal.';
+    } else {
+      badge.style.background = '#450a0a'; badge.style.borderColor = '#dc2626'; badge.style.color = '#f87171';
+      badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-red';
+      text.textContent = 'Not Connected';
+      dhanInfo.classList.add('hidden');
+    }
+    return;
   }
 
-  if (brokerSaved) {
-    loginBtn.disabled = false;
-    loginBtn.style.opacity = '1';
+  var zInfo = document.getElementById('zerodha-token-info');
+  var zMsg = document.getElementById('zerodha-token-msg');
+
+  if (tokenFresh) {
+    badge.style.background = '#064e3b'; badge.style.borderColor = '#059669'; badge.style.color = '#34d399';
+    badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-green';
+    text.textContent = 'Connected';
+    zInfo.classList.remove('hidden');
+    zInfo.style.background = '#064e3b'; zInfo.style.borderColor = '#059669'; zInfo.style.color = '#34d399';
+    var updated = tokenUpdatedAt ? new Date(tokenUpdatedAt).toLocaleTimeString() : '';
+    zMsg.textContent = 'Access token is active. Last login: ' + updated + '. Ready to trade!';
+  } else if (tokenUpdatedAt) {
+    badge.style.background = '#3b1f00'; badge.style.borderColor = '#d97706'; badge.style.color = '#fbbf24';
+    badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-red';
+    text.textContent = 'Token Expired';
+    zInfo.classList.remove('hidden');
+    zInfo.style.background = '#3b1f00'; zInfo.style.borderColor = '#d97706'; zInfo.style.color = '#fbbf24';
+    zMsg.textContent = 'Token expired (Zerodha resets at 6:00 AM IST). Click "Login with Zerodha" to reconnect.';
   } else {
-    loginBtn.disabled = true;
-    loginBtn.style.opacity = '0.5';
+    badge.style.background = '#450a0a'; badge.style.borderColor = '#dc2626'; badge.style.color = '#f87171';
+    badge.querySelector('.pulse-dot').className = 'pulse-dot pulse-red';
+    text.textContent = 'Not Connected';
+    zInfo.classList.add('hidden');
+  }
+
+  if (zerodhaSaved) {
+    loginBtn.disabled = false; loginBtn.style.opacity = '1';
+  } else {
+    loginBtn.disabled = true; loginBtn.style.opacity = '0.5';
   }
 }
 
 async function loadBrokerSettings() {
   document.getElementById('callback-url').textContent = window.location.origin + '/auth/zerodha/callback';
 
-  const r = await fetch('/api/client/broker');
-  const d = await r.json();
+  var r = await fetch('/api/client/broker');
+  var d = await r.json();
   if (d.instances && d.instances.length) {
-    const inst = d.instances[0];
-    brokerSaved = true;
-    if (inst.trading_mode === 'live') document.getElementById('mode-live').checked = true;
-    else document.getElementById('mode-paper').checked = true;
-    document.getElementById('s-instrument').value = inst.instrument || 'NIFTY';
-    document.getElementById('s-quantity').value = inst.quantity || 25;
-    document.getElementById('s-strategy').value = inst.strategy_version || 'V3';
-    document.getElementById('s-api-key').placeholder = 'API key saved (enter new to change)';
-    document.getElementById('s-api-secret').placeholder = 'API secret saved (enter new to change)';
-    updateZerodhaStatus(inst.token_fresh, inst.token_updated_at);
+    d.instances.forEach(function(inst) {
+      if (inst.broker === 'zerodha') {
+        zerodhaSaved = true;
+        document.getElementById('s-api-key').placeholder = 'API key saved (enter new to change)';
+        document.getElementById('s-api-secret').placeholder = 'API secret saved (enter new to change)';
+        if (inst.trading_mode === 'live') document.getElementById('zmode-live').checked = true;
+        else document.getElementById('zmode-paper').checked = true;
+        document.getElementById('s-instrument').value = inst.instrument || 'NIFTY';
+        document.getElementById('s-quantity').value = inst.quantity || 25;
+        document.getElementById('s-strategy').value = inst.strategy_version || 'V3';
+        updateBrokerStatus('zerodha', inst.token_fresh, inst.token_updated_at);
+      }
+      if (inst.broker === 'dhan') {
+        dhanSaved = true;
+        document.getElementById('d-client-id').placeholder = 'Client ID saved (enter new to change)';
+        document.getElementById('d-access-token').placeholder = 'Access token saved (enter new to change)';
+        if (inst.trading_mode === 'live') document.getElementById('dmode-live').checked = true;
+        else document.getElementById('dmode-paper').checked = true;
+        if (!zerodhaSaved) {
+          document.getElementById('s-instrument').value = inst.instrument || 'NIFTY';
+          document.getElementById('s-quantity').value = inst.quantity || 25;
+          document.getElementById('s-strategy').value = inst.strategy_version || 'V3';
+        }
+        updateBrokerStatus('dhan', inst.token_fresh, inst.token_updated_at);
+      }
+    });
+
+    var hasDhan = d.instances.some(function(i) { return i.broker === 'dhan'; });
+    var hasZerodha = d.instances.some(function(i) { return i.broker === 'zerodha'; });
+    if (hasDhan && !hasZerodha) selectBroker('dhan');
   } else {
-    updateZerodhaStatus(false, null);
+    updateBrokerStatus('zerodha', false, null);
   }
 }
 
 async function loginWithZerodha() {
-  const btn = document.getElementById('btn-zerodha-login');
+  var btn = document.getElementById('btn-zerodha-login');
   btn.disabled = true;
   btn.textContent = 'Connecting...';
   try {
-    const r = await fetch('/api/client/zerodha/login-url');
-    const d = await r.json();
+    var r = await fetch('/api/client/zerodha/login-url');
+    var d = await r.json();
     if (d.success && d.login_url) {
       window.open(d.login_url, '_blank');
       showToast('Zerodha login page opened. Complete login there, then return here.', 'success');
@@ -736,23 +853,16 @@ async function loginWithZerodha() {
   btn.textContent = 'Login with Zerodha';
 }
 
-document.getElementById('broker-form').addEventListener('submit', async e => {
+document.getElementById('broker-form-zerodha').addEventListener('submit', async function(e) {
   e.preventDefault();
-  const msg = document.getElementById('broker-msg');
-  const apiKey = document.getElementById('s-api-key').value.trim();
-  const apiSecret = document.getElementById('s-api-secret').value.trim();
-  const mode = document.querySelector('input[name="mode"]:checked').value;
+  var apiKey = document.getElementById('s-api-key').value.trim();
+  var apiSecret = document.getElementById('s-api-secret').value.trim();
+  var mode = document.querySelector('input[name="zmode"]:checked').value;
 
-  if (!apiKey && !brokerSaved) {
-    showToast('Please enter your API Key', 'error');
-    return;
-  }
-  if (!apiSecret && !brokerSaved) {
-    showToast('Please enter your API Secret', 'error');
-    return;
-  }
+  if (!apiKey && !zerodhaSaved) { showToast('Please enter your API Key', 'error'); return; }
+  if (!apiSecret && !zerodhaSaved) { showToast('Please enter your API Secret', 'error'); return; }
 
-  const payload = {
+  var payload = {
     broker: 'zerodha',
     api_key: apiKey || 'unchanged',
     api_secret: apiSecret || 'unchanged',
@@ -762,63 +872,101 @@ document.getElementById('broker-form').addEventListener('submit', async e => {
     strategy_version: document.getElementById('s-strategy').value,
   };
 
-  const r = await fetch('/api/client/broker', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
-  });
-  const d = await r.json();
+  var r = await fetch('/api/client/broker', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+  var d = await r.json();
+  var msg = document.getElementById('broker-msg-z');
   msg.className = 'text-xs mb-3';
   msg.style.color = d.success ? '#34d399' : '#f87171';
-  msg.textContent = d.message || (d.success ? 'Saved.' : d.detail || 'Failed.');
+  msg.textContent = d.message || d.detail || (d.success ? 'Saved.' : 'Failed.');
   msg.classList.remove('hidden');
-  showToast(d.message || 'Updated', d.success ? 'success' : 'error');
+  showToast(d.message || d.detail || 'Updated', d.success ? 'success' : 'error');
   if (d.success) {
-    brokerSaved = true;
+    zerodhaSaved = true;
     document.getElementById('s-api-key').placeholder = 'API key saved (enter new to change)';
     document.getElementById('s-api-secret').placeholder = 'API secret saved (enter new to change)';
     document.getElementById('s-api-key').value = '';
     document.getElementById('s-api-secret').value = '';
-    updateZerodhaStatus(false, null);
+    updateBrokerStatus('zerodha', false, null);
     loadStatus();
   }
 });
 
-document.getElementById('config-form').addEventListener('submit', async e => {
+document.getElementById('broker-form-dhan').addEventListener('submit', async function(e) {
   e.preventDefault();
-  const r = await fetch('/api/client/broker', {
+  var clientId = document.getElementById('d-client-id').value.trim();
+  var accessToken = document.getElementById('d-access-token').value.trim();
+  var mode = document.querySelector('input[name="dmode"]:checked').value;
+
+  if (!clientId && !dhanSaved) { showToast('Please enter your Dhan Client ID', 'error'); return; }
+  if (!accessToken && !dhanSaved) { showToast('Please enter your Dhan Access Token', 'error'); return; }
+
+  var payload = {
+    broker: 'dhan',
+    api_key: clientId || 'unchanged',
+    access_token: accessToken || 'unchanged',
+    api_secret: '',
+    trading_mode: mode,
+    instrument: document.getElementById('s-instrument').value,
+    quantity: parseInt(document.getElementById('s-quantity').value),
+    strategy_version: document.getElementById('s-strategy').value,
+  };
+
+  var r = await fetch('/api/client/broker', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+  var d = await r.json();
+  var msg = document.getElementById('broker-msg-d');
+  msg.className = 'text-xs mb-3';
+  msg.style.color = d.success ? '#34d399' : '#f87171';
+  msg.textContent = d.message || d.detail || (d.success ? 'Saved.' : 'Failed.');
+  msg.classList.remove('hidden');
+  showToast(d.message || d.detail || 'Updated', d.success ? 'success' : 'error');
+  if (d.success) {
+    dhanSaved = true;
+    document.getElementById('d-client-id').placeholder = 'Client ID saved (enter new to change)';
+    document.getElementById('d-access-token').placeholder = 'Access token saved (enter new to change)';
+    document.getElementById('d-client-id').value = '';
+    document.getElementById('d-access-token').value = '';
+    loadBrokerSettings();
+    loadStatus();
+  }
+});
+
+document.getElementById('config-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var activeBroker = zerodhaSaved ? 'zerodha' : (dhanSaved ? 'dhan' : 'zerodha');
+  var r = await fetch('/api/client/broker', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
-      broker: 'zerodha',
+      broker: activeBroker,
       api_key: 'unchanged',
       api_secret: 'unchanged',
-      trading_mode: document.querySelector('input[name="mode"]:checked')?.value || 'paper',
+      access_token: 'unchanged',
+      trading_mode: document.querySelector('input[name="' + (activeBroker === 'dhan' ? 'dmode' : 'zmode') + '"]:checked').value || 'paper',
       instrument: document.getElementById('s-instrument').value,
       quantity: parseInt(document.getElementById('s-quantity').value),
       strategy_version: document.getElementById('s-strategy').value,
     })
   });
-  const d = await r.json();
-  const msg = document.getElementById('config-msg');
+  var d = await r.json();
+  var msg = document.getElementById('config-msg');
   msg.className = 'text-xs mb-3';
   msg.style.color = d.success ? '#34d399' : '#f87171';
-  msg.textContent = d.message || (d.success ? 'Saved.' : d.detail || 'Failed.');
+  msg.textContent = d.message || d.detail || (d.success ? 'Saved.' : 'Failed.');
   msg.classList.remove('hidden');
-  showToast(d.message || 'Updated', d.success ? 'success' : 'error');
+  showToast(d.message || d.detail || 'Updated', d.success ? 'success' : 'error');
 });
 
 (function handleZerodhaCallback() {
-  const params = new URLSearchParams(window.location.search);
-  const zerodha = params.get('zerodha');
+  var params = new URLSearchParams(window.location.search);
+  var zerodha = params.get('zerodha');
   if (zerodha === 'success') {
     showToast('Zerodha connected! Access token generated successfully.', 'success');
     showTab('settings');
     window.history.replaceState({}, '', '/dashboard');
     setTimeout(loadBrokerSettings, 500);
   } else if (zerodha === 'error') {
-    const msg = params.get('msg') || 'Unknown error';
-    showToast('Zerodha login failed: ' + decodeURIComponent(msg), 'error');
+    var errMsg = params.get('msg') || 'Unknown error';
+    showToast('Zerodha login failed: ' + decodeURIComponent(errMsg), 'error');
     showTab('settings');
     window.history.replaceState({}, '', '/dashboard');
   } else if (zerodha === 'denied') {

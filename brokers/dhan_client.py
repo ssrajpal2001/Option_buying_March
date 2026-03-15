@@ -19,11 +19,8 @@ class DhanClient(BaseBroker):
             if self.db_config:
                 # Multi-tenant DB path
                 try:
-                    # User said only access_token is required.
-                    # Dhan library constructor: (client_id, access_token)
-                    # We'll use api_key as client_id and api_secret as access_token from DB
                     client_id = self.db_config.get('api_key', '')
-                    access_token = self.db_config.get('api_secret', '')
+                    access_token = self.db_config.get('access_token', '') or self.db_config.get('api_secret', '')
                     self.dhan = dhanhq(client_id, access_token)
                     logger.info(f"Dhan client initialized from DB for User ID: {self.user_id}.")
                 except Exception as e:
