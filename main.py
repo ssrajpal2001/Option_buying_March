@@ -83,17 +83,6 @@ async def main():
         sys.exit(1)
 
     # --- 2. API and Core Component Setup ---
-    if args.client_mode:
-        upstox_token = os.environ.get('UPSTOX_ACCESS_TOKEN', '')
-        upstox_key = os.environ.get('UPSTOX_API_KEY', '')
-        if upstox_token:
-            for p in config_manager.get_data_providers():
-                section = p['name']
-                config_manager.set_override(section, 'access_token', upstox_token)
-                if upstox_key:
-                    config_manager.set_override(section, 'api_key', upstox_key)
-                logger.info(f"[CLIENT MODE] Injected Upstox credentials from DB into [{section}]")
-
     is_backtest = config_manager.get_boolean('settings', 'backtest_enabled', fallback=False)
     api_client_manager = ApiClientManager(config_manager)
     await api_client_manager.async_init()
