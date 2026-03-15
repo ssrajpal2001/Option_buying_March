@@ -50,6 +50,18 @@
   </div>
 </div>
 
+<div class="card p-4 mb-6" id="live-bots-detail" style="display:none">
+  <div class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#64748b">Running Bots — Live Status</div>
+  <div class="overflow-x-auto">
+    <table>
+      <thead><tr>
+        <th>Client</th><th>Broker</th><th>Instrument</th><th>Mode</th><th>Qty</th><th>P&L</th><th>Trades</th><th>Heartbeat</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="live-bots-body"></tbody>
+    </table>
+  </div>
+</div>
+
 <div class="card p-4">
   <div class="flex items-center justify-between mb-3">
     <span class="text-xs font-semibold uppercase tracking-wider" style="color:#64748b">All Clients</span>
@@ -80,15 +92,41 @@ async function loadOverview() {
   dpEl.className = d.data_provider_status === 'configured' ? 'badge-ok ml-auto' : 'badge-warn ml-auto';
 
   const liveList = document.getElementById('live-list');
+  const detailPanel = document.getElementById('live-bots-detail');
+  const liveBody = document.getElementById('live-bots-body');
   if (d.live_instances && d.live_instances.length > 0) {
-    liveList.innerHTML = d.live_instances.map(i =>
-      `<div class="flex items-center justify-between py-1" style="border-bottom:1px solid #1e293b">
-        <span>Instance #${i.instance_id}</span>
-        <span style="color:#34d399">● PID ${i.pid}</span>
-      </div>`
-    ).join('');
+    liveList.innerHTML = d.live_instances.map(i => {
+      const pnl = i.session_pnl || 0;
+      const pnlColor = pnl > 0 ? '#34d399' : pnl < 0 ? '#f87171' : '#94a3b8';
+      const dot = i.stale ? '<span style="color:#fb923c">●</span>' : '<span style="color:#34d399">●</span>';
+      return `<div class="flex items-center justify-between py-1.5" style="border-bottom:1px solid #1e293b">
+        <span>${dot} <a href="/admin/clients/${i.client_id}" style="color:#93c5fd">${escapeHtml(i.username||'')}</a> · ${escapeHtml(i.broker||'')} · ${escapeHtml(i.instrument||'')}</span>
+        <span style="color:${pnlColor};font-weight:700">\u20B9${parseFloat(pnl).toFixed(0)}</span>
+      </div>`;
+    }).join('');
+
+    detailPanel.style.display = 'block';
+    liveBody.innerHTML = d.live_instances.map(i => {
+      const pnl = i.session_pnl || 0;
+      const pnlColor = pnl > 0 ? '#34d399' : pnl < 0 ? '#f87171' : '#94a3b8';
+      const hb = i.heartbeat ? new Date(i.heartbeat * 1000).toLocaleTimeString() : '--';
+      const hbColor = i.stale ? '#fb923c' : '#34d399';
+      const modeColor = (i.trading_mode === 'live') ? '#34d399' : '#60a5fa';
+      return `<tr>
+        <td><a href="/admin/clients/${i.client_id}" style="color:#93c5fd;font-weight:600">${escapeHtml(i.username||'')}</a></td>
+        <td class="text-white">${escapeHtml((i.broker||'').toUpperCase())}</td>
+        <td class="text-white">${escapeHtml(i.instrument||'')}</td>
+        <td style="color:${modeColor};font-weight:700">${(i.trading_mode||'').toUpperCase()}</td>
+        <td class="text-white">${i.quantity || '--'}</td>
+        <td style="color:${pnlColor};font-weight:700">\u20B9${parseFloat(pnl).toFixed(0)}</td>
+        <td class="text-white">${i.trade_count || 0}</td>
+        <td style="color:${hbColor}">${hb}</td>
+        <td><a href="/admin/clients/${i.client_id}" class="btn-ghost px-2 py-1 text-xs">Monitor</a></td>
+      </tr>`;
+    }).join('');
   } else {
     liveList.textContent = 'No bots running.';
+    detailPanel.style.display = 'none';
   }
 
   await loadClients();
