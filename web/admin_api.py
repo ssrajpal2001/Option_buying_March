@@ -162,12 +162,12 @@ async def overview(admin=Depends(require_admin)):
             try:
                 with open(status_file, 'r') as f:
                     bd = json.load(f)
-                entry["session_pnl"] = bd.get("session_pnl", 0)
-                entry["trade_count"] = bd.get("trade_count", 0)
-                entry["heartbeat"] = bd.get("heartbeat")
-                hb_age = time.time() - (bd.get("heartbeat") or 0)
+                entry["session_pnl"] = float(bd.get("session_pnl") or 0)
+                entry["trade_count"] = int(bd.get("trade_count") or 0)
+                entry["heartbeat"] = float(bd.get("heartbeat") or 0)
+                hb_age = time.time() - entry["heartbeat"]
                 entry["stale"] = hb_age > 30
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError, TypeError, ValueError):
                 entry["session_pnl"] = 0
                 entry["stale"] = True
         else:
@@ -195,7 +195,7 @@ async def client_bot_status(client_id: int, admin=Depends(require_admin)):
         raise HTTPException(404, "Client not found")
 
     instance = db_fetchone(
-        "SELECT id, broker, status, trading_mode, instrument, quantity, strategy_version FROM client_broker_instances WHERE client_id=?",
+        "SELECT id, broker, status, trading_mode, instrument, quantity, strategy_version FROM client_broker_instances WHERE client_id=? ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
         (client_id,)
     )
     if not instance:
@@ -208,11 +208,14 @@ async def client_bot_status(client_id: int, admin=Depends(require_admin)):
         try:
             with open(status_file, 'r') as f:
                 bot_data = json.load(f)
-            heartbeat = bot_data.get('heartbeat', 0)
+            heartbeat = float(bot_data.get('heartbeat') or 0)
             age = time.time() - heartbeat
             bot_data['stale'] = age > 30
             bot_data['stale_seconds'] = round(age)
-        except (json.JSONDecodeError, OSError):
+            if not live_status["running"] and heartbeat > 0 and age < 30:
+                live_status["running"] = True
+                live_status["pid"] = bot_data.get("pid")
+        except (json.JSONDecodeError, OSError, TypeError, ValueError):
             bot_data = {}
 
     return {
