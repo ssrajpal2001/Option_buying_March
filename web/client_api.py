@@ -44,11 +44,17 @@ def _is_dhan_token_fresh(token_updated_at: str) -> bool:
         return False
 
 
-def _get_active_instance(user_id: int):
-    instance = db_fetchone(
-        "SELECT * FROM client_broker_instances WHERE client_id=? ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
-        (user_id,)
-    )
+def _get_active_instance(user_id: int, broker: str = None):
+    if broker:
+        instance = db_fetchone(
+            "SELECT * FROM client_broker_instances WHERE client_id=? AND broker=? ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
+            (user_id, broker)
+        )
+    else:
+        instance = db_fetchone(
+            "SELECT * FROM client_broker_instances WHERE client_id=? ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
+            (user_id,)
+        )
     return instance
 
 
@@ -211,9 +217,14 @@ async def zerodha_login_url(user=Depends(get_current_user)):
 
 # ── Bot Control ───────────────────────────────────────────────────────────────
 
+class BotStartRequest(BaseModel):
+    broker: Optional[str] = None
+
+
 @router.post("/bot/start")
-async def start_bot(user=Depends(get_current_user)):
-    instance = _get_active_instance(user["id"])
+async def start_bot(body: BotStartRequest = BotStartRequest(), user=Depends(get_current_user)):
+    requested_broker = body.broker if body.broker and body.broker in ("zerodha", "dhan") else None
+    instance = _get_active_instance(user["id"], broker=requested_broker)
     if not instance:
         raise HTTPException(400, "No broker configured. Please set up your broker first.")
     if not instance.get("api_key_encrypted"):
@@ -270,9 +281,9 @@ async def stop_bot(user=Depends(get_current_user)):
 
 
 @router.post("/bot/restart")
-async def restart_bot(user=Depends(get_current_user)):
+async def restart_bot(body: BotStartRequest = BotStartRequest(), user=Depends(get_current_user)):
     await stop_bot(user=user)
-    return await start_bot(user=user)
+    return await start_bot(body=body, user=user)
 
 
 @router.get("/bot/status")

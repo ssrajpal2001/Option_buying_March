@@ -416,6 +416,7 @@ function showTab(tab) {
 var botRunning = false;
 var brokerConfigured = false;
 var selectedBroker = 'zerodha';
+var activeBrokerFromStatus = null;
 var zerodhaSaved = false;
 var dhanSaved = false;
 
@@ -592,12 +593,33 @@ async function loadStatus() {
 
     var inst = d.instance || {};
     var brkr = inst.broker || 'zerodha';
+    activeBrokerFromStatus = brkr;
 
-    if (brkr === 'zerodha' && !d.live.running) {
-      var tokenFresh = inst.token_updated_at ? true : false;
-      if (!tokenFresh) {
-        document.getElementById('setup-alert').classList.remove('hidden');
-        document.getElementById('setup-alert-text').innerHTML = 'Zerodha token needed. Go to <button onclick="showTab(\'settings\')" style="color:#00d4aa;text-decoration:underline">Settings</button> and click "Login with Zerodha" to connect.';
+    if (!d.live.running) {
+      if (brkr === 'zerodha') {
+        var zTokenFresh = inst.token_updated_at ? true : false;
+        if (!zTokenFresh) {
+          document.getElementById('setup-alert').classList.remove('hidden');
+          document.getElementById('setup-alert-text').innerHTML = 'Zerodha token needed. Go to <button onclick="showTab(\'settings\')" style="color:#00d4aa;text-decoration:underline">Settings</button> and click "Login with Zerodha" to connect.';
+        } else {
+          document.getElementById('setup-alert').classList.add('hidden');
+        }
+      } else if (brkr === 'dhan') {
+        if (!inst.token_updated_at) {
+          document.getElementById('setup-alert').classList.remove('hidden');
+          document.getElementById('setup-alert-text').innerHTML = 'Dhan access token missing. Go to <button onclick="showTab(\'settings\')" style="color:#00d4aa;text-decoration:underline">Settings</button> and enter your Dhan Client ID and Access Token.';
+        } else {
+          var tokenAge = Math.floor((Date.now() - new Date(inst.token_updated_at).getTime()) / (1000*60*60*24));
+          if (tokenAge >= 30) {
+            document.getElementById('setup-alert').classList.remove('hidden');
+            document.getElementById('setup-alert-text').innerHTML = 'Dhan token expired (30-day validity). Go to <button onclick="showTab(\'settings\')" style="color:#00d4aa;text-decoration:underline">Settings</button> and enter a new access token from Dhan\'s developer portal.';
+          } else if (tokenAge >= 25) {
+            document.getElementById('setup-alert').classList.remove('hidden');
+            document.getElementById('setup-alert-text').innerHTML = 'Dhan token expiring soon (' + (30 - tokenAge) + ' days left). Consider renewing in <button onclick="showTab(\'settings\')" style="color:#00d4aa;text-decoration:underline">Settings</button>.';
+          } else {
+            document.getElementById('setup-alert').classList.add('hidden');
+          }
+        }
       } else {
         document.getElementById('setup-alert').classList.add('hidden');
       }
@@ -673,7 +695,8 @@ async function startBot() {
   var btn = document.getElementById('btn-start');
   btn.disabled = true;
   btn.textContent = 'Starting...';
-  var r = await fetch('/api/client/bot/start', {method:'POST'});
+  var brokerToStart = activeBrokerFromStatus || selectedBroker || 'zerodha';
+  var r = await fetch('/api/client/bot/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({broker: brokerToStart})});
   var d = await r.json();
   showToast(d.message || d.detail || 'Error', d.success ? 'success' : 'error');
   btn.disabled = false;
