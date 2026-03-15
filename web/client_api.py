@@ -47,12 +47,12 @@ def _is_dhan_token_fresh(token_updated_at: str) -> bool:
 def _get_active_instance(user_id: int, broker: str = None):
     if broker:
         instance = db_fetchone(
-            "SELECT * FROM client_broker_instances WHERE client_id=? AND broker=? ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
+            "SELECT * FROM client_broker_instances WHERE client_id=? AND broker=? AND status != 'removed' ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
             (user_id, broker)
         )
     else:
         instance = db_fetchone(
-            "SELECT * FROM client_broker_instances WHERE client_id=? ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
+            "SELECT * FROM client_broker_instances WHERE client_id=? AND status != 'removed' ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END, id DESC LIMIT 1",
             (user_id,)
         )
     return instance
@@ -74,7 +74,7 @@ class BrokerSetup(BaseModel):
 @router.get("/broker")
 async def get_broker_config(user=Depends(get_current_user)):
     rows = db_fetchall(
-        "SELECT id, broker, trading_mode, instrument, quantity, strategy_version, status, last_heartbeat, token_updated_at FROM client_broker_instances WHERE client_id=?",
+        "SELECT id, broker, trading_mode, instrument, quantity, strategy_version, status, last_heartbeat, token_updated_at FROM client_broker_instances WHERE client_id=? AND status != 'removed'",
         (user["id"],)
     )
     result = []
@@ -94,12 +94,12 @@ async def save_broker_config(body: BrokerSetup, user=Depends(get_current_user)):
         raise HTTPException(400, "Broker must be 'zerodha' or 'dhan'.")
 
     existing = db_fetchall(
-        "SELECT id FROM client_broker_instances WHERE client_id=?", (user["id"],)
+        "SELECT id FROM client_broker_instances WHERE client_id=? AND status != 'removed'", (user["id"],)
     )
     max_b = user["max_brokers"]
     if len(existing) >= max_b:
         existing_broker = db_fetchone(
-            "SELECT id FROM client_broker_instances WHERE client_id=? AND broker=?",
+            "SELECT id FROM client_broker_instances WHERE client_id=? AND broker=? AND status != 'removed'",
             (user["id"], body.broker)
         )
         if not existing_broker:
@@ -339,6 +339,20 @@ async def submit_broker_change_request(body: BrokerChangeRequest, user=Depends(g
         raise HTTPException(400, "Invalid broker name.")
     if body.current_broker == body.requested_broker:
         raise HTTPException(400, "Current and requested broker cannot be the same.")
+
+    current_instance = db_fetchone(
+        "SELECT id FROM client_broker_instances WHERE client_id=? AND broker=? AND status != 'removed'",
+        (user["id"], body.current_broker)
+    )
+    if not current_instance:
+        raise HTTPException(400, f"You don't have {body.current_broker} configured as a broker.")
+
+    requested_instance = db_fetchone(
+        "SELECT id FROM client_broker_instances WHERE client_id=? AND broker=? AND status != 'removed'",
+        (user["id"], body.requested_broker)
+    )
+    if requested_instance:
+        raise HTTPException(400, f"You already have {body.requested_broker} configured. No change request needed.")
 
     existing = db_fetchone(
         "SELECT id FROM broker_change_requests WHERE client_id=? AND status='pending'",

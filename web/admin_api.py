@@ -60,9 +60,9 @@ async def list_clients(admin=Depends(require_admin)):
     clients = db_fetchall("""
         SELECT u.id, u.username, u.email, u.is_active, u.subscription_tier,
                u.max_brokers, u.created_at, u.activated_at,
-               COUNT(cbi.id) as broker_count,
+               SUM(CASE WHEN cbi.status != 'removed' THEN 1 ELSE 0 END) as broker_count,
                SUM(CASE WHEN cbi.status='running' THEN 1 ELSE 0 END) as running_count,
-               GROUP_CONCAT(DISTINCT cbi.broker) as brokers
+               GROUP_CONCAT(DISTINCT CASE WHEN cbi.status != 'removed' THEN cbi.broker END) as brokers
         FROM users u
         LEFT JOIN client_broker_instances cbi ON cbi.client_id=u.id
         WHERE u.role='client'
@@ -115,7 +115,7 @@ async def client_detail(client_id: int, admin=Depends(require_admin)):
     instances = db_fetchall("""
         SELECT id, broker, trading_mode, instrument, quantity, strategy_version,
                status, bot_pid, last_heartbeat, token_updated_at, created_at
-        FROM client_broker_instances WHERE client_id=?
+        FROM client_broker_instances WHERE client_id=? AND status != 'removed'
     """, (client_id,))
     failures = db_fetchall("""
         SELECT order_side, failure_reason, retry_attempt, paired_leg_closed, created_at
@@ -263,16 +263,25 @@ async def approve_broker_request(request_id: int, admin=Depends(require_admin)):
         raise HTTPException(404, "Request not found")
     if req["status"] != "pending":
         raise HTTPException(400, "Request already resolved")
+
+    running = db_fetchone(
+        "SELECT id FROM client_broker_instances WHERE client_id=? AND broker=? AND status='running'",
+        (req["client_id"], req["current_broker"])
+    )
+    if running:
+        instance_manager.stop_all_for_client(req["client_id"])
+        db_execute("UPDATE client_broker_instances SET status='idle', bot_pid=NULL WHERE client_id=? AND status='running'", (req["client_id"],))
+
     now = datetime.now(timezone.utc).isoformat()
+    db_execute(
+        "UPDATE client_broker_instances SET status='removed' WHERE client_id=? AND broker=?",
+        (req["client_id"], req["current_broker"])
+    )
     db_execute(
         "UPDATE broker_change_requests SET status='approved', resolved_at=?, resolved_by_id=? WHERE id=?",
         (now, admin["id"], request_id)
     )
-    db_execute(
-        "DELETE FROM client_broker_instances WHERE client_id=? AND broker=?",
-        (req["client_id"], req["current_broker"])
-    )
-    return {"success": True, "message": f"Broker change approved. Old {req['current_broker']} instance removed. Client can now set up {req['requested_broker']}."}
+    return {"success": True, "message": f"Broker change approved. Old {req['current_broker']} instance disabled. Client can now set up {req['requested_broker']}."}
 
 
 @router.post("/broker-requests/{request_id}/deny")
