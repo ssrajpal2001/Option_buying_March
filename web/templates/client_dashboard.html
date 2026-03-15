@@ -948,7 +948,7 @@ async function exchangeZerodhaToken() {
       msg.style.color = '#34d399';
       msg.textContent = 'Connected! Access token saved.';
       msg.classList.remove('hidden');
-      loadBrokerConfig();
+      loadBrokerSettings();
     } else {
       msg.style.color = '#f87171';
       msg.textContent = d.detail || d.message || 'Token exchange failed';
