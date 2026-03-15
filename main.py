@@ -1,7 +1,9 @@
 import asyncio
 import datetime
+import json
 import sys
 import os
+import time
 from hub.provider_factory import ProviderFactory
 from hub.broker_manager import BrokerManager
 from utils.logger import logger, configure_logger
@@ -37,11 +39,12 @@ async def main():
 
     if args.client_mode:
         from hub.client_config import load_client_config
-        from hub.status_writer import StatusWriter
         client_cfg = load_client_config()
         logger.info(f"[CLIENT MODE] Starting bot for {client_cfg}")
-        status_writer = StatusWriter(client_cfg.client_id)
-        status_writer.write({"bot_running": True, "mode": client_cfg.trading_mode, "instrument": client_cfg.instrument, "broker": client_cfg.broker})
+        _status_path = os.path.join("config", f"bot_status_client_{client_cfg.client_id}.json")
+        os.makedirs("config", exist_ok=True)
+        with open(_status_path, "w") as _sf:
+            json.dump({"bot_running": True, "mode": client_cfg.trading_mode, "instrument": client_cfg.instrument, "broker": client_cfg.broker, "heartbeat": time.time()}, _sf)
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, args.config)
