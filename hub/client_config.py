@@ -23,8 +23,6 @@ class ClientConfig:
     trading_mode: str          # "paper" or "live"
     api_key: str
     access_token: str
-    upstox_api_key: str
-    upstox_access_token: str
     instance_id: int
 
     @property
@@ -50,7 +48,7 @@ def load_client_config() -> ClientConfig:
         "CLIENT_ID", "CLIENT_USERNAME", "CLIENT_BROKER",
         "CLIENT_INSTRUMENT", "CLIENT_QUANTITY", "CLIENT_STRATEGY_VERSION",
         "CLIENT_TRADING_MODE", "CLIENT_API_KEY", "CLIENT_ACCESS_TOKEN",
-        "UPSTOX_API_KEY", "UPSTOX_ACCESS_TOKEN", "CLIENT_INSTANCE_ID",
+        "CLIENT_INSTANCE_ID",
     ]
     missing = [k for k in required if not os.environ.get(k)]
     if missing:
@@ -68,7 +66,5 @@ def load_client_config() -> ClientConfig:
         trading_mode=os.environ["CLIENT_TRADING_MODE"],
         api_key=os.environ["CLIENT_API_KEY"],
         access_token=os.environ["CLIENT_ACCESS_TOKEN"],
-        upstox_api_key=os.environ["UPSTOX_API_KEY"],
-        upstox_access_token=os.environ["UPSTOX_ACCESS_TOKEN"],
         instance_id=int(os.environ["CLIENT_INSTANCE_ID"]),
     )
