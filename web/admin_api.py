@@ -1,3 +1,6 @@
+import json
+import time
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
@@ -143,7 +146,35 @@ async def overview(admin=Depends(require_admin)):
         "SELECT COUNT(*) as c FROM order_failures WHERE date(created_at)=date('now')"
     )["c"]
     dp = db_fetchone("SELECT status FROM data_providers WHERE provider='upstox'")
-    running_list = instance_manager.list_running()
+
+    live_details = []
+    running_rows = db_fetchall("""
+        SELECT cbi.id, cbi.client_id, cbi.broker, cbi.instrument, cbi.quantity,
+               cbi.trading_mode, cbi.strategy_version, cbi.bot_pid, u.username
+        FROM client_broker_instances cbi
+        JOIN users u ON u.id = cbi.client_id
+        WHERE cbi.status = 'running'
+    """)
+    for row in running_rows:
+        entry = dict(row)
+        status_file = Path(f'config/bot_status_client_{row["client_id"]}.json')
+        if status_file.exists():
+            try:
+                with open(status_file, 'r') as f:
+                    bd = json.load(f)
+                entry["session_pnl"] = bd.get("session_pnl", 0)
+                entry["trade_count"] = bd.get("trade_count", 0)
+                entry["heartbeat"] = bd.get("heartbeat")
+                hb_age = time.time() - (bd.get("heartbeat") or 0)
+                entry["stale"] = hb_age > 30
+            except (json.JSONDecodeError, OSError):
+                entry["session_pnl"] = 0
+                entry["stale"] = True
+        else:
+            entry["session_pnl"] = 0
+            entry["stale"] = True
+        live_details.append(entry)
+
     return {
         "total_clients": total_clients,
         "active_clients": active_clients,
@@ -151,5 +182,43 @@ async def overview(admin=Depends(require_admin)):
         "running_instances": running_instances,
         "failures_today": failures_today,
         "data_provider_status": dp["status"] if dp else "not_configured",
-        "live_instances": running_list,
+        "live_instances": live_details,
+    }
+
+
+# ── Admin bot monitor for any client ─────────────────────────────────────
+
+@router.get("/clients/{client_id}/bot-status")
+async def client_bot_status(client_id: int, admin=Depends(require_admin)):
+    user = db_fetchone("SELECT id, username FROM users WHERE id=?", (client_id,))
+    if not user:
+        raise HTTPException(404, "Client not found")
+
+    instance = db_fetchone(
+        "SELECT id, broker, status, trading_mode, instrument, quantity, strategy_version FROM client_broker_instances WHERE client_id=?",
+        (client_id,)
+    )
+    if not instance:
+        return {"configured": False, "bot_data": {}}
+
+    live_status = instance_manager.get_instance_status(instance["id"])
+    bot_data = {}
+    status_file = Path(f'config/bot_status_client_{client_id}.json')
+    if status_file.exists():
+        try:
+            with open(status_file, 'r') as f:
+                bot_data = json.load(f)
+            heartbeat = bot_data.get('heartbeat', 0)
+            age = time.time() - heartbeat
+            bot_data['stale'] = age > 30
+            bot_data['stale_seconds'] = round(age)
+        except (json.JSONDecodeError, OSError):
+            bot_data = {}
+
+    return {
+        "configured": True,
+        "instance": dict(instance),
+        "live": live_status,
+        "bot_data": bot_data,
+        "username": user["username"],
     }
